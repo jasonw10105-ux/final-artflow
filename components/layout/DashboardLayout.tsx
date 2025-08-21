@@ -43,7 +43,7 @@ const DashboardLayout = () => {
                      <button onClick={handleLogout} style={{ ...baseLinkStyle, width: '100%', justifyContent: 'flex-start', background: 'transparent', border: 0 }}><LogOut size={18} /> Logout</button>
                 </div>
             </aside>
-            <main style={{ padding: '2rem 3rem', overflowY: 'auto' }}>
+            <main style={{ padding: '2rem 3rem', overflowY: 'auto' }w}>
                 <Outlet />
             </main>
         </div>
