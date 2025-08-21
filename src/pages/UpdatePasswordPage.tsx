@@ -29,7 +29,7 @@ const UpdatePasswordPage = () => {
         setLoading(false);
     };
     return (
-        <div style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+        <div class="gradient-polish" style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
             <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Update Your Password</h2>
             <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="New Password" required/>

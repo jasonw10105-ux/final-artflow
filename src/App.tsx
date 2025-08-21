@@ -1,3 +1,5 @@
+// src/App.tsx
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
@@ -7,7 +9,7 @@ import MarketingLayout from './components/layout/MarketingLayout';
 import DashboardLayout from './components/layout/DashboardLayout';
 
 // --- Page Imports ---
-import WaitlistPage from './pages/WaitlistPage'; // <-- IMPORT FOR HOMEPAGE
+import WaitlistPage from './pages/WaitlistPage';
 import MarketingPage from './pages/MarketingPage';
 import RegisterPage from './pages/RegisterPage';
 import LoginPage from './pages/LoginPage';
@@ -35,6 +37,7 @@ import ContactDetailPage from './pages/dashboard/artist/ContactDetailPage';
 import BrowseArtistsPage from './pages/public/BrowseArtistsPage';
 import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
+import SalesPage from './pages/dashboard/artist/SalesPage';
 
 const DashboardRedirector = () => {
     const { profile, loading } = useAuth();
@@ -57,14 +60,16 @@ function AppRoutes() {
   return (
     <Router>
       <Routes>
-        {/* --- 1. WAITLIST & AUTH ROUTES (Standalone, No Layout) --- */}
+        {/* --- 1. Standalone Routes (No Layout) --- */}
         <Route path="/" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
-        
+        <Route path="/artwork/:artistSlug/:artworkSlug" element={<IndividualArtworkPage />} />
+        <Route path="/catalogue/:artistSlug/:catalogueSlug" element={<PublicCataloguePage />} />
+
         {/* --- 2. Public Routes (Wrapped in Marketing Layout) --- */}
         <Route element={<MarketingLayout />}>
             <Route path="/home" element={<MarketingPage />} />
@@ -72,29 +77,30 @@ function AppRoutes() {
             <Route path="/artworks" element={<BrowseArtworksPage />} />
             <Route path="/catalogues" element={<BrowseCataloguesPage />} />
             <Route path="/:profileSlug" element={<ArtistPortfolioPage />} />
-            <Route path="/artwork/:artistSlug/:artworkSlug" element={<IndividualArtworkPage />} />
-            <Route path="/catalogue/:artistSlug/:catalogueSlug" element={<PublicCataloguePage />} />
         </Route>
         
         {/* --- 3. Protected Dashboard Redirect --- */}
         <Route path="/dashboard" element={<DashboardRedirector />} />
 
-        {/* --- 4. Fully Protected Routes (Require login AND completed profile) --- */}
+        {/* --- 4. Fully Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
+            {/* Standalone Wizard/Editor Routes */}
             <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
+            <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
+            <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
+            
+            {/* FIXED: The artwork editor is now a standalone route without the sidebar */}
+            <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
+            
+            {/* Routes with Dashboard Layout */}
             <Route element={<DashboardLayout />}>
                 <Route path="/artist/dashboard" element={<ArtistDashboardPage />} />
                 <Route path="/artist/artworks" element={<ArtworkListPage />} />
-                <Route path="/artist/artworks/new" element={<ArtworkEditorPage />} />
-                <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
                 <Route path="/artist/catalogues" element={<CatalogueListPage />} />
-                <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
-                <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
                 <Route path="/artist/contacts" element={<ContactListPage />} />
-                <Route path="/artist/contacts/new" element={<ContactEditorPage />} />
                 <Route path="/artist/contacts/edit/:contactId" element={<ContactEditorPage />} />
-                <Route path="/artist/contacts/:contactId" element={<ContactDetailPage />} />
                 <Route path="/artist/messages" element={<MessagingCenterPage />} />
+                <Route path="/artist/sales" element={<SalesPage />} />
                 <Route path="/artist/insights" element={<ArtistInsightsPage />} />
                 <Route path="/artist/settings" element={<ArtistSettingsPage />} />
                 <Route path="/collector/dashboard" element={<CollectorDashboardPage />} />

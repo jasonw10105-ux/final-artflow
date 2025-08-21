@@ -39,13 +39,8 @@ const ArtworkUploadModal = ({ onUploadComplete }: ArtworkUploadModalProps) => {
       <div className="modal-content">
         <button onClick={clearStore} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}><X /></button>
         <h3>Upload Artworks</h3>
-
-        <div {...getRootProps()} style={{ border: `2px dashed ${isDragActive ? 'var(--primary)' : 'var(--border)'}`, padding: '2rem', textAlign: 'center', borderRadius: 'var(--radius)', cursor: 'pointer', margin: '1rem 0' }}>
-          <input {...getInputProps()} />
-          <UploadCloud style={{ margin: '0 auto 1rem auto', color: 'var(--muted-foreground)' }} />
-          {isDragActive ? <p>Drop files here</p> : <p>Drag 'n' drop, or click to select files</p>}
-        </div>
         
+        {/* FIXED: Moved file list above the dropzone */}
         <div style={{ maxHeight: '200px', overflowY: 'auto', margin: '1rem 0' }}>
           {files.map((file: UploadFile) => (
             <div key={file.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
@@ -66,11 +61,18 @@ const ArtworkUploadModal = ({ onUploadComplete }: ArtworkUploadModalProps) => {
             </div>
           ))}
         </div>
+        
+        {/* FIXED: Dropzone is now below the file list */}
+        <div {...getRootProps()} style={{ border: `2px dashed ${isDragActive ? 'var(--primary)' : 'var(--border)'}`, padding: '2rem', textAlign: 'center', borderRadius: 'var(--radius)', cursor: 'pointer', margin: '1rem 0' }}>
+          <input {...getInputProps()} />
+          <UploadCloud style={{ margin: '0 auto 1rem auto', color: 'var(--muted-foreground)' }} />
+          {isDragActive ? <p>Drop files here</p> : <p>Drag 'n' drop, or click to select more files</p>}
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
           <button className="button-secondary" onClick={clearStore} disabled={isUploading}>Cancel All</button>
           <button className="button button-primary" onClick={handleCreate} disabled={isCreateDisabled}>
-            {isUploading ? 'Processing...' : 'Create Pending Artworks'}
+            {isUploading ? 'Processing...' : `Create ${files.length} Pending Artwork(s)`}
           </button>
         </div>
       </div>

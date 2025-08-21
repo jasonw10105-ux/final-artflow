@@ -74,7 +74,7 @@ const CompleteProfilePage = () => {
     };
 
     return (
-        <div style={{ maxWidth: '500px', margin: '3rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+        <div class="gradient-polish" style={{ maxWidth: '500px', margin: '3rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
             <h2 style={{ textAlign: 'center' }}>Complete Your Profile</h2>
             <p style={{ textAlign: 'center', color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Just a few more details to get you started.</p>
             <form onSubmit={handleProfileComplete}>

@@ -5,341 +5,160 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../contexts/AuthProvider';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import TextTagManager from '../../../components/dashboard/TextTagManager';
-import CatalogueSelectionModal from '../../../components/dashboard/CatalogueSelectionModal';
-import { ArrowLeft, Folder, Info } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 
-// Form state no longer includes 'status'
-interface ArtworkFormState {
-    title: string;
-    description: string;
-    price: number | string;
-    catalogue_id: string | null;
-    is_price_negotiable: boolean;
-    location: string;
-    medium: string;
-    dimensions: { height: string; width: string; depth: string; unit: string; };
-    date_info: { type: string; year: string; era: string; };
-    signature_info: { is_signed: boolean; type: string; location: string; };
-}
-
-const initialFormState: ArtworkFormState = {
-    title: '',
-    description: '',
-    price: '',
-    catalogue_id: null,
-    is_price_negotiable: false,
-    location: '',
-    medium: '',
-    dimensions: { height: '', width: '', depth: '', unit: 'in' },
-    date_info: { type: 'Exact', year: '', era: 'AD' },
-    signature_info: { is_signed: false, type: 'Signature', location: '' },
+// --- TYPE DEFINITIONS ---
+type EditionInfo = {
+    is_edition?: boolean;
+    numeric_size?: number;
+    ap_size?: number;
+    sold_editions?: string[];
+};
+type Artwork = {
+    id: string;
+    title: string | null;
+    description: string | null;
+    image_url: string | null;
+    price: number | null;
+    status: 'Pending' | 'Active' | 'Sold';
+    medium: string | null;
+    dimensions: { height?: string; width?: string; depth?: string; unit?: string } | null;
+    signature_info: { is_signed?: boolean; location?: string } | null;
+    is_framed: boolean;
+    provenance: string | null;
+    edition_info: EditionInfo | null;
 };
 
-const fetchArtwork = async (artworkId: string) => {
-    const { data, error } = await supabase
-        .from('artworks')
-        .select('*, catalogue:catalogues(title)')
-        .eq('id', artworkId)
-        .single();
+// --- API FUNCTIONS ---
+const fetchArtwork = async (artworkId: string): Promise<Artwork> => {
+    const { data, error } = await supabase.from('artworks').select('*').eq('id', artworkId).single();
     if (error) throw new Error("Artwork not found");
-    const { data: tagsData } = await supabase.from('artwork_tags').select('tag').eq('artwork_id', artworkId);
-    const tags = tagsData ? tagsData.map(t => t.tag) : [];
-    return { ...data, tags };
-}
+    return data as any;
+};
 
-const fetchAllUserTags = async (userId: string) => {
-    const { data, error } = await supabase.rpc('get_distinct_user_tags', { p_user_id: userId });
-    if (error) { console.error("RPC Error:", error); return []; }
-    return data;
-}
+const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: string, identifier: string, isSold: boolean }) => {
+    const { error } = await supabase.rpc('update_artwork_edition_sale', { p_artwork_id: artworkId, p_edition_identifier: identifier, p_is_sold: isSold });
+    if (error) throw error;
+};
 
+// --- COMPONENT ---
 const ArtworkEditorPage = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { artworkId } = useParams<{ artworkId: string }>();
-    const isEditing = !!artworkId;
 
-    const [formData, setFormData] = useState<ArtworkFormState>(initialFormState);
-    const [initialData, setInitialData] = useState<ArtworkFormState>(initialFormState);
-    const [selectedTags, setSelectedTags] = useState<string[]>([]);
-    const [initialTags, setInitialTags] = useState<string[]>([]);
-    const [isCatalogueModalOpen, setIsCatalogueModalOpen] = useState(false);
-    const [catalogueName, setCatalogueName] = useState<string | null>(null);
-    const [currentStatus, setCurrentStatus] = useState<string>('Pending');
+    if (!artworkId) { navigate('/artist/artworks'); return null; }
 
-    const { data: artworkData, isLoading: isLoadingArtwork } = useQuery({
-        queryKey: ['artwork', artworkId],
-        queryFn: () => fetchArtwork(artworkId!),
-        enabled: isEditing,
-        onSuccess: (data) => {
-            if (data) {
-                const loadedData = {
-                    title: data.title || '',
-                    description: data.description || '',
-                    price: data.price || '',
-                    catalogue_id: data.catalogue_id || null,
-                    is_price_negotiable: data.is_price_negotiable || false,
-                    location: data.location || '',
-                    medium: data.medium || '',
-                    dimensions: data.dimensions || initialFormState.dimensions,
-                    date_info: data.date_info || initialFormState.date_info,
-                    signature_info: data.signature_info || initialFormState.signature_info,
-                };
-                setFormData(loadedData);
-                setInitialData(loadedData);
-                setSelectedTags(data.tags || []);
-                setInitialTags(data.tags || []);
-                setCatalogueName((data.catalogue as any)?.title || null);
-                setCurrentStatus(data.status || 'Pending');
-            }
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [artwork, setArtwork] = useState<Partial<Omit<Artwork, 'id'>>>({});
+    const [originalTitle, setOriginalTitle] = useState('');
+
+    const queryKey = ['artwork', artworkId];
+    const { data: fetchedArtwork, isLoading } = useQuery({ queryKey, queryFn: () => fetchArtwork(artworkId) });
+
+    useEffect(() => {
+        if (fetchedArtwork) {
+            setArtwork(fetchedArtwork);
+            setOriginalTitle(fetchedArtwork.title || '');
         }
-    });
+    }, [fetchedArtwork]);
 
-    const { data: allUserTags, isLoading: isLoadingTags } = useQuery({
-        queryKey: ['allUserTags', user?.id],
-        queryFn: () => fetchAllUserTags(user!.id),
-        enabled: !!user
-    });
-
-    const isSold = currentStatus === 'Sold';
-
-    const handleSelectCatalogue = (catalogueId: string | null) => {
-        setFormData(prev => ({ ...prev, catalogue_id: catalogueId }));
-        
-        if (catalogueId) {
-            const catalogues = queryClient.getQueryData<any[]>(['artist_catalogues', user?.id]);
-            const selectedCatalogue = catalogues?.find(c => c.id === catalogueId);
-            setCatalogueName(selectedCatalogue?.title || null);
-        } else {
-            setCatalogueName(null);
-        }
-    };
-    
-     const isDirty = useMemo(() => {
-        return JSON.stringify(formData) !== JSON.stringify(initialData) || JSON.stringify(selectedTags) !== JSON.stringify(initialTags);
-    }, [formData, initialData, selectedTags, initialTags]);
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const checked = (e.target as HTMLInputElement).checked;
-        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
-    };
-    
-    const handleNestedChange = (group: keyof ArtworkFormState, e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const checked = (e.target as HTMLInputElement).checked;
-        setFormData(prev => ({
-            ...prev,
-            [group]: {
-                ...prev[group] as any,
-                [name]: type === 'checkbox' ? checked : value
-            }
-        }));
-    };
-
-    const handleDiscardChanges = () => {
-        setFormData(initialData);
-        setSelectedTags(initialTags);
-    };
-
-    const mainMutation = useMutation({
-        mutationFn: async ({ artworkCoreData, newTags }: { artworkCoreData: any, newTags: string[] }) => {
-            let savedArtwork;
-
-            if (isEditing) {
-                const { data, error } = await supabase.from('artworks').update(artworkCoreData).eq('id', artworkId!).select().single();
-                if (error) throw error;
-                savedArtwork = data;
-            } else {
-                const { data, error } = await supabase.from('artworks').insert(artworkCoreData).select().single();
-                if (error) throw error;
-                savedArtwork = data;
-            }
-
-            const currentArtworkId = savedArtwork.id;
-            const tagsToAdd = newTags.filter(tag => !initialTags.includes(tag));
-            const tagsToRemove = initialTags.filter(tag => !newTags.includes(tag));
-
-            if (tagsToRemove.length > 0) {
-                await supabase.from('artwork_tags').delete().eq('artwork_id', currentArtworkId).in('tag', tagsToRemove);
-            }
-
-            if (tagsToAdd.length > 0) {
-                const newTagObjects = tagsToAdd.map(tag => ({ artwork_id: currentArtworkId, tag, user_id: user!.id }));
-                await supabase.from('artwork_tags').insert(newTagObjects);
-            }
-
-            return savedArtwork;
-        },
-        onSuccess: (data) => {
+    const saleMutation = useMutation({
+        mutationFn: updateSaleStatus,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey });
             queryClient.invalidateQueries({ queryKey: ['artworks'] });
-            queryClient.invalidateQueries({ queryKey: ['artwork', data.id] });
-            queryClient.invalidateQueries({ queryKey: ['allUserTags', user?.id] });
-            alert('Artwork saved successfully!');
-            navigate('/artist/artworks');
         },
-        onError: (error: any) => alert(`Error saving artwork: ${error.message}`)
+        onError: (error: any) => alert(`Error updating sale: ${error.message}`),
     });
 
-    const relistMutation = useMutation({
-        mutationFn: async () => {
-            const { error } = await supabase
-                .from('artworks')
-                .update({ status: 'Available' })
-                .eq('id', artworkId!);
+    const updateMutation = useMutation({
+        mutationFn: async (formData: Partial<Artwork>) => {
+            if (!user) throw new Error("You must be logged in.");
+            if (!formData.title) throw new Error("Title is required.");
+            let finalSlug = null;
+            if (formData.title !== originalTitle) {
+                const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: formData.title, table_name: 'artworks' });
+                finalSlug = slugData;
+            }
+            const { status, ...dataToUpdate } = formData;
+            const payload: Partial<Artwork> = { ...dataToUpdate, price: dataToUpdate.price ? parseFloat(String(dataToUpdate.price)) : null, ...(finalSlug && { slug: finalSlug }) };
+            if (!payload.edition_info?.is_edition && fetchedArtwork?.status !== 'Sold') {
+                payload.status = 'Active';
+            }
+            const { error } = await supabase.from('artworks').update(payload).eq('id', artworkId);
             if (error) throw error;
         },
         onSuccess: () => {
-            alert('Artwork has been marked as Available. You can now edit its details.');
-            queryClient.invalidateQueries({ queryKey: ['artwork', artworkId] });
+            queryClient.invalidateQueries({ queryKey });
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+            alert('Artwork saved successfully!');
+            // User stays on the page after saving to continue editing
         },
-        onError: (error: any) => {
-            alert(`Failed to update status: ${error.message}`);
-        }
+        onError: (error: any) => alert(`Error: ${error.message}`),
+        onSettled: () => setIsSubmitting(false),
     });
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!user || !formData.title) {
-            alert("Title is required.");
-            return;
+    const deleteMutation = useMutation({
+        mutationFn: async () => {
+            const { error } = await supabase.from('artworks').delete().eq('id', artworkId);
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+            alert('Artwork deleted successfully.');
+            navigate('/artist/artworks');
+        },
+        onError: (error: any) => alert(`Error deleting artwork: ${error.message}`),
+    });
+    
+    const handleDelete = () => {
+        if (window.confirm('Are you sure you want to permanently delete this artwork? This action cannot be undone.')) {
+            deleteMutation.mutate();
         }
-
-        let finalSlug = artworkData?.slug;
-        if (!isEditing || (isEditing && formData.title !== initialData.title)) {
-            const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: formData.title, table_name: 'artworks' });
-            finalSlug = slugData;
-        }
-        
-        const finalStatus = isEditing ? currentStatus : 'Available';
-        const artworkCoreData = {
-            ...formData,
-            status: finalStatus,
-            price: formData.price || null,
-            slug: finalSlug,
-        };
-
-        if (!isEditing) {
-            artworkCoreData.user_id = user.id;
-        }
-        
-        mainMutation.mutate({ artworkCoreData, newTags: selectedTags });
     };
+    
+    const handleJsonChange = (parent: keyof Artwork, field: string, value: any) => { setArtwork(prev => ({ ...prev, [parent]: { ...(prev[parent] as object || {}), [field]: value } })); };
+    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { const { name, value, type } = e.target; const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined; setArtwork(prev => ({ ...prev, [name]: checked !== undefined ? checked : value })); };
+    const allEditions = useMemo(() => { if (!artwork.edition_info?.is_edition) return []; const editions = []; const numericSize = artwork.edition_info?.numeric_size || 0; const apSize = artwork.edition_info?.ap_size || 0; for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`); for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`); return editions; }, [artwork.edition_info]);
+    const handleEditionSaleChange = (identifier: string, isChecked: boolean) => { saleMutation.mutate({ artworkId, identifier, isSold: isChecked }); };
+    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setIsSubmitting(true); updateMutation.mutate(artwork); };
 
-    if (isLoadingArtwork || isLoadingTags) return <div className="loading-fullscreen">Loading Artwork Editor...</div>;
+    if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork editor...</div>;
 
     return (
-        <>
-            <CatalogueSelectionModal 
-                isOpen={isCatalogueModalOpen}
-                onClose={() => setIsCatalogueModalOpen(false)}
-                onSelectCatalogue={handleSelectCatalogue}
-                currentCatalogueId={formData.catalogue_id}
-            />
-
-            <div className="editor-container">
-                <header className="editor-header">
-                     <Link to="/artist/artworks" className="back-link"><ArrowLeft size={20} /> Back to Artworks</Link>
-                    <div className="editor-actions">
-                        <button onClick={handleDiscardChanges} className="button-secondary" disabled={!isDirty || isSold}>Discard</button>
-                        <button onClick={handleSubmit} className="button-primary" disabled={mainMutation.isPending || !isDirty || isSold}>
-                            {mainMutation.isPending ? 'Saving...' : 'Save Changes'}
-                        </button>
-                    </div>
-                </header>
-
-                <main className="editor-main">
-                    {isSold && (
-                        <div style={{ 
-                            gridColumn: '1 / -1', 
-                            background: 'var(--accent)', 
-                            border: '1px solid var(--border)', 
-                            padding: '1rem 1.5rem', 
-                            borderRadius: 'var(--radius)', 
-                            marginBottom: '2rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '1rem'
-                        }}>
-                            <Info size={20} />
-                            <p style={{margin: 0, fontWeight: 500}}>This artwork is marked as "Sold" and cannot be edited. To make changes, first mark it as available.</p>
+        <div style={{ padding: '2rem' }}>
+            <Link to="/artist/artworks" className="button-secondary" style={{ marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ArrowLeft size={16} /> Back to Artworks
+            </Link>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '3rem', alignItems: 'start' }}>
+                <aside style={{ position: 'sticky', top: '2rem' }}>
+                    {fetchedArtwork?.image_url && <img src={fetchedArtwork.image_url} alt={artwork.title || "Artwork"} style={{ width: '100%', height: 'auto', objectFit: 'cover', borderRadius: 'var(--radius)' }} />}
+                </aside>
+                
+                <main>
+                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                        <fieldset><legend>Primary Information</legend><label>Title</label><input name="title" className="input" type="text" value={artwork.title || ''} onChange={handleFormChange} required /><label>Medium</label><input name="medium" className="input" type="text" value={artwork.medium || ''} onChange={handleFormChange} required /><label>Description</label><textarea name="description" className="input" value={artwork.description || ''} onChange={handleFormChange} /></fieldset>
+                        <fieldset><legend>Artwork Details</legend><div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem'}}><div><label>Height</label><input type="number" value={artwork.dimensions?.height || ''} onChange={e => handleJsonChange('dimensions', 'height', e.target.value)} className="input" required /></div><div><label>Width</label><input type="number" value={artwork.dimensions?.width || ''} onChange={e => handleJsonChange('dimensions', 'width', e.target.value)} className="input" required /></div><div><label>Depth</label><input type="number" value={artwork.dimensions?.depth || ''} onChange={e => handleJsonChange('dimensions', 'depth', e.target.value)} className="input" /></div><div><label>Unit</label><input type="text" value={artwork.dimensions?.unit || ''} onChange={e => handleJsonChange('dimensions', 'unit', e.target.value)} className="input" placeholder="e.g., in, cm" /></div></div><div style={{display: 'flex', gap: '2rem', marginTop: '1rem'}}><label style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><input name="is_framed" type="checkbox" checked={!!artwork.is_framed} onChange={handleFormChange} /> Framed </label><label style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><input type="checkbox" checked={!!artwork.signature_info?.is_signed} onChange={e => handleJsonChange('signature_info', 'is_signed', e.target.checked)} required/> Signed </label></div></fieldset>
+                        <fieldset><legend>Edition Information</legend><label style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><input type="checkbox" checked={!!artwork.edition_info?.is_edition} onChange={e => handleJsonChange('edition_info', 'is_edition', e.target.checked)} />This work is part of an edition</label>{artwork.edition_info?.is_edition && (<div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem'}}><div><label>Numeric Edition Size</label><input type="number" value={artwork.edition_info?.numeric_size || ''} onChange={e => handleJsonChange('edition_info', 'numeric_size', parseInt(e.target.value, 10))} className="input" placeholder="e.g., 50"/></div><div><label>Total Artist's Proofs (APs)</label><input type="number" value={artwork.edition_info?.ap_size || ''} onChange={e => handleJsonChange('edition_info', 'ap_size', parseInt(e.target.value, 10))} className="input" placeholder="e.g., 5"/></div></div>)}</fieldset>
+                        {artwork.edition_info?.is_edition && fetchedArtwork?.status !== 'Pending' && (<fieldset><legend>Sales & Inventory Management</legend><p>Check the box next to an edition to mark it as sold. The artwork's main status will update automatically.</p><div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.5rem', background: 'var(--background)', padding: '1rem', borderRadius: 'var(--radius)' }}>{allEditions.map(identifier => (<label key={identifier} style={{display: 'flex', gap: '0.5rem', padding: '0.5rem', borderRadius: 'var(--radius)', background: 'var(--card)', cursor: 'pointer'}}><input type="checkbox" checked={fetchedArtwork?.edition_info?.sold_editions?.includes(identifier)} onChange={(e) => handleEditionSaleChange(identifier, e.target.checked)} disabled={saleMutation.isPending}/>{identifier}</label>))}</div></fieldset>)}
+                        <fieldset><legend>Provenance</legend><textarea name="provenance" className="input" placeholder="History of ownership, exhibitions, etc." value={artwork.provenance || ''} onChange={handleFormChange} /></fieldset>
+                        <fieldset><legend>Pricing</legend><label>Price ($)</label><input name="price" className="input" type="number" step="0.01" value={artwork.price || ''} onChange={handleFormChange} required /><label style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><input name="is_price_negotiable" type="checkbox" checked={!!artwork.is_price_negotiable} onChange={handleFormChange} /> Price is negotiable </label></fieldset>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                            <button type="button" onClick={handleDelete} className="button button-danger" disabled={deleteMutation.isPending}>
+                                {deleteMutation.isPending ? 'Deleting...' : <><Trash2 size={14} /> Delete Artwork</>}
+                            </button>
+                            <button type="submit" className="button button-primary" disabled={isSubmitting}>
+                                {isSubmitting ? 'Saving...' : 'Save Changes'}
+                            </button>
                         </div>
-                    )}
-
-                    <div className="editor-form-column">
-                        <div className="form-section">
-                            <h3>Basic Information</h3>
-                            <input name="title" value={formData.title} onChange={handleInputChange} placeholder="Artwork Title" className="input-large" disabled={isSold} />
-                            <textarea name="description" value={formData.description} onChange={handleInputChange} placeholder="Enter a description..." rows={6} disabled={isSold} />
-                        </div>
-                         <div className="form-section">
-                            <h3>Pricing</h3>
-                            <div className="input-group">
-                                <span className="input-prefix">$</span>
-                                <input name="price" type="number" value={formData.price} onChange={handleInputChange} placeholder="Enter price" disabled={isSold}/>
-                            </div>
-                            <label className="checkbox-label">
-                                <input name="is_price_negotiable" type="checkbox" checked={formData.is_price_negotiable} onChange={handleInputChange} disabled={isSold}/>
-                                Price is negotiable
-                            </label>
-                        </div>
-                    </div>
-                    <div className="editor-sidebar-column">
-                        {isEditing && (
-                             <div className="form-section">
-                                <h3>Status Management</h3>
-                                {isSold ? (
-                                    <button 
-                                        className="button button-secondary" 
-                                        style={{width: '100%'}} 
-                                        onClick={() => relistMutation.mutate()}
-                                        disabled={relistMutation.isPending}
-                                    >
-                                        {relistMutation.isPending ? 'Updating...' : 'Mark as Available'}
-                                    </button>
-                                ) : (
-                                    <p style={{color: 'var(--muted-foreground)'}}>Current status: {currentStatus}</p>
-                                )}
-                            </div>
-                        )}
-                       
-                        <div className="form-section">
-                            <h3>Catalogue</h3>
-                            <div style={{
-                                background: 'var(--input)', 
-                                padding: '1rem', 
-                                borderRadius: 'var(--radius)', 
-                                border: '1px solid var(--border)',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center'
-                            }}>
-                                <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', color: catalogueName ? 'inherit' : 'var(--muted-foreground)'}}>
-                                    <Folder size={18} />
-                                    <span>{catalogueName || 'Not assigned'}</span>
-                                </div>
-                                <button className="button-secondary" onClick={() => setIsCatalogueModalOpen(true)} disabled={isSold}>
-                                    Change
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="form-section">
-                            <h3>Tags</h3>
-                            <TextTagManager 
-                                allTags={allUserTags || []}
-                                selectedTags={selectedTags}
-                                onSelectedTagsChange={setSelectedTags}
-                                disabled={isSold}
-                            />
-                        </div>
-                    </div>
+                    </form>
                 </main>
             </div>
-        </>
+        </div>
     );
 };
-
 export default ArtworkEditorPage;

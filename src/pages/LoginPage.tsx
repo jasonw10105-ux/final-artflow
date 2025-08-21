@@ -19,7 +19,7 @@ const LoginPage = () => {
     };
 
     return (
-        <div style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+        <div class="gradient-polish" style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
             <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Login to Your Account</h2>
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required/>

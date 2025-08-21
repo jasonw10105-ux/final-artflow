@@ -1,123 +1,181 @@
 // src/pages/public/IndividualArtworkPage.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthProvider';
 import InquiryModal from '../../components/public/InquiryModal';
+import { useQuery } from '@tanstack/react-query';
 
-// --- INTERFACE: Fully updated to match your schema ---
-interface Artwork {
-  id: string;
-  user_id: string;
-  title: string;
-  description: string;
-  image_url: string;
-  price: number | null;
-  status: string;
-  is_price_negotiable: boolean;
-  location: string | null;
+// --- TYPE DEFINITIONS ---
+interface ArtworkDetails {
+  id: string; user_id: string; title: string; description: string | null; image_url: string;
+  price: number | null; status: string; is_price_negotiable: boolean;
   medium: string | null;
   dimensions: { height?: string; width?: string; depth?: string; unit?: string; } | null;
-  date_info: { type?: string; year?: string; era?: string; } | null;
-  signature_info: { is_signed?: boolean; type?: string; location?: string; } | null;
-  artist: { full_name: string; slug: string; } | null; // Joined artist profile data
+  date_info: { year?: string; } | null;
+  signature_info: { is_signed?: boolean; } | null;
+  is_framed: boolean;
+  edition_info: { is_edition?: boolean; number?: number; size?: number } | null;
+  provenance: string | null;
+  profile_full_name: string;
+  profile_slug: string;
+  profile_bio: string | null;
+}
+interface RelatedArtwork {
+    id: string; title: string; image_url: string; slug: string; profile_slug: string;
 }
 
-// --- Helper function to format dimensions nicely ---
-const formatDimensions = (dims: Artwork['dimensions']) => {
-    if (!dims || !dims.height || !dims.width) return 'Not specified';
-    const { height, width, depth, unit } = dims;
-    let dimString = `${height}h x ${width}w`;
-    if (depth) dimString += ` x ${depth}d`;
-    return `${dimString} ${unit || ''}`;
+// --- API FUNCTIONS ---
+const fetchArtworkDetails = async (artworkSlug: string) => {
+    const { data, error } = await supabase.rpc('get_artwork_details', { p_artwork_slug: artworkSlug }).single();
+    if (error) throw new Error("Artwork not found.");
+    return data as ArtworkDetails;
 };
 
+const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
+    const { data, error } = await supabase.rpc('get_related_artworks', { p_current_artwork_id: artworkId, p_artist_id: artistId, p_limit: 5 });
+    if (error) { console.warn("Could not fetch related artworks:", error); return []; }
+    return data as RelatedArtwork[];
+};
 
+// --- HELPER COMPONENTS & FUNCTIONS ---
+const postToPayfast = (formData: Record<string, any>) => {
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = 'https://www.payfast.co.za/eng/process';
+  for (const key in formData) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = key;
+    input.value = formData[key];
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+};
+
+const formatValue = (value: any, fallback = 'Not specified') => value || fallback;
+
+const RelatedArtworksSection = ({ artworkId, artistId }: { artworkId: string; artistId: string }) => {
+    const { data: relatedArtworks, isLoading } = useQuery({
+        queryKey: ['relatedArtworks', artworkId],
+        queryFn: () => fetchRelatedArtworks(artworkId, artistId),
+    });
+    if (isLoading || !relatedArtworks || relatedArtworks.length === 0) return null;
+
+    return (
+        <div style={{ marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid var(--border)' }}>
+            <h2>More from this Artist</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem', marginTop: '2rem' }}>
+                {relatedArtworks.map(art => (
+                    <Link to={`/artwork/${art.profile_slug}/${art.slug}`} key={art.id} style={{textDecoration: 'none', color: 'inherit'}}>
+                        <img src={art.image_url} alt={art.title} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
+                        <h4 style={{marginTop: '0.5rem'}}>{art.title}</h4>
+                    </Link>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// --- MAIN PAGE COMPONENT ---
 const IndividualArtworkPage = () => {
   const { artworkSlug } = useParams<{ artworkSlug: string }>(); 
   const { user } = useAuth();
-  
-  const [artwork, setArtwork] = useState<Artwork | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBuying, setIsBuying] = useState(false);
 
-  useEffect(() => {
-    const fetchArtwork = async () => {
-      if (!artworkSlug) return;
+  const { data: artwork, isLoading, isError, error } = useQuery({
+      queryKey: ['artwork', artworkSlug],
+      queryFn: () => fetchArtworkDetails(artworkSlug!),
+      enabled: !!artworkSlug,
+      retry: false,
+  });
+
+  const handleBuyNow = async () => {
+      if (!artwork) return;
+      setIsBuying(true);
       try {
-        const { data, error } = await supabase
-          .from('artworks')
-          .select('*, artist:profiles(full_name, slug)')
-          .eq('slug', artworkSlug)
-          .single();
-
-        if (error || !data) throw new Error('Artwork not found.');
-        if (data.status !== 'Available' && data.user_id !== user?.id) {
-            throw new Error('This artwork is not currently available for viewing.');
-        }
-        setArtwork(data as Artwork);
-        
-        supabase.rpc('log_artwork_view', { p_artwork_id: data.id, p_artist_id: data.user_id }).catch(console.warn);
-
+          const { data, error: invokeError } = await supabase.functions.invoke('generate-payfast-form', {
+              body: { artworkId: artwork.id },
+          });
+          if (invokeError) throw new Error(invokeError.message);
+          postToPayfast(data);
       } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
+          alert(`Error preparing for payment: ${err.message}`);
+          setIsBuying(false);
       }
-    };
-    fetchArtwork();
-  }, [artworkSlug, user]);
+  };
 
-  if (loading) return <div>Loading artwork...</div>;
-  if (error) return <div>Error: {error.message}</div>;
-  if (!artwork) return <div>Artwork not found.</div>;
-
+  if (isLoading) return <div style={{padding: '4rem', textAlign: 'center'}}>Loading artwork...</div>;
+  if (isError) return <div style={{padding: '4rem', textAlign: 'center'}}>Error: {error instanceof Error ? error.message : 'An unknown error occurred.'}</div>;
+  if (!artwork) return <div style={{padding: '4rem', textAlign: 'center'}}>Artwork not found.</div>;
+  
   const isOwner = user?.id === artwork.user_id;
+  const canBePurchased = artwork.status === 'Active' && artwork.price && !artwork.is_price_negotiable;
 
   return (
     <>
       {isModalOpen && <InquiryModal artworkId={artwork.id} onClose={() => setIsModalOpen(false)} />}
       
-      <div className="container" style={{ maxWidth: '1100px', margin: '2rem auto', padding: '0 1rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', alignItems: 'start' }}>
-          <div>
-            <img src={artwork.image_url} alt={artwork.title} style={{ width: '100%', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }} />
+      <div className="container" style={{ maxWidth: '1200px', margin: '4rem auto', padding: '0 2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4rem', alignItems: 'start' }}>
+          
+          <div style={{ gridColumn: '1 / 4' }}>
+            <img src={artwork.image_url} alt={artwork.title} style={{ width: '100%', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }} />
           </div>
-          <div>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{artwork.title}</h1>
-            {artwork.artist && (
-              <Link to={`/${artwork.artist.slug}`} style={{fontSize: '1.2rem', color: '#4B5563', textDecoration: 'none'}}>
-                by {artwork.artist.full_name}
-              </Link>
-            )}
-            <p style={{ fontSize: '1.1rem', color: '#4B5563', margin: '1.5rem 0' }}>{artwork.description}</p>
-            
-            <div style={{ background: '#F9FAFB', padding: '1.5rem', borderRadius: '8px', border: '1px solid #E5E7EB' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: '600', margin: '0 0 1rem 0' }}>Details</h2>
-              {/* --- FIXED: Details section is now complete --- */}
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <li style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong>Price:</strong>
-                  <span>
-                    {artwork.price ? `${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(artwork.price)}` : 'Contact for price'}
-                    {artwork.is_price_negotiable && ' (Negotiable)'}
-                  </span>
-                </li>
-                {artwork.medium && <li style={{ display: 'flex', justifyContent: 'space-between' }}><strong>Medium:</strong> <span>{artwork.medium}</span></li>}
-                {artwork.dimensions && <li style={{ display: 'flex', justifyContent: 'space-between' }}><strong>Dimensions:</strong> <span>{formatDimensions(artwork.dimensions)}</span></li>}
-                {artwork.date_info?.year && <li style={{ display: 'flex', justifyContent: 'space-between' }}><strong>Date:</strong> <span>{artwork.date_info.type || 'Circa'} {artwork.date_info.year}</span></li>}
-                {artwork.signature_info?.is_signed && <li style={{ display: 'flex', justifyContent: 'space-between' }}><strong>Signature:</strong> <span>Signed ({artwork.signature_info.location || 'N/A'})</span></li>}
-                {artwork.location && <li style={{ display: 'flex', justifyContent: 'space-between' }}><strong>Location:</strong> <span>{artwork.location}</span></li>}
-              </ul>
+
+          <aside style={{ gridColumn: '4 / 6', position: 'sticky', top: '4rem' }}>
+            <h1>{artwork.title}</h1>
+            <Link to={`/${artwork.profile_slug}`} style={{fontSize: '1.2rem', color: 'var(--muted-foreground)', textDecoration: 'none'}}>
+              {artwork.profile_full_name}
+            </Link>
+
+            <div style={{ margin: '2rem 0', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                <p><strong>Year:</strong> {formatValue(artwork.date_info?.year)}</p>
+                <p><strong>Medium:</strong> {formatValue(artwork.medium)}</p>
+                <p><strong>Dimensions:</strong> {artwork.dimensions ? `${artwork.dimensions.height || '?'}h x ${artwork.dimensions.width || '?'}w ${artwork.dimensions.depth ? `x ${artwork.dimensions.depth}d` : ''} ${artwork.dimensions.unit || ''}` : 'Not specified'}</p>
+                <p><strong>Framing:</strong> {artwork.is_framed ? 'Included' : 'Not Included'}</p>
+                <p><strong>Signature:</strong> {artwork.signature_info?.is_signed ? 'Signed by artist' : 'Not signed'}</p>
+                <p><strong>Edition:</strong> {artwork.edition_info?.is_edition ? `Yes, ${artwork.edition_info.number || ''} of ${artwork.edition_info.size || ''}` : 'Unique work'}</p>
+                {artwork.provenance && <p><strong>Provenance:</strong> {artwork.provenance}</p>}
             </div>
 
-            {!isOwner && artwork.status === 'Available' && (
-              <button onClick={() => setIsModalOpen(true)} className="button button-primary" style={{ width: '100%', marginTop: '2rem', padding: '1rem' }}>
-                Enquire About This Artwork
-              </button>
+            <h3 style={{fontSize: '1.5rem', fontWeight: 600}}>{artwork.price ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(artwork.price) : 'Contact for price'}</h3>
+            
+            {!isOwner && (
+              <div style={{ width: '100%', marginTop: '2rem' }}>
+                {canBePurchased ? (
+                  <button onClick={handleBuyNow} className="button button-primary" style={{ width: '100%', padding: '1rem' }} disabled={isBuying}>
+                    {isBuying ? 'Redirecting to Payment...' : 'Buy Now'}
+                  </button>
+                ) : (
+                  <button onClick={() => setIsModalOpen(true)} className="button button-primary" style={{ width: '100%', padding: '1rem' }}>
+                    Enquire About This Artwork
+                  </button>
+                )}
+              </div>
             )}
+          </aside>
+
+          <div style={{ gridColumn: '1 / 4', marginTop: '2rem' }}>
+            {artwork.description && (
+                <div style={{marginBottom: '3rem'}}>
+                    <h2>About the work</h2>
+                    <p style={{whiteSpace: 'pre-wrap', lineHeight: 1.6}}>{artwork.description}</p>
+                </div>
+            )}
+            {artwork.profile_bio && (
+                 <div>
+                    <h2>About the artist</h2>
+                    <p style={{whiteSpace: 'pre-wrap', lineHeight: 1.6}}>{artwork.profile_bio}</p>
+                    <Link to={`/${artwork.profile_slug}`} className="button-secondary button" style={{marginTop: '1rem'}}>View Artist Profile</Link>
+                </div>
+            )}
+            
+            <RelatedArtworksSection artworkId={artwork.id} artistId={artwork.user_id} />
           </div>
         </div>
       </div>

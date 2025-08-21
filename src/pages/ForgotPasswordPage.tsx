@@ -19,7 +19,7 @@ const ForgotPasswordPage = () => {
     };
 
     return (
-        <div style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+        <div class="gradient-polish" style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
             <h2 style={{ textAlign: 'center', marginBottom: '1rem' }}>Forgot Password</h2>
             <p style={{ textAlign: 'center', color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Enter your email address and we'll send you a link to reset your password.</p>
             <form onSubmit={handlePasswordReset} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

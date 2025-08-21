@@ -20,7 +20,7 @@ const RegisterPage = () => {
     };
     
     return (
-        <div style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+        <div class="gradient-polish" style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
             <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Create Your Account</h2>
             <p style={{ textAlign: 'center', color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Start by entering your email. We'll send you a secure link to continue.</p>
             <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
