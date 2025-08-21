@@ -140,6 +140,7 @@ const DashboardLayout = () => {
     const artistBottomNavLinks = [
         { to: "/artist/dashboard", icon: <LayoutDashboard size={22} />, label: "Home" },
         { to: "/artist/artworks", icon: <Image size={22} />, label: "Art" },
+        { to: "/artist/catalogues", icon: <Palette size={18} />, label: "Catalogues" },
         { to: "/artist/sales", icon: <CreditCard size={22} />, label: "Sales" },
         { to: "/artist/messages", icon: <MessageSquare size={22} />, label: "Inbox" },
     ];
@@ -164,7 +165,7 @@ const DashboardLayout = () => {
             {/* --- NEW: Mobile Top Bar with Hamburger Menu --- */}
             {isArtist && (
                 <header className="mobile-top-bar">
-                    <h2 style={{ fontSize: '1.2rem', margin: 0 }}>{profile?.full_name}</h2>
+                    <img src="../logo.svg" alt="Artflow" height="40px"/>
                     <button onClick={() => setIsMobileMenuOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--foreground)'}}>
                         <Menu size={24} />
                     </button>
@@ -199,7 +200,7 @@ const DashboardLayout = () => {
             <div className="dashboard-grid">
                 {/* --- DESKTOP SIDEBAR --- */}
                 <aside className="dashboard-sidebar">
-                    <h2 style={{ marginBottom: '2rem', padding: '0 1rem' }}>{profile?.full_name}</h2>
+                    <img src="../logo.svg" alt="Artflow" height="60px"/>
                     <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 }}>
                         {isArtist && artistSidebarLinks.map(link => (
                             <NavLink key={link.to} to={link.to} style={getLinkStyle}>{link.icon} {link.label}</NavLink>

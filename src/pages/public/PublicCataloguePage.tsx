@@ -47,13 +47,15 @@ const PublicCataloguePage = () => {
 
     return (
         <div style={{ maxWidth: '1000px', margin: '4rem auto', padding: '0 2rem' }}>
-            <header style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <header>
                 <h1 style={{fontSize: '3rem', marginBottom: '0.5rem'}}>{catalogue.title}</h1>
                 <Link to={`/${catalogue.artist.slug}`} style={{textDecoration: 'none', color: 'var(--muted-foreground)', fontSize: '1.25rem'}}>
                     A collection by {catalogue.artist.full_name}
                 </Link>
-                {catalogue.description && <p style={{marginTop: '1.5rem', maxWidth: '600px', margin: '1.5rem auto 0 auto', lineHeight: 1.6}}>{catalogue.description}</p>}
             </header>
+
+            {catalogue.description && <p style={{marginTop: '1.5rem', maxWidth: '600px', lineHeight: 1.6}}>{catalogue.description}</p>}
+            
 
             <main style={{ display: 'flex', flexDirection: 'column', gap: '4rem' }}>
                 {catalogue.artworks && catalogue.artworks.length > 0 ? (

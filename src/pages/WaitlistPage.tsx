@@ -48,7 +48,8 @@ const WaitlistPage = () => {
                 </div>
             ) : (
                 <div style={{ textAlign: 'center', maxWidth: '500px' }}>
-                    <h1 style={{ marginBottom: '1rem' }}>The Studio OS is Coming Soon</h1>
+                    <img src="../logo.svg" alt="Artflow" height="60px"/>
+                    <h1 style={{ marginBottom: '1rem' }}>Art, managed</h1>
                     <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem', fontSize: '1.1rem' }}>Be the first to know when we launch. Join the waitlist for exclusive early access.</p>
                     
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--card)', padding: '2rem', borderRadius: 'var(--radius)' }}>
