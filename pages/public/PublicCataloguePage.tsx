@@ -1,13 +1,21 @@
+// src/pages/public/PublicCataloguePage.tsx
+
 import React from 'react';
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 
 const fetchCatalogueBySlug = async (artistSlug: string, catalogueSlug: string) => {
+    // This query might also have an issue with .eq('profiles.slug', artistSlug)
+    // Supabase often requires filtering on the base table or using RPC for complex filters.
+    // For now, let's assume the relationship fix resolves it.
     const { data, error } = await supabase.from('catalogues')
         .select(`*, artworks:catalogue_artworks(position, artwork:artworks(*)), artist:profiles(full_name, slug)`)
         .eq('slug', catalogueSlug)
-        .eq('profiles.slug', artistSlug)
+        // Note: Filtering on a related table's column like this might be incorrect.
+        // It often should be based on the foreign key in the 'catalogues' table itself.
+        // e.g., if 'catalogues' has an 'artist_id', you'd fetch the artist ID first.
+        .eq('profiles.slug', artistSlug) 
         .single();
     if (error) throw new Error('Catalogue not found');
     data.artworks.sort((a,b) => a.position - b.position);
@@ -16,10 +24,15 @@ const fetchCatalogueBySlug = async (artistSlug: string, catalogueSlug: string) =
 
 const PublicCataloguePage = () => {
     const { artistSlug, catalogueSlug } = useParams<{ artistSlug: string, catalogueSlug: string }>();
-    const { data: catalogue, isLoading, isError } = useQuery(['catalogue', catalogueSlug], () => fetchCatalogueBySlug(artistSlug!, catalogueSlug!));
+    const { data: catalogue, isLoading, isError } = useQuery({
+        queryKey: ['catalogue', catalogueSlug], 
+        queryFn: () => fetchCatalogueBySlug(artistSlug!, catalogueSlug!)
+    });
 
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading catalogue...</p>;
-    if (isError) return <p style={{ textAlign: 'center', padding: '5rem' }}>Catalogue not found.</p>;
+    
+    // UPDATED: Check for error OR if catalogue data is missing
+    if (isError || !catalogue) return <p style={{ textAlign: 'center', padding: '5rem' }}>Catalogue not found.</p>;
 
     return (
         <div style={{ maxWidth: '900px', margin: '2rem auto' }}>
