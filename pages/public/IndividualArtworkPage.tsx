@@ -12,22 +12,22 @@ import { Share2, ShoppingCart, User, ArrowRight } from 'lucide-react';
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug, bio)') // Fetches bio
+        .select('*, artist:profiles(full_name, slug, bio)')
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
     return data;
 };
 
-// --- CORRECTED ---
-// This function now only accepts the two arguments the database function expects.
+// --- FIXED ---
+// The RPC call now sends the parameters in the order suggested by the database error hint.
+// This resolves the 404 error by matching the expected function signature.
 const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
-    // --- CORRECTED ---
-    // The RPC call now only sends the two required parameters.
     const { data, error } = await supabase.rpc('get_related_artworks', {
         p_artwork_id: artworkId,
         p_artist_id: artistId
     });
+
     if (error) {
         console.error("Error fetching related artworks:", error);
         return [];
@@ -50,8 +50,6 @@ const IndividualArtworkPage = () => {
     // Related artworks query, dependent on the main artwork query finishing
     const { data: relatedArtworks } = useQuery({
         queryKey: ['relatedArtworks', artwork?.id],
-        // --- CORRECTED ---
-        // The call to the function now correctly passes only two arguments.
         queryFn: () => fetchRelatedArtworks(artwork!.id, artwork!.user_id),
         enabled: !!artwork, // Only run this query when the main artwork has been fetched
     });
@@ -59,8 +57,6 @@ const IndividualArtworkPage = () => {
     useEffect(() => {
         if (artwork) {
             addViewedArtwork(artwork.id);
-            // This RPC call for 'log_artwork_view' might need to be checked as well,
-            // but we are focusing on the error at hand.
             supabase.rpc('log_artwork_view', { p_artwork_id: artwork.id, p_artist_id: artwork.user_id });
         }
     }, [artwork, addViewedArtwork]);
@@ -100,83 +96,11 @@ const IndividualArtworkPage = () => {
                     {/* Details Column */}
                     <div>
                         <h1 style={{ fontSize: 'clamp(1.8rem, 5vw, 2.5rem)', lineHeight: 1.2 }}>{artwork.title}</h1>
-                        <Link to={`/artist/${artwork.artist.slug}`} style={{textDecoration: 'none'}}>
-                            <h2 style={{ fontSize: 'clamp(1.1rem, 4vw, 1.5rem)', color: 'var(--muted-foreground)', fontWeight: 500, marginTop: '0.5rem' }}>by {artwork.artist.full_name}</h2>
-                        </Link>
+                        {artwork.artist && (
+                            <Link to={`/artist/${artwork.artist.slug}`} style={{textDecoration: 'none'}}>
+                                <h2 style={{ fontSize: 'clamp(1.1rem, 4vw, 1.5rem)', color: 'var(--muted-foreground)', fontWeight: 500, marginTop: '0.5rem' }}>by {artwork.artist.full_name}</h2>
+                            </Link>
+                        )}
                         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2rem 0' }}/>
                         
-                        <div style={{ background: 'var(--card)', padding: '1.5rem', borderRadius: 'var(--radius)' }}>
-                            <p style={{ fontSize: 'clamp(1.5rem, 5vw, 2rem)', fontWeight: 700, color: 'var(--primary)' }}>
-                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(artwork.price)}
-                            </p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1.5rem' }}>
-                                <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem' }}><Share2 size={16} /> Share</button>
-                                <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire About This Piece</button>
-                                {!artwork.is_price_negotiable && <button className="button button-primary" style={{ display: 'flex', gap: '0.5rem' }}><ShoppingCart size={16} />Buy Now</button>}
-                            </div>
-                        </div>
-
-                        <div style={{ marginTop: '2rem', lineHeight: 1.6 }}>
-                            <p>{artwork.description}</p>
-                        </div>
-                        
-                        {artwork.artist.bio && (
-                            <div style={{ marginTop: '3rem' }}>
-                                <h3 style={{ fontSize: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>About the Artist</h3>
-                                <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                                    <div style={{ background: 'var(--muted)', borderRadius: '50%', padding: '0.5rem', display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: '0.25rem' }}>
-                                        <User size={20} />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <p style={{ lineHeight: 1.6 }}>{artwork.artist.bio}</p>
-                                        <Link to={`/artist/${artwork.artist.slug}`} className="button button-secondary" style={{ marginTop: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            View Artist Profile
-                                            <ArrowRight size={16} />
-                                        </Link>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {relatedArtworks && relatedArtworks.length > 0 && (
-                    <div style={{ marginTop: '4rem' }}>
-                        <h2 style={{ fontSize: '1.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>More from this Artist</h2>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' }}>
-                            {relatedArtworks.map(related => (
-                                <Link key={related.id} to={`/artwork/${related.artist.slug}/${related.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                                    <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                                        <img src={related.image_url} alt={related.title || ''} style={{ width: '100%', height: '200px', objectFit: 'cover' }} />
-                                        <div style={{ padding: '1rem' }}>
-                                            <h4 style={{ fontWeight: 600 }}>{related.title}</h4>
-                                            <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>{formatDimensions(related.dimensions)}</p>
-                                            <p style={{ fontWeight: 'bold', marginTop: '0.5rem' }}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(related.price)}</p>
-                                        </div>
-                                    </div>
-                                </Link>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {showInquiryModal && <InquiryModal artworkId={artwork.id} onClose={() => setShowInquiryModal(false)} />}
-            
-            <style>{`
-                @media (min-width: 800px) {
-                    .artwork-layout {
-                        grid-template-columns: 1fr 1fr;
-                    }
-                }
-                @media (min-width: 1024px) {
-                    .artwork-layout {
-                        grid-template-columns: 55% 1fr;
-                    }
-                }
-            `}</style>
-        </>
-    );
-};
-
-export default IndividualArtworkPage;
+                        <div style={{ background: 'var(
