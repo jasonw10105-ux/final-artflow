@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './contexts/AuthProvider';
 // --- Layout Imports ---
 import MarketingLayout from './components/layout/MarketingLayout';
 import DashboardLayout from './components/layout/DashboardLayout';
+import DynamicPublicPageLayout from './components/layout/DynamicPublicPageLayout'; // <-- IMPORT NEW LAYOUT
 
 // --- Page Imports ---
 import WaitlistPage from './pages/WaitlistPage';
@@ -67,29 +68,33 @@ function AppRoutes() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
-        <Route path="/artwork/:artistSlug/:artworkSlug" element={<IndividualArtworkPage />} />
-        <Route path="/catalogue/:artistSlug/:catalogueSlug" element={<PublicCataloguePage />} />
-
+        
         {/* --- 2. Public Routes (Wrapped in Marketing Layout) --- */}
         <Route element={<MarketingLayout />}>
             <Route path="/home" element={<MarketingPage />} />
             <Route path="/artists" element={<BrowseArtistsPage />} />
             <Route path="/artworks" element={<BrowseArtworksPage />} />
             <Route path="/catalogues" element={<BrowseCataloguesPage />} />
+            {/* This route for the main portfolio page must be last to avoid conflict */}
             <Route path="/:profileSlug" element={<ArtistPortfolioPage />} />
         </Route>
         
-        {/* --- 3. Protected Dashboard Redirect --- */}
+        {/* --- 3. DYNAMIC LAYOUT ROUTES --- */}
+        {/* These routes show DashboardLayout for owners, and MarketingLayout for the public */}
+        <Route element={<DynamicPublicPageLayout />}>
+            <Route path="/:artistSlug/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
+            <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
+        </Route>
+
+        {/* --- 4. Protected Dashboard Redirect --- */}
         <Route path="/dashboard" element={<DashboardRedirector />} />
 
-        {/* --- 4. Fully Protected Routes --- */}
+        {/* --- 5. Fully Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
             {/* Standalone Wizard/Editor Routes */}
             <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
             <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
             <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
-            
-            {/* FIXED: The artwork editor is now a standalone route without the sidebar */}
             <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
             
             {/* Routes with Dashboard Layout */}

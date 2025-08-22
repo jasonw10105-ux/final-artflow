@@ -1,3 +1,5 @@
+// src/pages/public/BrowseCataloguesPage.tsx
+
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -37,7 +39,8 @@ const BrowseCataloguesPage = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                 {catalogues && catalogues.length > 0 ? (
                     catalogues.map((cat: Catalogue) => (
-                        <Link to={`/catalogue/${cat.profile_slug}/${cat.slug}`} key={cat.id} style={{ textDecoration: 'none', color: 'inherit' }}>
+                        // --- FIXED: Link updated to the new URL structure ---
+                        <Link to={`/${cat.profile_slug}/catalogue/${cat.slug}`} key={cat.id} style={{ textDecoration: 'none', color: 'inherit' }}>
                             <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
                                 <img src={cat.cover_image_url || 'https://placehold.co/600x400'} alt={cat.title} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }} />
                                 <div style={{ padding: '1rem' }}>

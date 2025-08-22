@@ -10,7 +10,7 @@ import { ArrowLeft } from 'lucide-react';
 const fetchArtistPortfolio = async (slug: string) => {
     const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name, bio, slug')
+        .select('id, full_name, bio, slug, avatar_url')
         .eq('slug', slug)
         .single();
         
@@ -25,16 +25,21 @@ const fetchArtistPortfolio = async (slug: string) => {
 
     if (artworksError) throw new Error('Could not fetch artworks');
 
+    // Log the profile view after successfully fetching the profile
+    await supabase.rpc('log_profile_view', { p_artist_id: profile.id });
+
     return { profile, artworks };
 };
 
 const ArtistPortfolioPage = () => {
-    const { artistSlug } = useParams<{ artistSlug: string }>();
+    // --- FIXED: Changed to 'profileSlug' to match the route in App.tsx ---
+    const { profileSlug } = useParams<{ profileSlug: string }>();
     const navigate = useNavigate();
     const { data, isLoading, isError } = useQuery({
-        queryKey: ['artistPortfolio', artistSlug],
-        queryFn: () => fetchArtistPortfolio(artistSlug!),
-        enabled: !!artistSlug,
+        // --- FIXED: Use the correct variable in the queryKey ---
+        queryKey: ['artistPortfolio', profileSlug],
+        queryFn: () => fetchArtistPortfolio(profileSlug!),
+        enabled: !!profileSlug,
     });
 
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading Artist Portfolio...</p>;
@@ -45,24 +50,26 @@ const ArtistPortfolioPage = () => {
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
             <button 
-                onClick={() => navigate(-1)} 
+                onClick={() => navigate('/artists')} 
                 className="button button-secondary" 
                 style={{ marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
             >
                 <ArrowLeft size={16} />
-                Back
+                All Artists
             </button>
             
             <header style={{ marginBottom: '3rem', textAlign: 'center' }}>
-                <h1 style={{ fontSize: '2.5rem' }}>{profile.full_name}</h1>
+                <img src={profile.avatar_url || 'https://placehold.co/128x128'} alt={profile.full_name || ''} style={{ width: '128px', height: '128px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }} />
+                <h1 style={{ fontSize: '2.5rem', marginTop: '1.5rem' }}>{profile.full_name}</h1>
                 {profile.bio && <p style={{ fontSize: '1.1rem', color: 'var(--muted-foreground)', marginTop: '1rem', maxWidth: '800px', margin: '1rem auto' }}>{profile.bio}</p>}
             </header>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                 {artworks.map(art => (
-                    <Link key={art.id} to={`/artwork/${profile.slug}/${art.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    // --- FIXED: Link updated to the new URL structure ---
+                    <Link key={art.id} to={`/${profile.slug}/artwork/${art.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                         <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                            <img src={art.image_url} alt={art.title || ''} style={{ width: '100%', height: '250px', objectFit: 'cover' }} />
+                            <img src={art.image_url || 'https://placehold.co/600x400'} alt={art.title || ''} style={{ width: '100%', height: '250px', objectFit: 'cover' }} />
                             <div style={{ padding: '1rem' }}>
                                 <h4 style={{ fontWeight: 600 }}>{art.title}</h4>
                                 <p style={{ fontWeight: 'bold', marginTop: '0.5rem' }}>
@@ -74,7 +81,7 @@ const ArtistPortfolioPage = () => {
                 ))}
             </div>
             {artworks.length === 0 && (
-                <p style={{ textAlign: 'center', color: 'var(--muted-foreground)' }}>This artist does not have any artworks for sale at the moment.</p>
+                <p style={{ textAlign: 'center', color: 'var(--muted-foreground)', padding: '3rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>This artist does not have any artworks for sale at the moment.</p>
             )}
         </div>
     );

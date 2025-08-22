@@ -65,6 +65,8 @@ const WaitlistPage = () => {
                         <button type="submit" className="button button-primary" disabled={mutation.isLoading}>
                             {mutation.isLoading ? 'Joining...' : 'Join Waitlist'}
                         </button>
+
+                        <a href="">Explore platform</a>
                         {mutation.isError && <p style={{ color: 'red', marginTop: '1rem' }}>{(mutation.error as Error).message}</p>}
                     </form>
                 </div>

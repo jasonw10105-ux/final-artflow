@@ -1,3 +1,5 @@
+// src/pages/MarketingPage.tsx
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -41,7 +43,8 @@ const fetchRandomArtists = async (count: number): Promise<Artist[]> => {
 
 // --- GENERIC UI CARD COMPONENTS ---
 const ArtworkCard = ({ item }: { item: Artwork }) => (
-    <Link to={`/artwork/${item.profiles.slug}/${item.slug}`} className="card-link">
+    // --- FIXED: Link updated to the new URL structure ---
+    <Link to={`/${item.profiles.slug}/artwork/${item.slug}`} className="card-link">
         <img src={item.image_url} alt={item.title} className="card-image" />
         <div className="card-info">
             <h4>{item.title}</h4>
@@ -52,7 +55,8 @@ const ArtworkCard = ({ item }: { item: Artwork }) => (
 );
 
 const CatalogueCard = ({ item }: { item: Catalogue }) => (
-    <Link to={`/catalogue/${item.profiles.slug}/${item.slug}`} className="card-link">
+    // --- FIXED: Link updated to the new URL structure ---
+    <Link to={`/${item.profiles.slug}/catalogue/${item.slug}`} className="card-link">
         <img src={item.cover_image_url || 'https://placehold.co/600x600'} alt={item.title} className="card-image" />
         <div className="card-info">
             <h4>{item.title}</h4>
@@ -83,7 +87,6 @@ const ContentCarousel = ({ title, data, isLoading, renderCard }: { title: string
 
 // --- MAIN MARKETING PAGE COMPONENT ---
 const MarketingPage = () => {
-    // --- THIS IS THE CRITICAL FIX ---
     const { data: featuredArtworks, isLoading: isLoadingArtworks } = useQuery({
         queryKey: ['featuredArtworks'],
         queryFn: () => fetchRandomArtworks(10),

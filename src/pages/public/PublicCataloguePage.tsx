@@ -6,27 +6,24 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { ArrowLeft } from 'lucide-react';
 
-// Fetches the catalogue details and all of its associated artworks
-const fetchPublicCatalogue = async (catalogueId: string) => {
-    // Step 1: Fetch the catalogue itself, along with the artist's name and slug
+const fetchPublicCatalogue = async (artistSlug: string, catalogueSlug: string) => {
     const { data: catalogue, error: catalogueError } = await supabase
         .from('catalogues')
-        .select('*, artist:profiles(full_name, slug)')
-        .eq('id', catalogueId)
+        .select('*, artist:profiles!inner(full_name, slug)')
+        .eq('slug', catalogueSlug)
+        .eq('artist.slug', artistSlug) // Ensure the artist slug also matches
         .single();
     
-    // If RLS blocks this or the ID is invalid, this error will be thrown
     if (catalogueError) {
         console.error("Supabase error fetching catalogue:", catalogueError.message);
         throw new Error('Catalogue not found');
     }
 
-    // Step 2: Fetch all artworks that belong to this catalogue
     const { data: artworks, error: artworksError } = await supabase
         .from('artworks')
         .select('*')
         .eq('catalogue_id', catalogue.id)
-        .eq('status', 'Active') // Only show publicly available works
+        .eq('status', 'Active')
         .order('created_at', { ascending: false });
 
     if (artworksError) {
@@ -38,23 +35,21 @@ const fetchPublicCatalogue = async (catalogueId: string) => {
 };
 
 const PublicCataloguePage = () => {
-    const { catalogueId } = useParams<{ catalogueId: string }>();
+    const { artistSlug, catalogueSlug } = useParams<{ artistSlug: string, catalogueSlug: string }>();
     const navigate = useNavigate();
     const { data, isLoading, isError, error } = useQuery({
-        queryKey: ['publicCatalogue', catalogueId],
-        queryFn: () => fetchPublicCatalogue(catalogueId!),
-        enabled: !!catalogueId,
-        retry: false // It's better not to retry on a "not found" error
+        queryKey: ['publicCatalogue', artistSlug, catalogueSlug],
+        queryFn: () => fetchPublicCatalogue(artistSlug!, catalogueSlug!),
+        enabled: !!artistSlug && !!catalogueSlug,
+        retry: false
     });
 
-    // Scroll to top on component mount
     useEffect(() => {
         window.scrollTo(0, 0);
-    }, [catalogueId]);
+    }, [catalogueSlug]);
 
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading Catalogue...</p>;
     
-    // Provide a more specific error message if the query fails
     if (isError) {
         console.error(error);
         return <p style={{ textAlign: 'center', padding: '5rem' }}>Catalogue not found.</p>;
@@ -64,7 +59,6 @@ const PublicCataloguePage = () => {
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-            {/* Back Button */}
             <button 
                 onClick={() => navigate(-1)} 
                 className="button button-secondary" 
@@ -74,10 +68,10 @@ const PublicCataloguePage = () => {
                 Back
             </button>
 
-            {/* Header Section */}
             <header style={{ marginBottom: '3rem', textAlign: 'center' }}>
                 <h1 style={{ fontSize: 'clamp(2rem, 5vw, 2.5rem)' }}>{catalogue.title}</h1>
-                <Link to={`/artist/${catalogue.artist.slug}`} style={{textDecoration: 'none'}}>
+                {/* --- FIXED: Link to artist portfolio --- */}
+                <Link to={`/${catalogue.artist.slug}`} style={{textDecoration: 'none'}}>
                     <h2 style={{ fontSize: '1.2rem', color: 'var(--muted-foreground)', marginTop: '0.5rem' }}>
                         Curated by {catalogue.artist.full_name}
                     </h2>
@@ -85,12 +79,12 @@ const PublicCataloguePage = () => {
                 {catalogue.description && <p style={{ marginTop: '1rem', maxWidth: '800px', margin: '1rem auto', lineHeight: 1.6 }}>{catalogue.description}</p>}
             </header>
 
-            {/* Artworks Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                 {artworks.map(art => (
-                    <Link key={art.id} to={`/artwork/${catalogue.artist.slug}/${art.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    // --- FIXED: Link to artwork page ---
+                    <Link key={art.id} to={`/${catalogue.artist.slug}/artwork/${art.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                         <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                            <img src={art.image_url} alt={art.title || ''} style={{ width: '100%', height: '250px', objectFit: 'cover' }} />
+                            <img src={art.image_url || 'https://placehold.co/600x400'} alt={art.title || ''} style={{ width: '100%', height: '250px', objectFit: 'cover' }} />
                             <div style={{ padding: '1rem' }}>
                                 <h4 style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{art.title}</h4>
                                 <p style={{ fontWeight: 'bold', marginTop: '0.5rem' }}>
@@ -102,7 +96,6 @@ const PublicCataloguePage = () => {
                 ))}
             </div>
             
-            {/* Message for empty catalogues */}
              {artworks.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
                     <p style={{ color: 'var(--muted-foreground)' }}>There are no available artworks in this catalogue at the moment.</p>
