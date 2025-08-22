@@ -12,17 +12,18 @@ import { Share2, ShoppingCart, User, ArrowRight } from 'lucide-react';
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug, bio)')
+        .select('*, artist:profiles(full_name, slug, bio)') // Fetches bio
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
     return data;
 };
 
-// --- UPDATED: Simplified function signature ---
-// Query to fetch related artworks using the database function
+// --- CORRECTED ---
+// This function now only accepts the two arguments the database function expects.
 const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
-    // --- UPDATED: Passing only the required parameters ---
+    // --- CORRECTED ---
+    // The RPC call now only sends the two required parameters.
     const { data, error } = await supabase.rpc('get_related_artworks', {
         p_artwork_id: artworkId,
         p_artist_id: artistId
@@ -49,7 +50,8 @@ const IndividualArtworkPage = () => {
     // Related artworks query, dependent on the main artwork query finishing
     const { data: relatedArtworks } = useQuery({
         queryKey: ['relatedArtworks', artwork?.id],
-        // --- UPDATED: Calling the function with only two arguments ---
+        // --- CORRECTED ---
+        // The call to the function now correctly passes only two arguments.
         queryFn: () => fetchRelatedArtworks(artwork!.id, artwork!.user_id),
         enabled: !!artwork, // Only run this query when the main artwork has been fetched
     });
@@ -57,6 +59,8 @@ const IndividualArtworkPage = () => {
     useEffect(() => {
         if (artwork) {
             addViewedArtwork(artwork.id);
+            // This RPC call for 'log_artwork_view' might need to be checked as well,
+            // but we are focusing on the error at hand.
             supabase.rpc('log_artwork_view', { p_artwork_id: artwork.id, p_artist_id: artwork.user_id });
         }
     }, [artwork, addViewedArtwork]);
@@ -116,7 +120,6 @@ const IndividualArtworkPage = () => {
                             <p>{artwork.description}</p>
                         </div>
                         
-                        {/* --- UPDATED: Artist Bio Section with Profile Button --- */}
                         {artwork.artist.bio && (
                             <div style={{ marginTop: '3rem' }}>
                                 <h3 style={{ fontSize: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>About the Artist</h3>
@@ -137,7 +140,6 @@ const IndividualArtworkPage = () => {
                     </div>
                 </div>
 
-                {/* --- UPDATED: Related Artworks section is now conditional --- */}
                 {relatedArtworks && relatedArtworks.length > 0 && (
                     <div style={{ marginTop: '4rem' }}>
                         <h2 style={{ fontSize: '1.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>More from this Artist</h2>
@@ -159,10 +161,8 @@ const IndividualArtworkPage = () => {
                 )}
             </div>
 
-            {/* Modal */}
             {showInquiryModal && <InquiryModal artworkId={artwork.id} onClose={() => setShowInquiryModal(false)} />}
             
-            {/* CSS for Responsive Layout */}
             <style>{`
                 @media (min-width: 800px) {
                     .artwork-layout {
@@ -178,4 +178,5 @@ const IndividualArtworkPage = () => {
         </>
     );
 };
+
 export default IndividualArtworkPage;
