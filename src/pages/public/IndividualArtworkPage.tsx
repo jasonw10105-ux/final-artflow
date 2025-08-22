@@ -12,7 +12,8 @@ import '../../../index.css'; // <-- IMPORT index.css
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug)')
+        // --- MODIFIED: Added bio and location to the artist query ---
+        .select('*, artist:profiles(full_name, slug, bio, location)')
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
@@ -89,8 +90,15 @@ const IndividualArtworkPage = () => {
                     <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} />
                 </div>
                 <div>
-                    <h1 style={{ fontSize: '1.5rem' }}><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><br/><i>{artwork.title}</i>
-                    </h1>
+                    <h1 style={{ fontSize: '1.5rem' }}><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><br/><i>{artwork.title}</i></h1>
+                    
+                    {/* --- NEW: Artist Location --- */}
+                    {artwork.artist.location && (artwork.artist.location.city || artwork.artist.location.country) && (
+                        <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+                            {artwork.artist.location.city}{artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}{artwork.artist.location.country}
+                        </p>
+                    )}
+
                     {artwork.medium && <p>{artwork.medium}</p>}
                     {artwork.dimensions && (
                             <p>
@@ -141,7 +149,18 @@ const IndividualArtworkPage = () => {
                     )}
                 </div>
             </div>
-            <div>
+
+            {/* --- NEW: Artist Bio Section --- */}
+            {artwork.artist.bio && (
+                <div style={{ marginTop: '4rem' }}>
+                    <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
+                        About <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>
+                    </h3>
+                    <p style={{ whiteSpace: 'pre-wrap' }}>{artwork.artist.bio}</p>
+                </div>
+            )}
+
+            <div style={{ marginTop: '4rem' }}>
                 <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>Other works from {artwork.artist.full_name}</h3><Link to={`/${artwork.artist.slug}`}>View all</Link>
                 {isLoadingRelated && <p>Loading suggestions...</p>}
                 {relatedArtworks && relatedArtworks.length > 0 ? (
