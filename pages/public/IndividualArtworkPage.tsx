@@ -6,20 +6,20 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import InquiryModal from '../../components/public/InquiryModal';
-import { Share2, ShoppingCart, User } from 'lucide-react';
+import { Share2, ShoppingCart, User, ArrowRight } from 'lucide-react';
 
-// --- UPDATED: Query now fetches artist's bio ---
+// Query to fetch the main artwork and artist's bio
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug, bio)') // Fetching 'bio'
+        .select('*, artist:profiles(full_name, slug, bio)') // Fetches bio
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
     return data;
 };
 
-// --- NEW: Query to fetch related artworks using the database function ---
+// Query to fetch related artworks using the database function
 const fetchRelatedArtworks = async (artworkId: string, artistId: string, medium: string | null, price: number | null) => {
     const { data, error } = await supabase.rpc('get_related_artworks', {
         p_artwork_id: artworkId,
@@ -39,14 +39,14 @@ const IndividualArtworkPage = () => {
     const [showInquiryModal, setShowInquiryModal] = useState(false);
     const { addViewedArtwork } = useRecentlyViewed();
 
-    // --- Main artwork query ---
+    // Main artwork query
     const { data: artwork, isLoading, isError } = useQuery({
         queryKey: ['artwork', artworkSlug],
         queryFn: () => fetchArtworkBySlug(artworkSlug!),
         enabled: !!artworkSlug,
     });
 
-    // --- NEW: Related artworks query, dependent on the main artwork query finishing ---
+    // Related artworks query, dependent on the main artwork query finishing
     const { data: relatedArtworks } = useQuery({
         queryKey: ['relatedArtworks', artwork?.id],
         queryFn: () => fetchRelatedArtworks(artwork!.id, artwork!.user_id, artwork!.medium, artwork!.price),
@@ -60,7 +60,6 @@ const IndividualArtworkPage = () => {
         }
     }, [artwork, addViewedArtwork]);
     
-    // --- UPDATED: Scroll to top when slug changes to show new page from top ---
     useEffect(() => {
         window.scrollTo(0, 0);
     }, [artworkSlug]);
@@ -73,7 +72,6 @@ const IndividualArtworkPage = () => {
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading artwork...</p>;
     if (isError || !artwork) return <p style={{ textAlign: 'center', padding: '5rem' }}>Artwork not found.</p>;
     
-    // Helper for formatting dimensions
     const formatDimensions = (dims: any) => {
         if (!dims || !dims.height || !dims.width) return null;
         const parts = [dims.height, dims.width, dims.depth].filter(Boolean);
@@ -82,7 +80,6 @@ const IndividualArtworkPage = () => {
 
     return (
         <>
-            {/* --- UPDATED: Main container is now fully responsive --- */}
             <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '1rem' }}>
                 <div style={{
                     display: 'grid',
@@ -118,20 +115,28 @@ const IndividualArtworkPage = () => {
                             <p>{artwork.description}</p>
                         </div>
                         
-                        {/* --- NEW: Artist Bio Section --- */}
+                        {/* --- UPDATED: Artist Bio Section with Profile Button --- */}
                         {artwork.artist.bio && (
                             <div style={{ marginTop: '3rem' }}>
                                 <h3 style={{ fontSize: '1.25rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>About the Artist</h3>
                                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                                    <div style={{ background: 'var(--muted)', borderRadius: '50%', padding: '0.5rem', display: 'grid', placeItems: 'center' }}><User size={20} /></div>
-                                    <p style={{ flex: 1, lineHeight: 1.6 }}>{artwork.artist.bio}</p>
+                                    <div style={{ background: 'var(--muted)', borderRadius: '50%', padding: '0.5rem', display: 'grid', placeItems: 'center', flexShrink: 0, marginTop: '0.25rem' }}>
+                                        <User size={20} />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <p style={{ lineHeight: 1.6 }}>{artwork.artist.bio}</p>
+                                        <Link to={`/artist/${artwork.artist.slug}`} className="button button-secondary" style={{ marginTop: '1rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            View Artist Profile
+                                            <ArrowRight size={16} />
+                                        </Link>
+                                    </div>
                                 </div>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* --- NEW: Related Artworks Section --- */}
+                {/* --- UPDATED: Related Artworks section is now conditional --- */}
                 {relatedArtworks && relatedArtworks.length > 0 && (
                     <div style={{ marginTop: '4rem' }}>
                         <h2 style={{ fontSize: '1.75rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>More from this Artist</h2>
