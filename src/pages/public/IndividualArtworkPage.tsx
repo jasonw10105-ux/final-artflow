@@ -15,7 +15,10 @@ const fetchArtworkBySlug = async (artworkSlug: string) => {
         .select('*, artist:profiles(full_name, slug, bio)') // Fetches the artist's bio
         .eq('slug', artworkSlug)
         .single();
-    if (error) throw new Error('Artwork not found');
+    if (error) {
+        console.error("Supabase error fetching artwork:", error.message);
+        throw new Error('Artwork not found');
+    }
     return data;
 };
 
@@ -45,6 +48,7 @@ const IndividualArtworkPage = () => {
         queryKey: ['artwork', artworkSlug],
         queryFn: () => fetchArtworkBySlug(artworkSlug!),
         enabled: !!artworkSlug,
+        retry: false // Don't retry if the artwork is not found
     });
 
     // Secondary query to fetch related artworks, which depends on the main artwork data
