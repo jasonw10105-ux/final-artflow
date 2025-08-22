@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import InquiryModal from '../../components/public/InquiryModal';
 import { Share2, ShoppingCart, ArrowLeft } from 'lucide-react'; // <-- IMPORT ArrowLeft
+import '../../../index.css'; // <-- IMPORT index.css
 
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
@@ -68,8 +69,11 @@ const IndividualArtworkPage = () => {
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading artwork...</p>;
     if (isError || !artwork) return <p style={{ textAlign: 'center', padding: '5rem' }}>Artwork not found.</p>;
 
+    const hasMetadata = artwork.medium || artwork.dimensions || artwork.date_info || artwork.signature_info || artwork.framing_info || artwork.location || artwork.frame_details;
+
+
     return (
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+        <div style={{ maxWidth: '1440px' }}>
             {/* --- NEW: Back Button --- */}
             <button 
                 onClick={() => navigate(-1)} 
@@ -80,33 +84,65 @@ const IndividualArtworkPage = () => {
                 Back
             </button>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '3rem', alignItems: 'start' }}>
-                <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', padding: '1rem' }}>
-                    <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
+            <div>
+                <div id="artwork_img">
+                    <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} />
                 </div>
                 <div>
-                    <h1 style={{ fontSize: '2.5rem' }}>{artwork.title}</h1>
-                    <h2 style={{ fontSize: '1.5rem', color: 'var(--muted-foreground)', fontWeight: 500 }}>
-                        by <Link to={`/${artwork.artist.slug}`} style={{ color: 'var(--muted-foreground)', textDecoration: 'underline' }}>{artwork.artist.full_name}</Link>
-                    </h2>
-                    <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2rem 0' }} />
-                    <div style={{ background: 'var(--card)', padding: '1.5rem', borderRadius: 'var(--radius)' }}>
-                        <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)' }}>
+                    <h1 style={{ fontSize: '1.5rem' }}><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><br/><i>{artwork.title}</i>
+                    </h1>
+                    {artwork.medium && <p>{artwork.medium}</p>}
+                    {artwork.dimensions && (
+                            <p>
+                                {` ${artwork.dimensions.height || 'N/A'} x ${artwork.dimensions.width || 'N/A'}`}
+                                {artwork.dimensions.depth && ` x ${artwork.dimensions.depth}`}
+                                {` ${artwork.dimensions.unit || ''}`}
+                            </p>
+                        )}
+                    <div>
+                        <h2>
                            ${new Intl.NumberFormat('en-US').format(artwork.price)}
-                        </p>
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+                        </h2>
+                        <div id="artwork_actions">
                             <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}><Share2 size={16} /> Share</button>
                             <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire</button>
                         </div>
                     </div>
                     <div style={{ marginTop: '2rem' }}>
-                        <h3>Description</h3>
                         <p>{artwork.description || "No description provided."}</p>
                     </div>
+
+                    {/* --- Artwork Metadata --- */}
+                    {hasMetadata && (
+                        <div style={{ marginTop: '2rem' }}>
+                            <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Artwork Details</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                
+                                
+                                {artwork.date_info?.year && (
+                                    <p><strong>Date:</strong> {artwork.date_info.year}</p>
+                                )}
+                                {artwork.date_info?.start_year && (
+                                    <p><strong>Date:</strong> {artwork.date_info.start_year} - {artwork.date_info.end_year}</p>
+                                )}
+                                {artwork.signature_info?.is_signed && (
+                                    <p>
+                                        <strong>Signature:</strong> Signed
+                                        {artwork.signature_info.location && ` (${artwork.signature_info.location})`}
+                                    </p>
+                                )}
+                                {artwork.framing_info?.is_framed !== undefined && (
+                                    <p><strong>Framing:</strong> {artwork.framing_info.is_framed ? 'Included' : 'Not included'}</p>
+                                )}
+                                {artwork.frame_details && <p><strong>Frame Details:</strong> {artwork.frame_details}</p>}
+                                {artwork.location && <p><strong>Location:</strong> {artwork.location}</p>}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
-            <div style={{ marginTop: '5rem' }}>
-                <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>More from This Artist</h2>
+            <div>
+                <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>Other works from {artwork.artist.full_name}</h3><Link to={`/${artwork.artist.slug}`}>View all</Link>
                 {isLoadingRelated && <p>Loading suggestions...</p>}
                 {relatedArtworks && relatedArtworks.length > 0 ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '2rem' }}>

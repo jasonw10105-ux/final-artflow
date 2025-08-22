@@ -25,6 +25,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+p {
+  margin: 0 !important;
+}
+
+body main {
+  padding: 2rem;
+}
+
+body main div {
+    row-gap: 10px; /* Creates a 20px gap between all rows */
+    display: grid;
+}
+
 * { box-sizing: border-box; }
 a { color: var(--primary); text-decoration: none; }
 h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 600; }
@@ -84,6 +97,10 @@ label {
   font-weight: 500;
   color: var(--muted-foreground);
   margin-bottom: 0.25rem;
+}
+
+#artwork_img, #artwork_img img {
+  width: 100%;
 }
 
 .modal-backdrop {
