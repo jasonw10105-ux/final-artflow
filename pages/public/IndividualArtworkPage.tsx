@@ -12,20 +12,20 @@ import { Share2, ShoppingCart, User, ArrowRight } from 'lucide-react';
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug, bio)') // Fetches bio
+        .select('*, artist:profiles(full_name, slug, bio)')
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
     return data;
 };
 
+// --- UPDATED: Simplified function signature ---
 // Query to fetch related artworks using the database function
-const fetchRelatedArtworks = async (artworkId: string, artistId: string, medium: string | null, price: number | null) => {
+const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
+    // --- UPDATED: Passing only the required parameters ---
     const { data, error } = await supabase.rpc('get_related_artworks', {
         p_artwork_id: artworkId,
-        p_artist_id: artistId,
-        p_medium: medium,
-        p_price: price
+        p_artist_id: artistId
     });
     if (error) {
         console.error("Error fetching related artworks:", error);
@@ -49,7 +49,8 @@ const IndividualArtworkPage = () => {
     // Related artworks query, dependent on the main artwork query finishing
     const { data: relatedArtworks } = useQuery({
         queryKey: ['relatedArtworks', artwork?.id],
-        queryFn: () => fetchRelatedArtworks(artwork!.id, artwork!.user_id, artwork!.medium, artwork!.price),
+        // --- UPDATED: Calling the function with only two arguments ---
+        queryFn: () => fetchRelatedArtworks(artwork!.id, artwork!.user_id),
         enabled: !!artwork, // Only run this query when the main artwork has been fetched
     });
 
