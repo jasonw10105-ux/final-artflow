@@ -116,7 +116,7 @@ const ArtworkWizardPage = () => {
                 <h1>Artwork Details ({currentIndex + 1} / {artworks?.length})</h1>
                 <button onClick={() => setShowUploadModal(true)} className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}> <PlusCircle size={16} /> Add more</button>
             </header>
-            <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem', alignItems: 'flex-start', padding: '2rem' }}>
+            <div id="artwork_create_wizard">
                 <aside style={{ position: 'sticky', top: '2rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 'calc(100vh - 8rem)', overflowY: 'auto', marginTop: '1rem', paddingRight: '1rem' }}>
                         {artworks?.map((art, index) => (
@@ -135,7 +135,7 @@ const ArtworkWizardPage = () => {
                 </aside>
                 <main ref={mainContentRef} style={{ maxHeight: 'calc(100vh - 8rem)', overflowY: 'auto', paddingRight: '1rem' }}>
                     {currentArtwork && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem' }}>
+                        <div id="form">
                             <img src={currentArtwork.image_url} alt={currentArtwork.title || 'Untitled'} style={{ width: '100%', borderRadius: 'var(--radius)', objectFit: 'contain', alignSelf: 'start', position: 'sticky', top: 0 }}/>
                             <div>
                                 <ArtworkEditorForm 
