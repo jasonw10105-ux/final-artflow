@@ -5,7 +5,6 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import 'swiper/css';
 import 'swiper/css/pagination';
 import { Pagination } from 'swiper/modules';
-import './WaitlistPage.css';
 
 const addToWaitlist = async ({ email, rolePreference }: { email: string, rolePreference: string }) => {
     const { data, error } = await supabase
