@@ -98,7 +98,7 @@ const IndividualArtworkPage = () => {
         <div>
             <button 
                 onClick={() => navigate(-1)} 
-                className="button button-secondary"}
+                className="button button-secondary"
             >
                 <ArrowLeft size={16} />
                 Back
