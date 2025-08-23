@@ -7,7 +7,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { ArrowLeft } from 'lucide-react';
 import InquiryModal from '../../components/public/InquiryModal';
 
-// ... (fetch function remains the same)
+// ... (fetchArtistPortfolio function remains the same) ...
 
 type ArtworkForModal = {
     id: string;
@@ -34,7 +34,7 @@ const ArtistPortfolioPage = () => {
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-            {/* ... (header remains the same) ... */}
+            {/* ... (header and back button remain the same) ... */}
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                 {artworks.map(art => (
