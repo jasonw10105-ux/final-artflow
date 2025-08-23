@@ -184,10 +184,18 @@ main {
   transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
+#artwork_actions {
+  display: grid;
+  row-gap: 20px;
+}
+
+#artwork_actions button, #artwork_actions .button {
+  width: 100%;
+}
+
 /* Hover state */
 .button:hover {
-  background: var(--color-pink-600); /* a vibrant violet/purple tone */
-  transform: translateY(-1px);
+  background: var(--color-pink-600);
 }
 
 /* Active (pressed) state */
