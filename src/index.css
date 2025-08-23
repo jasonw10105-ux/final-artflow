@@ -71,7 +71,7 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
   background: var(--card);
   border-radius: var(--radius);
   padding: 40px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); inset;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
 }
 
 
