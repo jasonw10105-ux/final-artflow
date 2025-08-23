@@ -209,7 +209,7 @@ const IndividualArtworkPage = () => {
                 <h3>{artwork.artist.full_name}</h3>
             
                 {artwork.artist.location?.city || artwork.artist.location?.country ? (
-                  <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+                  <p>
                     {artwork.artist.location.city}
                     {artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}
                     {artwork.artist.location.country}
@@ -224,12 +224,12 @@ const IndividualArtworkPage = () => {
 
             <div style={{ marginTop: '4rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>
-                    <h3>Other works from {artwork.artist.full_name}</h3>
+                    <h3>Other works by {artwork.artist.full_name}</h3>
                     <Link to={`/${artwork.artist.slug}`}>View all</Link>
                 </div>
                 {isLoadingRelated && <p>Loading suggestions...</p>}
                 {relatedArtworks && relatedArtworks.length > 0 ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '2rem' }}>
+                    <div>
                         {relatedArtworks.map((art) => (
                             <Link to={`/${artwork.artist.slug}/artwork/${art.slug}`} key={art.id} style={{ textDecoration: 'none', color: 'inherit' }}>
                                 <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
