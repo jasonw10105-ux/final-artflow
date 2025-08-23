@@ -39,9 +39,8 @@ const WaitlistPage = () => {
     };
 
     return (
-        <>
+        <div className="gradient-polish">
             {isSubmitted ? (
-                <div className="gradient-polish">
                     <div className="card">
                         <div className="logo-holder">
                             <img src="../logo.svg" alt="Artflow" height="60px" />
@@ -51,7 +50,7 @@ const WaitlistPage = () => {
                     </div>
                 </div>
             ) : (
-                <>
+                
                     <div className="card">
                         <div className="logo-holder">
                             <img src="../logo.svg" alt="Artflow" height="60px" />
