@@ -53,7 +53,7 @@ const WaitlistPage = () => {
                     <h1>Art, sorted</h1>
                     <p>Be the first to know when we launch. Join the waitlist for exclusive early access.</p>
                     
-                    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--card)', padding: '2rem', borderRadius: 'var(--radius)' }}>
+                    <form onSubmit={handleSubmit}>
                         <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email address" required />
                         <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.75rem' }}>I am primarily an...</label>
@@ -80,6 +80,17 @@ const WaitlistPage = () => {
                         {mutation.isError && <p style={{ color: 'red', marginTop: '1rem' }}>{(mutation.error as Error).message}</p>}
                     </form>
                 </div>
+
+                <section>
+                    <h2>Get to know Artflow</h2>
+                </section>
+                <section>
+                    <h2>For everyone</h2>
+                </section>
+
+                <footer>    
+                    
+                </footer>
             )}
         </div>
     );
