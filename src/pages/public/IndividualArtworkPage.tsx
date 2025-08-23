@@ -10,7 +10,7 @@ import '../../index.css';
 const fetchArtworkBySlug = async (artworkSlug) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug, bio, short_bio, location)')
+        .select('*, artist:profiles(full_name, slug, bio, short_bio, avatar_url, location)')
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
