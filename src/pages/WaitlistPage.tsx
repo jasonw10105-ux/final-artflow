@@ -39,15 +39,16 @@ const WaitlistPage = () => {
     };
 
     return (
-        
+        <>
             {isSubmitted ? (
-            <div className="gradient-polish">
-                <div className="card">
-                    <div className="logo-holder">
-                        <img src="../logo.svg" alt="Artflow" height="60px" />
+                <div className="gradient-polish">
+                    <div className="card">
+                        <div className="logo-holder">
+                            <img src="../logo.svg" alt="Artflow" height="60px" />
+                        </div>
+                        <h2>You're on the list!</h2>
+                        <p>Thank you for joining. We'll be in touch soon with your exclusive invitation to join Artflow.</p>
                     </div>
-                    <h2>You're on the list!</h2>
-                    <p>Thank you for joining. We'll be in touch soon with your exclusive invitation to join Artflow.</p>
                 </div>
             ) : (
                 <>
@@ -111,7 +112,7 @@ const WaitlistPage = () => {
                             )}
                         </form>
                     </div>
-                </div>
+
                     <section id="explore">
                         <h2>Get to know Artflow</h2>
                         <p>Explore how Artflow transforms creativity into opportunity, empowering artists and collectors alike.</p>
@@ -160,6 +161,7 @@ const WaitlistPage = () => {
                     </footer>
                 </>
             )}
+        </>
     );
 };
 
