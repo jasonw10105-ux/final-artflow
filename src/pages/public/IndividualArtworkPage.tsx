@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import InquiryModal from '../../components/public/InquiryModal';
 import { Share2, ShoppingCart, ArrowLeft } from 'lucide-react';
-import '../../../index.css';
+import '../../index.css';
 
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
