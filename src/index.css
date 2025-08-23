@@ -104,6 +104,8 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
 }
 
 #artwork_img img {
+  width: 100%;
+  border-radius: var(--radius);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
 }
 
