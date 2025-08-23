@@ -85,12 +85,6 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
   text-align: center;
 }
 
-#artwork_grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4rem;
-}
-
 #artwork_img {
   grid-column: span 2;
 }
@@ -109,9 +103,31 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
 }
 
-main {
-  max-width: 1440px;
-  padding: 3rem;
+@media (min-width: 768px) {
+  main {
+    max-width: 1440px;
+    padding: 3rem;
+    display: flex;
+    justify-content: center;
+  }
+  
+  #artwork_grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4rem;
+  }
+}
+
+@media (max-width: 767.98px) {
+  main {
+    padding: 2rem;
+  }
+
+  main > div {
+    display: flex;
+    flex-direction: column;
+    row-gap: 1em; /* Sets a 1em gap between rows */
+  }
 }
 
 .carousel-section {
