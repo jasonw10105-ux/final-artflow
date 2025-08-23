@@ -2,38 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../contexts/AuthProvider'; // Corrected import path
+import { useAuth } from '../../contexts/AuthProvider';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import InquiryModal from '../../components/public/InquiryModal';
 import ShareModal from '../../components/public/ShareModal';
-import { Share2, ShoppingCart, ArrowLeft, Eye, X, Edit3, CheckCircle, Clock, Info } from 'lucide-react';
+import VisualizationModal from '../../components/public/VisualizationModal';
+import { Share2, ShoppingCart, ArrowLeft, Eye, Edit3, CheckCircle, Clock, Info } from 'lucide-react';
 import '../../index.css';
 
-// --- Reusable Visualization Modal Component ---
-const VisualizationModal = ({ imageUrl, artworkTitle, onClose }: { imageUrl: string; artworkTitle: string; onClose: () => void; }) => (
-    <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal-content visualization-modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-button" onClick={onClose}>
-                <X size={24} />
-            </button>
-            <img src={imageUrl} alt={`Visualization of ${artworkTitle}`} className="visualization-modal-image" />
-        </div>
-    </div>
-);
+// --- API Fetch Functions ---
 
-
-// --- Fetch Functions ---
+// Fetches the primary artwork data including details about the artist.
 const fetchArtworkBySlug = async (artworkSlug: string | undefined) => {
     if (!artworkSlug) throw new Error("Artwork slug is required.");
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles!inner(full_name, slug, bio, short_bio, avatar_url, location, id)')
+        .select('*, artist:profiles!inner(id, full_name, slug, bio, short_bio, avatar_url, location)')
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
     return data;
 };
 
+// Fetches a small number of related artworks from the same artist.
 const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
     const { data, error } = await supabase.rpc('get_related_artworks', {
         p_artist_id: artistId,
@@ -47,19 +38,22 @@ const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
     return data;
 };
 
+
+// --- Main Page Component ---
+
 const IndividualArtworkPage = () => {
     const { artworkSlug } = useParams<{ artworkSlug: string }>();
-    const { profile } = useAuth();
+    const { profile } = useAuth(); // Hook to get the currently logged-in user's profile
     const navigate = useNavigate();
     const { addViewedArtwork } = useRecentlyViewed();
 
-    // --- State Management ---
+    // --- State Management for Modals and Tabs ---
     const [showInquiryModal, setShowInquiryModal] = useState(false);
     const [showVisualizationModal, setShowVisualizationModal] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
     const [activeTab, setActiveTab] = useState('about');
 
-    // --- Data Fetching ---
+    // --- Data Fetching with React Query ---
     const { data: artwork, isLoading, isError } = useQuery({
         queryKey: ['artwork', artworkSlug],
         queryFn: () => fetchArtworkBySlug(artworkSlug),
@@ -73,23 +67,35 @@ const IndividualArtworkPage = () => {
     });
 
     // --- Effects ---
+
+    // UPDATED: This effect now contains the conditional logic for logging views.
     useEffect(() => {
         if (artwork) {
+            // Always add to the local "Recently Viewed" history for the current user's convenience.
             addViewedArtwork?.(artwork.id);
-            supabase.rpc('log_artwork_view', { p_artwork_id: artwork.id, p_artist_id: artwork.user_id });
-        }
-    }, [artwork, addViewedArtwork]);
 
+            // Determine if the current logged-in user is the owner of the artwork.
+            const isOwner = profile?.id === artwork.user_id;
+
+            // Log the view in the database ONLY if the viewer is NOT the owner.
+            // This prevents artists from inflating their own view counts.
+            if (!isOwner) {
+                supabase.rpc('log_artwork_view', { p_artwork_id: artwork.id, p_artist_id: artwork.user_id });
+            }
+        }
+    }, [artwork, addViewedArtwork, profile]); // `profile` is now a dependency
+
+    // Prevent the page from scrolling when any modal is open.
     useEffect(() => {
         const isModalOpen = showVisualizationModal || showInquiryModal || showShareModal;
         document.body.style.overflow = isModalOpen ? 'hidden' : 'unset';
-        return () => { document.body.style.overflow = 'unset'; };
+        return () => { document.body.style.overflow = 'unset'; }; // Cleanup on component unmount
     }, [showVisualizationModal, showInquiryModal, showShareModal]);
 
     // --- Event Handlers ---
     const handleBuyNow = () => alert('Payment gateway integration needed.');
 
-    // --- Loading & Error States ---
+    // --- Loading and Error UI States ---
     if (isLoading) return <p className="loading-placeholder">Loading artwork...</p>;
     if (isError || !artwork) return (
         <div className="not-found-container">
@@ -99,7 +105,7 @@ const IndividualArtworkPage = () => {
         </div>
     );
 
-    // --- Derived State & Variables ---
+    // --- Derived State and Variables for Rendering ---
     const isOwner = profile?.id === artwork.artist.id;
     const creationYear = artwork.created_at ? new Date(artwork.created_at).getFullYear() : null;
     const hasAboutTab = artwork.medium || artwork.framing_info?.is_framed || artwork.signature_info?.is_signed;
