@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
+import '../../../index.css'; // Added import
 import { 
     LayoutDashboard, 
     Palette, 
