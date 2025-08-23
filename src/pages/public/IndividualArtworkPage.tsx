@@ -2,17 +2,16 @@
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams, Link, useNavigate } from 'react-router-dom'; // <-- IMPORT useNavigate
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import InquiryModal from '../../components/public/InquiryModal';
-import { Share2, ShoppingCart, ArrowLeft } from 'lucide-react'; // <-- IMPORT ArrowLeft
-import '../../../index.css'; // <-- IMPORT index.css
+import { Share2, ShoppingCart, ArrowLeft } from 'lucide-react';
+import '../../../index.css';
 
 const fetchArtworkBySlug = async (artworkSlug: string) => {
     const { data, error } = await supabase
         .from('artworks')
-        // --- MODIFIED: Added bio and location to the artist query ---
         .select('*, artist:profiles(full_name, slug, bio, location)')
         .eq('slug', artworkSlug)
         .single();
@@ -37,7 +36,7 @@ const IndividualArtworkPage = () => {
     const { artworkSlug } = useParams<{ artworkSlug: string; }>();
     const [showInquiryModal, setShowInquiryModal] = React.useState(false);
     const { addViewedArtwork } = useRecentlyViewed();
-    const navigate = useNavigate(); // <-- INITIALIZE useNavigate
+    const navigate = useNavigate();
 
     const { data: artwork, isLoading, isError } = useQuery({
         queryKey: ['artwork', artworkSlug],
@@ -67,15 +66,19 @@ const IndividualArtworkPage = () => {
         }
     };
 
+    const handleBuyNow = () => {
+        // This is where you would integrate with your payment provider.
+        // For example, creating a checkout session and redirecting the user.
+        alert('Payment gateway integration needed.');
+    };
+
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading artwork...</p>;
     if (isError || !artwork) return <p style={{ textAlign: 'center', padding: '5rem' }}>Artwork not found.</p>;
 
     const hasMetadata = artwork.medium || artwork.dimensions || artwork.date_info || artwork.signature_info || artwork.framing_info || artwork.location || artwork.frame_details;
 
-
     return (
-        <div style={{ maxWidth: '1440px' }}>
-            {/* --- NEW: Back Button --- */}
+        <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '2rem' }}>
             <button 
                 onClick={() => navigate(-1)} 
                 className="button button-secondary" 
@@ -85,14 +88,14 @@ const IndividualArtworkPage = () => {
                 Back
             </button>
 
-            <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem' }}>
                 <div id="artwork_img">
-                    <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} />
+                    <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
                 </div>
                 <div>
-                    <h1 style={{ fontSize: '1.5rem' }}><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><br/><i>{artwork.title}</i></h1>
+                    <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link></h1>
+                    <h2 style={{ fontSize: '2rem', fontStyle: 'italic', marginBottom: '1rem' }}>{artwork.title}</h2>
                     
-                    {/* --- NEW: Artist Location --- */}
                     {artwork.artist.location && (artwork.artist.location.city || artwork.artist.location.country) && (
                         <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
                             {artwork.artist.location.city}{artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}{artwork.artist.location.country}
@@ -101,47 +104,35 @@ const IndividualArtworkPage = () => {
 
                     {artwork.medium && <p>{artwork.medium}</p>}
                     {artwork.dimensions && (
-                            <p>
-                                {` ${artwork.dimensions.height || 'N/A'} x ${artwork.dimensions.width || 'N/A'}`}
-                                {artwork.dimensions.depth && ` x ${artwork.dimensions.depth}`}
-                                {` ${artwork.dimensions.unit || ''}`}
-                            </p>
-                        )}
-                    <div>
-                        <h2>
+                        <p>
+                            {`${artwork.dimensions.height || 'N/A'} x ${artwork.dimensions.width || 'N/A'}`}
+                            {artwork.dimensions.depth && ` x ${artwork.dimensions.depth}`}
+                            {` ${artwork.dimensions.unit || ''}`}
+                        </p>
+                    )}
+
+                    <div style={{ marginTop: '2rem' }}>
+                        <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
                            ${new Intl.NumberFormat('en-US').format(artwork.price)}
                         </h2>
-                        <div id="artwork_actions">
+                        <div id="artwork_actions" style={{ display: 'flex', gap: '1rem' }}>
+                            <button className="button button-primary" onClick={handleBuyNow} style={{ flexGrow: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}><ShoppingCart size={16} /> Buy Now</button>
+                            <button className="button" onClick={() => setShowInquiryModal(true)} style={{ flexGrow: 1 }}>Inquire</button>
                             <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}><Share2 size={16} /> Share</button>
-                            <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire</button>
                         </div>
                     </div>
                     <div style={{ marginTop: '2rem' }}>
                         <p>{artwork.description || "No description provided."}</p>
                     </div>
 
-                    {/* --- Artwork Metadata --- */}
                     {hasMetadata && (
                         <div style={{ marginTop: '2rem' }}>
                             <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Artwork Details</h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                
-                                
-                                {artwork.date_info?.year && (
-                                    <p><strong>Date:</strong> {artwork.date_info.year}</p>
-                                )}
-                                {artwork.date_info?.start_year && (
-                                    <p><strong>Date:</strong> {artwork.date_info.start_year} - {artwork.date_info.end_year}</p>
-                                )}
-                                {artwork.signature_info?.is_signed && (
-                                    <p>
-                                        <strong>Signature:</strong> Signed
-                                        {artwork.signature_info.location && ` (${artwork.signature_info.location})`}
-                                    </p>
-                                )}
-                                {artwork.framing_info?.is_framed !== undefined && (
-                                    <p><strong>Framing:</strong> {artwork.framing_info.is_framed ? 'Included' : 'Not included'}</p>
-                                )}
+                                {artwork.date_info?.year && <p><strong>Date:</strong> {artwork.date_info.year}</p>}
+                                {artwork.date_info?.start_year && <p><strong>Date:</strong> {artwork.date_info.start_year} - {artwork.date_info.end_year}</p>}
+                                {artwork.signature_info?.is_signed && <p><strong>Signature:</strong> Signed{artwork.signature_info.location && ` (${artwork.signature_info.location})`}</p>}
+                                {artwork.framing_info?.is_framed !== undefined && <p><strong>Framing:</strong> {artwork.framing_info.is_framed ? 'Included' : 'Not included'}</p>}
                                 {artwork.frame_details && <p><strong>Frame Details:</strong> {artwork.frame_details}</p>}
                                 {artwork.location && <p><strong>Location:</strong> {artwork.location}</p>}
                             </div>
@@ -150,18 +141,20 @@ const IndividualArtworkPage = () => {
                 </div>
             </div>
 
-            {/* --- NEW: Artist Bio Section --- */}
             {artwork.artist.bio && (
                 <div style={{ marginTop: '4rem' }}>
                     <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
                         About <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>
                     </h3>
-                    <p style={{ whiteSpace: 'pre-wrap' }}>{artwork.artist.bio}</p>
+                    <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{artwork.artist.bio}</p>
                 </div>
             )}
 
             <div style={{ marginTop: '4rem' }}>
-                <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>Other works from {artwork.artist.full_name}</h3><Link to={`/${artwork.artist.slug}`}>View all</Link>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>
+                    <h3>Other works from {artwork.artist.full_name}</h3>
+                    <Link to={`/${artwork.artist.slug}`}>View all</Link>
+                </div>
                 {isLoadingRelated && <p>Loading suggestions...</p>}
                 {relatedArtworks && relatedArtworks.length > 0 ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '2rem' }}>
@@ -171,7 +164,7 @@ const IndividualArtworkPage = () => {
                                     <img src={art.image_url || 'https://placehold.co/300x300?text=Image+Not+Available'} alt={art.title || ''} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }} />
                                     <div style={{ padding: '1rem' }}>
                                         <h4>{art.title}</h4>
-                                        <p style={{ color: 'var(--primary)' }}>${art.price}</p>
+                                        <p style={{ color: 'var(--primary)' }}>${new Intl.NumberFormat('en-US').format(art.price)}</p>
                                     </div>
                                 </div>
                             </Link>
@@ -185,4 +178,5 @@ const IndividualArtworkPage = () => {
         </div>
     );
 };
+
 export default IndividualArtworkPage;
