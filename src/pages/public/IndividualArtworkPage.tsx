@@ -81,13 +81,13 @@ const IndividualArtworkPage = () => {
     const renderPrice = () => {
         if (artwork.is_price_negotiable) {
             return (
-                <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
+                <h2>
                     ${artwork.min_price?.toFixed(2)} – ${artwork.max_price?.toFixed(2)}
                 </h2>
             );
         } else {
             return (
-                <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
+                <h2>
                     ${artwork.price?.toLocaleString('en-US')}
                 </h2>
             );
@@ -98,8 +98,7 @@ const IndividualArtworkPage = () => {
         <div>
             <button 
                 onClick={() => navigate(-1)} 
-                className="button button-secondary" 
-                style={{ marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                className="button button-secondary"}
             >
                 <ArrowLeft size={16} />
                 Back
@@ -108,16 +107,16 @@ const IndividualArtworkPage = () => {
             <div id="artwork_grid">
                 <div>
                     <div id="artwork_img">
-                        <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
+                        <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''}/>
                     </div>
-                    <div style={{ marginTop: '2rem' }}>
+                    <div id="artwork_description">
                         <p>{artwork.description || "No description provided."}</p>
                     </div>
                 </div>
                 <div>
                     <h1>
-                        <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>{" "}
-                        <i>{artwork.title}</i>{creationYear && ` (${creationYear})`}
+                        <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>{" "}<br/>
+                        <i>{artwork.title}</i>{creationYear && ` ,${creationYear})`
                     </h1>
 
                     {primaryMedium && <p>{primaryMedium}</p>}
@@ -128,23 +127,23 @@ const IndividualArtworkPage = () => {
                         </p>
                     ) : null}
 
-                    <div style={{ marginTop: '2rem' }}>
+                    <div>
                         {renderPrice()}
-                        <div id="artwork_actions" style={{ display: 'flex', gap: '1rem' }}>
+                        <div id="artwork_actions">
                             {!artwork.is_price_negotiable && (
-                                <button className="button button-primary" onClick={handleBuyNow} style={{ flexGrow: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
+                                <button className="button button-primary" onClick={handleBuyNow}>
                                     <ShoppingCart size={16} /> Buy Now
                                 </button>
                             )}
-                            <button className="button" onClick={() => setShowInquiryModal(true)} style={{ flexGrow: 1 }}>Inquire</button>
-                            <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire</button>
+                            <button className="button button-secondary" onClick={handleShare}>
                                 <Share2 size={16} /> Share
                             </button>
                         </div>
                         {artwork.catalogue_id && (
-                            <p style={{ marginTop: '1rem', fontSize: '0.9rem' }}>
+                            <p>
                                 This work is part of a curated catalogue.{' '}
-                                <Link to={`/catalogue/${artwork.catalogue_id}`} style={{ color: 'var(--primary)' }}>
+                                <Link to={`/catalogue/${artwork.catalogue_id}`}>
                                     View Catalogue
                                 </Link>
                             </p>
