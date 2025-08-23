@@ -116,7 +116,7 @@ const IndividualArtworkPage = () => {
                 <div>
                     <h1>
                         <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>{" "}<br/>
-                        <i>{artwork.title}</i>{creationYear && ` ,${creationYear})`
+                        <i>{artwork.title}</i>{creationYear && ` <span className="artwork_date">${creationYear}</span>)`
                     </h1>
 
                     {primaryMedium && <p>{primaryMedium}</p>}
