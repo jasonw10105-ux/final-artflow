@@ -145,9 +145,8 @@ const IndividualArtworkPage = () => {
             </div>
 
             {showTabs && (
-                <div style={{ marginTop: '4rem' }}>
-                    <h3 style={{ marginBottom: '1rem' }}>More Information</h3>
-                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div className="section_details">
+                    <div>
                         {hasAboutTab && (
                             <button className={`tab-button ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
                                 About this Work
@@ -191,9 +190,9 @@ const IndividualArtworkPage = () => {
                     </div>
                 </div>
             )}
-
+                
             {(artwork.artist.bio || artwork.artist.short_bio) && (
-              <div id="artist_details">
+              <div className="section_details">
                 <img
                   src={artwork.artist.avatar_url || 'https://placehold.co/128x128'}
                   alt={artwork.artist.full_name || ''}
@@ -222,7 +221,7 @@ const IndividualArtworkPage = () => {
               </div>
             )}
 
-            <div style={{ marginTop: '4rem' }}>
+            <div className="section_details">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>
                     <h3>Other works by {artwork.artist.full_name}</h3>
                     <Link to={`/${artwork.artist.slug}`}>View all</Link>
