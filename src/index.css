@@ -105,12 +105,15 @@ p {line-height: 160%; color: var(--color-neutral-500); }
 
 #root main > div:first-of-type {
     display: flex;
+    flex-direction: column;
     justify-content: center;
+    align-items: center;
 }
 
 .section_details {
   border-top: 1px solid var(--color-neutral-200);
   padding-top: 2em;
+  max-width: 70%
   margin-top: 2em
 }
 
