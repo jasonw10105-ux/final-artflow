@@ -8,7 +8,6 @@ import { useAuth } from '../../../contexts/AuthProvider';
 import { PlusCircle, List, LayoutGrid, Folder } from 'lucide-react';
 import ArtworkUploadModal from '../../../components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '../../../stores/artworkUploadStore';
-
 // --- FIXED: Reverted to a simple, reliable query ---
 const fetchArtworks = async (userId: string) => {
     const { data, error } = await supabase
