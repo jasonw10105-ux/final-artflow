@@ -8,7 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import '../../index.css';
 import InquiryModal from '../../components/public/InquiryModal';
 
-// ... (fetch function remains the same)
+// ... (fetchPublicCatalogue function remains the same) ...
 
 type ArtworkForModal = {
     id: string;
@@ -30,31 +30,21 @@ const PublicCataloguePage = () => {
         retry: 1,
     });
 
-    if (isLoading) {
-        return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading Catalogue...</p>;
-    }
-    
-    if (isError || !data) {
-        return <p style={{ textAlign: 'center', padding: '5rem' }}>This catalogue could not be found.</p>;
-    }
+    if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading Catalogue...</p>;
+    if (isError || !data) return <p style={{ textAlign: 'center', padding: '5rem' }}>This catalogue could not be found.</p>;
 
     const { catalogue, artworks } = data;
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-            {/* ... (header remains the same) ... */}
+            {/* ... (header and back button remain the same) ... */}
 
             {artworks && artworks.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                     {artworks.map(art => (
                         <div key={art.id} style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                             <Link to={`/${catalogue.artist.slug}/artwork/${art.slug}`} className="artwork-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>
-                                <img 
-                                    src={art.image_url || 'https://placehold.co/600x400?text=No+Image'} 
-                                    alt={art.title || 'Artwork'} 
-                                    className="artwork-card-image" 
-                                    style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }}
-                                />
+                                <img src={art.image_url || 'https://placehold.co/600x400?text=No+Image'} alt={art.title || 'Artwork'} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }}/>
                                 <div className="artwork-card-info" style={{ padding: '1rem' }}>
                                     <h4>{art.title}</h4>
                                     <p>${new Intl.NumberFormat('en-US').format(art.price)}</p>
