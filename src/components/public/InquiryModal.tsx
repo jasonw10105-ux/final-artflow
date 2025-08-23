@@ -1,5 +1,3 @@
-// src/components/public/InquiryModal.tsx
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthProvider';
@@ -36,7 +34,6 @@ const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: Inq
         setIsSubmitting(true);
 
         try {
-            // This function now triggers the new, more powerful backend logic
             const { error } = await supabase.functions.invoke('create-inquiry', {
                 body: { 
                     artworkId, 
@@ -61,19 +58,20 @@ const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: Inq
     
     return (
         <div className="modal-backdrop">
-            <div className="modal-content">
+            <div className="modal-content inquiry-modal-content">
                 {previewImageUrl && previewTitle && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', background: 'var(--background)', padding: '1rem', borderRadius: 'var(--radius)' }}>
-                        <img src={previewImageUrl} alt={previewTitle} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
-                        <div>
-                            <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>Inquiring about:</p>
-                            <h4 style={{ margin: 0 }}>{previewTitle}</h4>
+                    <div className="modal-preview-banner">
+                        <img src={previewImageUrl} alt={previewTitle} className="modal-preview-image" />
+                        <div className="modal-preview-info">
+                            <p>Inquiring about:</p>
+                            <h4>{previewTitle}</h4>
                         </div>
                     </div>
                 )}
-                <h3 style={{ marginBottom: '0.5rem' }}>Inquire about this Artwork</h3>
-                <p style={{ color: 'var(--muted-foreground)', marginBottom: '1.5rem' }}>Your message will be sent directly to the artist.</p>
-                <form onSubmit={handleSubmit} style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                <h3>Inquire about this Artwork</h3>
+                <p className="modal-subtitle">Your message will be sent directly to the artist.</p>
+                
+                <form onSubmit={handleSubmit} className="modal-form">
                     {!isLoggedIn && (
                         <>
                             <input className="input" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Your Name" required />
@@ -89,7 +87,7 @@ const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: Inq
                         rows={5}
                     ></textarea>
                     
-                    <div style={{display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'flex-end'}}>
+                    <div className="modal-actions">
                       <button type="button" className="button button-secondary" onClick={onClose} disabled={isSubmitting}>Cancel</button>
                       <button type="submit" className="button button-primary" disabled={isSubmitting}>
                         {isSubmitting ? 'Sending...' : 'Send Inquiry'}
