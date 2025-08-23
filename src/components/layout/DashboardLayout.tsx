@@ -65,9 +65,6 @@ const DashboardLayout = () => {
 
     return (
         <>
-            <style>{responsiveStyles}</style>
-
-            {/* --- NEW: Mobile Top Bar with Hamburger Menu --- */}
             {isArtist && (
                 <header className="mobile-top-bar">
                     <img src="../logo.svg" alt="Artflow" height="40px"/>
