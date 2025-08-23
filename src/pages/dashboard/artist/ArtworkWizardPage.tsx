@@ -111,19 +111,18 @@ const ArtworkWizardPage = () => {
     return (
         <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
             {showUploadModal && <ArtworkUploadModal onUploadComplete={handleMoreUploadsComplete} />}
-            <header style={{ padding: '1rem 2rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card)' }}>
+            <header>
                  <Link to="/artist/artworks" className="button button-secondary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}> <ArrowLeft size={16} /> Exit Wizard </Link>
                 <h1>Artwork Details ({currentIndex + 1} / {artworks?.length})</h1>
-                <button onClick={() => setShowUploadModal(true)} className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}> <PlusCircle size={16} /> Add More Artworks </button>
+                <button onClick={() => setShowUploadModal(true)} className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}> <PlusCircle size={16} /> Add more</button>
             </header>
             <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem', alignItems: 'flex-start', padding: '2rem' }}>
                 <aside style={{ position: 'sticky', top: '2rem' }}>
-                    <h4>Upload Queue</h4>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: 'calc(100vh - 8rem)', overflowY: 'auto', marginTop: '1rem', paddingRight: '1rem' }}>
                         {artworks?.map((art, index) => (
                             <div key={art.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', borderRadius: 'var(--radius)', border: `2px solid ${index === currentIndex ? 'var(--primary)' : 'var(--border)'}`, background: index === currentIndex ? 'var(--accent)' : 'var(--card)' }}>
                                 <div onClick={() => setCurrentIndex(index)} style={{display: 'flex', flexGrow: 1, alignItems: 'center', gap: '0.5rem', cursor: 'pointer'}}>
-                                    <img src={art.image_url} alt={art.title || 'Untitled'} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
+                                    <img src={art.image_url} alt={art.title || 'Untitled'} style={{ width: '40px', height: '40px', objectFit: 'cover'}} />
                                     <p style={{fontWeight: index === currentIndex ? 'bold' : 'normal', flexGrow: 1}}>{art.title || "Untitled"}</p>
                                     {art.status === 'Available' && <div style={{width: '10px', height: '10px', borderRadius: '50%', background: 'green'}} title="Completed"></div>}
                                 </div>
@@ -147,7 +146,6 @@ const ArtworkWizardPage = () => {
                                     onTitleChange={(newTitle) => handleTitleChange(currentArtwork.id, newTitle)}
                                 />
                                 <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1rem'}}>
-                                    <button className="button button-secondary" onClick={() => setCurrentIndex(i => Math.max(0, i - 1))} disabled={currentIndex === 0}> <ArrowLeft size={16} /> Previous </button>
                                     <button type="button" onClick={triggerFormSubmit} className="button button-primary"> {currentIndex === (artworks?.length ?? 0) - 1 ? 'Finish Wizard' : 'Save & Go to Next'} <ArrowRight size={16} /> </button>
                                 </div>
                             </div>
