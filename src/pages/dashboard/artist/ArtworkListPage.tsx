@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../contexts/AuthProvider';
 import { PlusCircle, List, LayoutGrid, Folder } from 'lucide-react';
@@ -36,6 +36,7 @@ const formatPrice = (price: number | null) => {
 const ArtworkListPage = () => {
     const { user, profile } = useAuth();
     const navigate = useNavigate();
+    const queryClient = useQueryClient(); // FIXED: Initialize queryClient
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const { addFiles, clearStore } = useArtworkUploadStore();
     const [showUploadModal, setShowUploadModal] = useState(false);
@@ -78,7 +79,7 @@ const ArtworkListPage = () => {
     const handleUploadComplete = (artworkIds: string[]) => {
         setShowUploadModal(false);
         clearStore();
-        queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] }); // Use invalidateQueries instead of refetch
+        queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] }); // This will now work
         navigate(`/artist/artworks/wizard?ids=${artworkIds.join(',')}`);
     };
 
@@ -91,8 +92,8 @@ const ArtworkListPage = () => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <h1>Artworks</h1>
-                <button onClick={() => fileInputRef.current?.click()} className="button button-primary" style={{ display: 'flex', gap: '0.5rem' }}>
-                    <PlusCircle size={16} /> Upload Artworks
+                <button onClick={() => fileInputRef.current?.click()} className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <PlusCircle size={16} /> Create New Artwork
                 </button>
             </div>
 
