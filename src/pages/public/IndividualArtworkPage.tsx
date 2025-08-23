@@ -10,7 +10,7 @@ import '../../index.css';
 const fetchArtworkBySlug = async (artworkSlug) => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*, artist:profiles(full_name, slug, bio, location)')
+        .select('*, artist:profiles(full_name, slug, short_bio, location)')
         .eq('slug', artworkSlug)
         .single();
     if (error) throw new Error('Artwork not found');
@@ -130,7 +130,7 @@ const IndividualArtworkPage = () => {
                         <div id="artwork_actions">
                             {!artwork.is_price_negotiable && (
                                 <button className="button button-primary" onClick={handleBuyNow}>
-                                    <ShoppingCart size={16} /> Buy Now
+                                    Purchase
                                 </button>
                             )}
                             <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire</button>
@@ -199,11 +199,10 @@ const IndividualArtworkPage = () => {
             )}
 
             {artwork.artist.bio && (
-                <div style={{ marginTop: '4rem' }}>
-                    <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
-                        About <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>
-                    </h3>
-                    <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{artwork.artist.bio}</p>
+                <div id="artist_details">
+                    <h3>{artwork.artist.full_name}</h3>
+                    <p>{artwork.artist.bio}</p>
+                    <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>
                 </div>
             )}
 
