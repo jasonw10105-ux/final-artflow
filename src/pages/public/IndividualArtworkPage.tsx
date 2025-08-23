@@ -1,5 +1,3 @@
-// src/pages/public/IndividualArtworkPage.tsx
-
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
@@ -78,7 +76,7 @@ const IndividualArtworkPage = () => {
     const hasMetadata = artwork.medium || artwork.dimensions || artwork.date_info || artwork.signature_info || artwork.framing_info || artwork.location || artwork.frame_details;
 
     return (
-        <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '2rem' }}>
+        <div>
             <button 
                 onClick={() => navigate(-1)} 
                 className="button button-secondary" 
@@ -88,21 +86,21 @@ const IndividualArtworkPage = () => {
                 Back
             </button>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem' }}>
-                <div id="artwork_img">
-                    <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
+            <div id="artwork_grid">
+                <div>
+                    <div id="artwork_img">
+                        <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
+                    </div>
+                
+                    <div style={{ marginTop: '2rem' }}>
+                       <p>{artwork.description || "No description provided."}</p>
+                    </div>
                 </div>
                 <div>
-                    <h1 style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link></h1>
-                    <h2 style={{ fontSize: '2rem', fontStyle: 'italic', marginBottom: '1rem' }}>{artwork.title}</h2>
+                    <h1><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><i>{artwork.title}</i></h1>
                     
-                    {artwork.artist.location && (artwork.artist.location.city || artwork.artist.location.country) && (
-                        <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
-                            {artwork.artist.location.city}{artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}{artwork.artist.location.country}
-                        </p>
-                    )}
-
                     {artwork.medium && <p>{artwork.medium}</p>}
+
                     {artwork.dimensions && (
                         <p>
                             {`${artwork.dimensions.height || 'N/A'} x ${artwork.dimensions.width || 'N/A'}`}
@@ -110,7 +108,13 @@ const IndividualArtworkPage = () => {
                             {` ${artwork.dimensions.unit || ''}`}
                         </p>
                     )}
-
+                    
+                    {artwork.artist.location && (artwork.artist.location.city || artwork.artist.location.country) && (
+                        <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+                            {artwork.artist.location.city}{artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}{artwork.artist.location.country}
+                        </p>
+                    )}
+                    
                     <div style={{ marginTop: '2rem' }}>
                         <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
                            ${new Intl.NumberFormat('en-US').format(artwork.price)}
@@ -120,9 +124,6 @@ const IndividualArtworkPage = () => {
                             <button className="button" onClick={() => setShowInquiryModal(true)} style={{ flexGrow: 1 }}>Inquire</button>
                             <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}><Share2 size={16} /> Share</button>
                         </div>
-                    </div>
-                    <div style={{ marginTop: '2rem' }}>
-                        <p>{artwork.description || "No description provided."}</p>
                     </div>
 
                     {hasMetadata && (
