@@ -8,9 +8,11 @@ import '../../index.css';
 interface InquiryModalProps {
   artworkId: string;
   onClose: () => void;
+  previewImageUrl?: string;
+  previewTitle?: string;
 }
 
-const InquiryModal = ({ artworkId, onClose }: InquiryModalProps) => {
+const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: InquiryModalProps) => {
     const { session, profile } = useAuth();
     const isLoggedIn = !!session;
     const [message, setMessage] = useState('');
@@ -59,6 +61,15 @@ const InquiryModal = ({ artworkId, onClose }: InquiryModalProps) => {
     return (
         <div className="modal-backdrop">
             <div className="modal-content">
+                {previewImageUrl && previewTitle && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', background: 'var(--background)', padding: '1rem', borderRadius: 'var(--radius)' }}>
+                        <img src={previewImageUrl} alt={previewTitle} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
+                        <div>
+                            <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>Inquiring about:</p>
+                            <h4 style={{ margin: 0 }}>{previewTitle}</h4>
+                        </div>
+                    </div>
+                )}
                 <h3 style={{ marginBottom: '0.5rem' }}>Inquire about this Artwork</h3>
                 <p style={{ color: 'var(--muted-foreground)', marginBottom: '1.5rem' }}>Your message will be sent directly to the artist.</p>
                 <form onSubmit={handleSubmit} style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
