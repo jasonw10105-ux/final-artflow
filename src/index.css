@@ -67,7 +67,7 @@ body {
 a { color: var(--primary); text-decoration: none; transition: color 0.2s; }
 a:hover { filter: brightness(110%); }
 h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 500; color: var(--color-neutral-600); line-height: 160%; }
-p {line-height: 160%; color: var(--color-neutral-300); }
+p {line-height: 160%; color: var(--color-neutral-500); }
 
 #root .gradient-polish {
   padding: 3rem;
