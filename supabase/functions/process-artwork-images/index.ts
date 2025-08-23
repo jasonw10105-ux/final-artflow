@@ -5,7 +5,7 @@ import { Image } from 'imagescript';
 // The background image for visualization.
 // IMPORTANT: Upload your room scene image to a public bucket in Supabase Storage
 // and paste its public URL here.
-const ROOM_SCENE_URL = 'YOUR_PUBLIC_URL_TO_ROOM_SCENE_IMAGE.jpg';
+const ROOM_SCENE_URL = 'https://mfddxrpiuawggmnzqagn.supabase.co/storage/v1/object/public/Visualization/IMG-20250823-WA0008.jpg';
 const BENCH_REAL_WIDTH_M = 2.0;
 const BENCH_PIXEL_WIDTH = 800; // Manually determined pixel width of the bench in your scene image
 
