@@ -200,6 +200,8 @@ const IndividualArtworkPage = () => {
 
             {artwork.artist.bio && (
                 <div id="artist_details">
+                    <img src={artwork.artist.avatar_url || 'https://placehold.co/128x128'} alt={artwork.artist.full_name || ''} style={{ width: '128px', height: '128px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }} />
+                
                     <h3>{artwork.artist.full_name}</h3>
                     <p>{artwork.artist.bio}</p>
                     <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>
