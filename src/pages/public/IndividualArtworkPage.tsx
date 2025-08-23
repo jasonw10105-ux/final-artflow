@@ -105,13 +105,8 @@ const IndividualArtworkPage = () => {
             </button>
 
             <div id="artwork_grid">
-                <div>
-                    <div id="artwork_img">
-                        <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''}/>
-                    </div>
-                    <div id="artwork_description">
-                        <p>{artwork.description || "No description provided."}</p>
-                    </div>
+                <div id="artwork_img">
+                    <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''}/>
                 </div>
                 <div>
                     <h1>
@@ -174,6 +169,11 @@ const IndividualArtworkPage = () => {
                     <div>
                         {activeTab === 'about' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                
+                                <div id="artwork_description">
+                                    <p>{artwork.description || "No description provided."}</p>
+                                </div>
+                                
                                 {artwork.rarity && <p><strong>Rarity:</strong> {artwork.rarity}</p>}
                                 {artwork.medium && <p><strong>Medium:</strong> {artwork.medium}</p>}
                                 {artwork.condition && <p><strong>Condition:</strong> {artwork.condition}</p>}
