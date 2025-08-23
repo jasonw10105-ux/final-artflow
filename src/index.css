@@ -136,6 +136,22 @@ main {
     color: #333;
 }
 
+.tab-button {
+    background: none;
+    border: none;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    color: var(--foreground);
+    transition: border-color 0.2s;
+}
+
+.tab-button.active {
+    border-bottom: 2px solid var(--primary);
+    color: var(--primary);
+}
+
 /* --- Component Base Styles --- */
 .button, button {
   display: inline-flex;
