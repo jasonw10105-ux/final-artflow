@@ -90,7 +90,7 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
   gap: 2rem;
 }
 
-#artwork_grid > div {
+#artwork_grid > div:first-of-type {
   grid-column: span 2;
 }
 
