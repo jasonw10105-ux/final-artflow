@@ -1,31 +1,31 @@
 @import url('https://fonts.googleapis.com/css2?family=Work+Sans:ital,wght@0,100..900;1,100..900&display=swap');
 
 :root {
-  /* --- Light Theme Color Palette (Inspired by Dribbble) --- */
+  /* Updated Row 1 - Cool Greys */
+  --color-neutral-100: #f0f0f0;
+  --color-neutral-200: #d6d6d6;
+  --color-neutral-300: #bcbcbc;
+  --color-neutral-400: #a3a3a3;
+  --color-neutral-500: #8a8a8a;
+  --color-neutral-600: #5c5c5c;
+  --color-neutral-700: #2e2e2e;
+
+  /* Row 2 - Pinks and Reds */
+  --color-pink-100: #fcd7df;
+  --color-pink-200: #f89fb5;
+  --color-pink-300: #f6588b;
+  --color-pink-400: #cf2466;
+  --color-pink-500: #921646;
+  --color-pink-600: #590928;
+  --color-pink-700: #29020f;
+
+  --background: #F8F9FD;
   --font-sans: 'Work Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-  
-  --background: #F8F9FD;           /* Light gray background */
-  --foreground: #111827;           /* Dark gray for main text */
-  --secondary: #111827;           /* Dark gray for main text */
-  
-  --card: #FFFFFF;   
-  --card-shadow: #FFFFFF;  
-  --card-foreground: #111827;
-  
-  --popover: #FFFFFF;
-  --popover-foreground: #111827;
-  
-  --primary: #4A72FF;              /* Vibrant, friendly blue */
-  --primary-foreground: #FFFFFF;
-  
-  --secondary: #F3F4F6;            /* Light gray for secondary elements */
-  --secondary-foreground: #374151;
-  
-  --muted: #E5E7EB;                /* Subtle borders and dividers */
-  --muted-foreground: #6B7280;      /* Lighter gray for secondary text */
-  
-  --border: #E5E7EB;               /* Light borders */
-  --input: #FFFFFF;                 /* White input background */
+
+  --card: #FFFFFF;
+
+  --primary: --color-pink-400; 
+  --secondary: --color-neutral-300;
 
   --radius: 1rem;
 }
