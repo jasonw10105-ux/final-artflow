@@ -36,7 +36,7 @@ const WaitlistPage = () => {
     };
 
     return (
-        <div>
+        <div className="gradient-polish">
             {isSubmitted ? (
                 <div className="card">
                     <div className="logo-holder">
