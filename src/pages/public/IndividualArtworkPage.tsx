@@ -207,35 +207,35 @@ const IndividualArtworkPage = () => {
             )}
 
             {(artwork.artist.bio || artwork.artist.short_bio) && (
-                <div className="section_details">
+                  <div className="section_details">
                     <img
-                        src={artwork.artist.avatar_url || 'https://placehold.co/128x128'}
-                        alt={artwork.artist.full_name || ''}
-                        style={{
-                            width: '128px',
-                            height: '128px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            border:```jsx
-                            border: '2px solid var(--border)',
-                        }}
+                      src={artwork.artist.avatar_url || 'https://placehold.co/128x128'}
+                      alt={artwork.artist.full_name || ''}
+                      style={{
+                        width: '128px',
+                        height: '128px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        border: '2px solid var(--border)',
+                      }}
                     />
-
+                
                     <h3>{artwork.artist.full_name}</h3>
-
-                    {artwork.artist.location?.city || artwork.artist.location?.country ? (
-                        <p>
-                            {artwork.artist.location.city}
-                            {artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}
-                            {artwork.artist.location.country}
-                        </p>
-                    ) : null}
-
+                
+                    {(artwork.artist.location?.city || artwork.artist.location?.country) && (
+                      <p>
+                        {artwork.artist.location.city}
+                        {artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}
+                        {artwork.artist.location.country}
+                      </p>
+                    )}
+                
                     <p>{artwork.artist.bio || artwork.artist.short_bio}</p>
-
+                
                     <Link to={`/${artwork.artist.slug}`}>More</Link>
-                </div>
-            )}
+                  </div>
+                )}
+
 
             <div className="section_details">
                 <div style={{
