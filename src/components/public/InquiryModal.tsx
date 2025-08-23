@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthProvider';
-import '../../../index.css';
+import '../../index.css';
 
 interface InquiryModalProps {
   artworkId: string;
