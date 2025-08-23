@@ -39,8 +39,9 @@ const WaitlistPage = () => {
     };
 
     return (
-        <div className="gradient-polish">
-            {isSubmitted ? (
+        <>
+            <div className="gradient-polish">
+                {isSubmitted ? (
                     <div className="card">
                         <div className="logo-holder">
                             <img src="../logo.svg" alt="Artflow" height="60px" />
@@ -48,9 +49,7 @@ const WaitlistPage = () => {
                         <h2>You're on the list!</h2>
                         <p>Thank you for joining. We'll be in touch soon with your exclusive invitation to join Artflow.</p>
                     </div>
-                </div>
-            ) : (
-                
+                ) : (
                     <div className="card">
                         <div className="logo-holder">
                             <img src="../logo.svg" alt="Artflow" height="60px" />
@@ -111,55 +110,55 @@ const WaitlistPage = () => {
                             )}
                         </form>
                     </div>
+                )}
+            </div>
 
-                    <section id="explore">
-                        <h2>Get to know Artflow</h2>
-                        <p>Explore how Artflow transforms creativity into opportunity, empowering artists and collectors alike.</p>
-                    </section>
+            <section id="explore">
+                <h2>Get to know Artflow</h2>
+                <p>Explore how Artflow transforms creativity into opportunity, empowering artists and collectors alike.</p>
+            </section>
 
-                    <section>
-                        <h2>For everyone</h2>
-                        <div className="carousel-section">
-                            <h3>Discover our customers’ success</h3>
-                            <Swiper
-                                modules={[Pagination]}
-                                spaceBetween={30}
-                                slidesPerView={1}
-                                pagination={{ clickable: true }}
-                                breakpoints={{
-                                    768: { slidesPerView: 2 },
-                                    1024: { slidesPerView: 3 }
-                                }}
-                            >
-                                <SwiperSlide>
-                                    <div className="testimonial-card">
-                                        <p>"Artflow helped me turn my hobby into a career. The exposure was incredible!"</p>
-                                        <strong>- Jamie, Artist</strong>
-                                    </div>
-                                </SwiperSlide>
-                                <SwiperSlide>
-                                    <div className="testimonial-card">
-                                        <p>"I discovered so many fresh talents through Artflow. It's my go-to for art investing."</p>
-                                        <strong>- Alex, Collector</strong>
-                                    </div>
-                                </SwiperSlide>
-                                <SwiperSlide>
-                                    <div className="testimonial-card">
-                                        <p>"As both an artist and collector, Artflow gave me a complete ecosystem to thrive in."</p>
-                                        <strong>- Casey, Artist & Collector</strong>
-                                    </div>
-                                </SwiperSlide>
-                            </Swiper>
-                        </div>
-                    </section>
+            <section>
+                <h2>For everyone</h2>
+                <div className="carousel-section">
+                    <h3>Discover our customers’ success</h3>
+                    <Swiper
+                        modules={[Pagination]}
+                        spaceBetween={30}
+                        slidesPerView={1}
+                        pagination={{ clickable: true }}
+                        breakpoints={{
+                            768: { slidesPerView: 2 },
+                            1024: { slidesPerView: 3 }
+                        }}
+                    >
+                        <SwiperSlide>
+                            <div className="testimonial-card">
+                                <p>"Artflow helped me turn my hobby into a career. The exposure was incredible!"</p>
+                                <strong>- Jamie, Artist</strong>
+                            </div>
+                        </SwiperSlide>
+                        <SwiperSlide>
+                            <div className="testimonial-card">
+                                <p>"I discovered so many fresh talents through Artflow. It's my go-to for art investing."</p>
+                                <strong>- Alex, Collector</strong>
+                            </div>
+                        </SwiperSlide>
+                        <SwiperSlide>
+                            <div className="testimonial-card">
+                                <p>"As both an artist and collector, Artflow gave me a complete ecosystem to thrive in."</p>
+                                <strong>- Casey, Artist & Collector</strong>
+                            </div>
+                        </SwiperSlide>
+                    </Swiper>
+                </div>
+            </section>
 
-                    <footer>
-                        <p style={{ textAlign: 'center', marginTop: '2rem', color: '#888' }}>
-                            &copy; {new Date().getFullYear()} Artflow. All rights reserved.
-                        </p>
-                    </footer>
-                </>
-            )}
+            <footer>
+                <p style={{ textAlign: 'center', marginTop: '2rem', color: '#888' }}>
+                    &copy; {new Date().getFullYear()} Artflow. All rights reserved.
+                </p>
+            </footer>
         </>
     );
 };
