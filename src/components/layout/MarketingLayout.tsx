@@ -67,7 +67,7 @@ const MarketingLayout = () => {
     return (
         <div>
             <header style={headerStyle}>
-                <img src="../logo.svg" alt="Artflow" height="60px" />
+                <img src="../../logo.svg" alt="Artflow" height="60px" />
                 {isMobile ? (
                     <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={mobileMenuButtonStyle}>
                         {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
