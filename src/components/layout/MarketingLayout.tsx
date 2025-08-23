@@ -67,10 +67,7 @@ const MarketingLayout = () => {
     return (
         <div>
             <header style={headerStyle}>
-                <Link to="/" style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--foreground)', textDecoration: 'none', zIndex: 1001 }} onClick={handleLinkClick}>
-                    Artflow
-                </Link>
-
+                <img src="../logo.svg" alt="Artflow" height="60px" />
                 {isMobile ? (
                     <button onClick={() => setIsMenuOpen(!isMenuOpen)} style={mobileMenuButtonStyle}>
                         {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
