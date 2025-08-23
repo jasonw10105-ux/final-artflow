@@ -36,15 +36,20 @@ const WaitlistPage = () => {
     };
 
     return (
+        <div>
             {isSubmitted ? (
-                <div class="card">
-                    <div class="logo-holder"></div><img src="../logo.svg" alt="Artflow" height="60px"/></div>
+                <div className="card">
+                    <div className="logo-holder">
+                        <img src="../logo.svg" alt="Artflow" height="60px"/>
+                    </div>
                     <h2>You're on the list!</h2>
                     <p>Thank you for joining. We'll be in touch soon with your exclusive invitation to join Artflow.</p>
                 </div>
             ) : (
-                <div class="card">
-                    <div class="logo-holder"><img src="../logo.svg" alt="Artflow" height="60px"/></div>
+                <div className="card">
+                    <div className="logo-holder">
+                        <img src="../logo.svg" alt="Artflow" height="60px"/>
+                    </div>
                     <h1>Art, sorted</h1>
                     <p>Be the first to know when we launch. Join the waitlist for exclusive early access.</p>
                     
@@ -53,9 +58,18 @@ const WaitlistPage = () => {
                         <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
                             <label style={{ display: 'block', marginBottom: '0.75rem' }}>I am primarily an...</label>
                             <div style={{ display: 'flex', gap: '1rem' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="radio" value="artist" checked={rolePreference === 'artist'} onChange={(e) => setRolePreference(e.target.value)} /> Artist</label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="radio" value="collector" checked={rolePreference === 'collector'} onChange={(e) => setRolePreference(e.target.value)} /> Collector</label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><input type="radio" value="both" checked={rolePreference === 'both'} onChange={(e) => setRolePreference(e.target.value)} /> Both</label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <input type="radio" value="artist" checked={rolePreference === 'artist'} onChange={(e) => setRolePreference(e.target.value)} /> 
+                                    Artist
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <input type="radio" value="collector" checked={rolePreference === 'collector'} onChange={(e) => setRolePreference(e.target.value)} /> 
+                                    Collector
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <input type="radio" value="both" checked={rolePreference === 'both'} onChange={(e) => setRolePreference(e.target.value)} /> 
+                                    Both
+                                </label>
                             </div>
                         </div>
                         <button type="submit" className="button button-primary" disabled={mutation.isLoading}>
@@ -67,6 +81,7 @@ const WaitlistPage = () => {
                     </form>
                 </div>
             )}
+        </div>
     );
 };
 
