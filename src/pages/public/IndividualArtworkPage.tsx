@@ -7,7 +7,7 @@ import InquiryModal from '../../components/public/InquiryModal';
 import { Share2, ShoppingCart, ArrowLeft } from 'lucide-react';
 import '../../index.css';
 
-const fetchArtworkBySlug = async (artworkSlug: string) => {
+const fetchArtworkBySlug = async (artworkSlug) => {
     const { data, error } = await supabase
         .from('artworks')
         .select('*, artist:profiles(full_name, slug, bio, location)')
@@ -17,7 +17,7 @@ const fetchArtworkBySlug = async (artworkSlug: string) => {
     return data;
 };
 
-const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
+const fetchRelatedArtworks = async (artworkId, artistId) => {
     const { data, error } = await supabase.rpc('get_related_artworks', {
         p_artist_id: artistId,
         p_current_artwork_id: artworkId,
@@ -31,49 +31,68 @@ const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
 };
 
 const IndividualArtworkPage = () => {
-    const { artworkSlug } = useParams<{ artworkSlug: string; }>();
+    const { artworkSlug } = useParams();
     const [showInquiryModal, setShowInquiryModal] = React.useState(false);
+    const [activeTab, setActiveTab] = React.useState('about');
     const { addViewedArtwork } = useRecentlyViewed();
     const navigate = useNavigate();
 
     const { data: artwork, isLoading, isError } = useQuery({
         queryKey: ['artwork', artworkSlug],
-        queryFn: () => fetchArtworkBySlug(artworkSlug!),
+        queryFn: () => fetchArtworkBySlug(artworkSlug),
         enabled: !!artworkSlug,
     });
 
     const { data: relatedArtworks, isLoading: isLoadingRelated } = useQuery({
         queryKey: ['relatedArtworks', artwork?.id],
-        queryFn: () => fetchRelatedArtworks(artwork!.id, artwork!.user_id),
+        queryFn: () => fetchRelatedArtworks(artwork?.id, artwork?.user_id),
         enabled: !!artwork,
     });
 
     React.useEffect(() => {
         if (artwork) {
-            if (typeof addViewedArtwork === 'function') {
-                addViewedArtwork(artwork.id);
-            }
-            supabase.rpc('log_artwork_view', { p_artwork_id: artwork.id, p_artist_id: artwork.user_id });
+            addViewedArtwork?.(artwork.id);
+            supabase.rpc('log_artwork_view', {
+                p_artwork_id: artwork.id,
+                p_artist_id: artwork.user_id
+            });
         }
-    }, [artwork, addViewedArtwork]);
+    }, [artwork]);
 
     const handleShare = () => {
-        if (navigator.clipboard) {
-            navigator.clipboard.writeText(window.location.href);
-            alert('Link copied to clipboard!');
-        }
+        navigator.clipboard.writeText(window.location.href);
+        alert('Link copied to clipboard!');
     };
 
     const handleBuyNow = () => {
-        // This is where you would integrate with your payment provider.
-        // For example, creating a checkout session and redirecting the user.
         alert('Payment gateway integration needed.');
     };
 
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading artwork...</p>;
     if (isError || !artwork) return <p style={{ textAlign: 'center', padding: '5rem' }}>Artwork not found.</p>;
 
-    const hasMetadata = artwork.medium || artwork.dimensions || artwork.date_info || artwork.signature_info || artwork.framing_info || artwork.location || artwork.frame_details;
+    const creationYear = artwork.created_at ? new Date(artwork.created_at).getFullYear() : null;
+    const hasAboutTab = artwork.rarity || artwork.medium || artwork.condition || artwork.framing_info?.is_framed || artwork.signature_info?.is_signed;
+    const hasProvenance = artwork.provenance;
+    const showTabs = hasAboutTab || hasProvenance;
+
+    const primaryMedium = artwork.medium?.split(',')[0];
+
+    const renderPrice = () => {
+        if (artwork.is_price_negotiable) {
+            return (
+                <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
+                    ${artwork.min_price?.toFixed(2)} – ${artwork.max_price?.toFixed(2)}
+                </h2>
+            );
+        } else {
+            return (
+                <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
+                    ${artwork.price?.toLocaleString('en-US')}
+                </h2>
+            );
+        }
+    };
 
     return (
         <div>
@@ -91,56 +110,91 @@ const IndividualArtworkPage = () => {
                     <div id="artwork_img">
                         <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
                     </div>
-                
                     <div style={{ marginTop: '2rem' }}>
-                       <p>{artwork.description || "No description provided."}</p>
+                        <p>{artwork.description || "No description provided."}</p>
                     </div>
                 </div>
                 <div>
-                    <h1><Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><i>{artwork.title}</i></h1>
-                    
-                    {artwork.medium && <p>{artwork.medium}</p>}
+                    <h1>
+                        <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>{" "}
+                        <i>{artwork.title}</i>{creationYear && ` (${creationYear})`}
+                    </h1>
 
-                    {artwork.dimensions && (
-                        <p>
-                            {`${artwork.dimensions.height || 'N/A'} x ${artwork.dimensions.width || 'N/A'}`}
-                            {artwork.dimensions.depth && ` x ${artwork.dimensions.depth}`}
-                            {` ${artwork.dimensions.unit || ''}`}
-                        </p>
-                    )}
-                    
-                    {artwork.artist.location && (artwork.artist.location.city || artwork.artist.location.country) && (
+                    {primaryMedium && <p>{primaryMedium}</p>}
+
+                    {artwork.artist.location?.city || artwork.artist.location?.country ? (
                         <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
                             {artwork.artist.location.city}{artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}{artwork.artist.location.country}
                         </p>
-                    )}
-                    
-                    <div style={{ marginTop: '2rem' }}>
-                        <h2 style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>
-                           ${new Intl.NumberFormat('en-US').format(artwork.price)}
-                        </h2>
-                        <div id="artwork_actions" style={{ display: 'flex', gap: '1rem' }}>
-                            <button className="button button-primary" onClick={handleBuyNow} style={{ flexGrow: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}><ShoppingCart size={16} /> Buy Now</button>
-                            <button className="button" onClick={() => setShowInquiryModal(true)} style={{ flexGrow: 1 }}>Inquire</button>
-                            <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}><Share2 size={16} /> Share</button>
-                        </div>
-                    </div>
+                    ) : null}
 
-                    {hasMetadata && (
-                        <div style={{ marginTop: '2rem' }}>
-                            <h3 style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Artwork Details</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                {artwork.date_info?.year && <p><strong>Date:</strong> {artwork.date_info.year}</p>}
-                                {artwork.date_info?.start_year && <p><strong>Date:</strong> {artwork.date_info.start_year} - {artwork.date_info.end_year}</p>}
-                                {artwork.signature_info?.is_signed && <p><strong>Signature:</strong> Signed{artwork.signature_info.location && ` (${artwork.signature_info.location})`}</p>}
-                                {artwork.framing_info?.is_framed !== undefined && <p><strong>Framing:</strong> {artwork.framing_info.is_framed ? 'Included' : 'Not included'}</p>}
-                                {artwork.frame_details && <p><strong>Frame Details:</strong> {artwork.frame_details}</p>}
-                                {artwork.location && <p><strong>Location:</strong> {artwork.location}</p>}
-                            </div>
+                    <div style={{ marginTop: '2rem' }}>
+                        {renderPrice()}
+                        <div id="artwork_actions" style={{ display: 'flex', gap: '1rem' }}>
+                            {!artwork.is_price_negotiable && (
+                                <button className="button button-primary" onClick={handleBuyNow} style={{ flexGrow: 1, display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
+                                    <ShoppingCart size={16} /> Buy Now
+                                </button>
+                            )}
+                            <button className="button" onClick={() => setShowInquiryModal(true)} style={{ flexGrow: 1 }}>Inquire</button>
+                            <button className="button button-secondary" onClick={handleShare} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <Share2 size={16} /> Share
+                            </button>
                         </div>
-                    )}
+                        {artwork.catalogue_id && (
+                            <p style={{ marginTop: '1rem', fontSize: '0.9rem' }}>
+                                This work is part of a curated catalogue.{' '}
+                                <Link to={`/catalogue/${artwork.catalogue_id}`} style={{ color: 'var(--primary)' }}>
+                                    View Catalogue
+                                </Link>
+                            </p>
+                        )}
+                    </div>
                 </div>
             </div>
+
+            {showTabs && (
+                <div style={{ marginTop: '4rem' }}>
+                    <h3 style={{ marginBottom: '1rem' }}>More Information</h3>
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                        {hasAboutTab && (
+                            <button className={`tab-button ${activeTab === 'about' ? 'active' : ''}`} onClick={() => setActiveTab('about')}>
+                                About this Work
+                            </button>
+                        )}
+                        {hasProvenance && (
+                            <button className={`tab-button ${activeTab === 'provenance' ? 'active' : ''}`} onClick={() => setActiveTab('provenance')}>
+                                Provenance
+                            </button>
+                        )}
+                    </div>
+
+                    <div>
+                        {activeTab === 'about' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {artwork.rarity && <p><strong>Rarity:</strong> {artwork.rarity}</p>}
+                                {artwork.medium && <p><strong>Medium:</strong> {artwork.medium}</p>}
+                                {artwork.condition && <p><strong>Condition:</strong> {artwork.condition}</p>}
+                                {artwork.framing_info?.is_framed !== undefined && (
+                                    <p><strong>Framing:</strong> {artwork.framing_info.is_framed ? 'Framed' : 'Not framed'}</p>
+                                )}
+                                {artwork.framing_info?.location && (
+                                    <p><strong>Framing Location:</strong> {artwork.framing_info.location}</p>
+                                )}
+                                {artwork.signature_info?.is_signed && (
+                                    <p><strong>Signature:</strong> Signed{artwork.signature_info.location ? ` (${artwork.signature_info.location})` : ''}</p>
+                                )}
+                            </div>
+                        )}
+
+                        {activeTab === 'provenance' && (
+                            <div>
+                                <p>{artwork.provenance}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {artwork.artist.bio && (
                 <div style={{ marginTop: '4rem' }}>
@@ -165,7 +219,7 @@ const IndividualArtworkPage = () => {
                                     <img src={art.image_url || 'https://placehold.co/300x300?text=Image+Not+Available'} alt={art.title || ''} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }} />
                                     <div style={{ padding: '1rem' }}>
                                         <h4>{art.title}</h4>
-                                        <p style={{ color: 'var(--primary)' }}>${new Intl.NumberFormat('en-US').format(art.price)}</p>
+                                        <p style={{ color: 'var(--primary)' }}>${art.price?.toLocaleString('en-US')}</p>
                                     </div>
                                 </div>
                             </Link>
@@ -175,6 +229,7 @@ const IndividualArtworkPage = () => {
                     !isLoadingRelated && <p>No related artworks found.</p>
                 )}
             </div>
+
             {showInquiryModal && <InquiryModal artworkId={artwork.id} onClose={() => setShowInquiryModal(false)} />}
         </div>
     );
