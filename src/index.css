@@ -94,6 +94,11 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
   grid-column: span 2;
 }
 
+main {
+  max-width: 1440px;
+  padding: 3rem;
+}
+
 .carousel-section {
   margin-top: 3rem;
   padding: 2rem;
