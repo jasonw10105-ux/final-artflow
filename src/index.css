@@ -66,6 +66,7 @@ body {
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--color-neutral-100);
 }
 
 * { box-sizing: border-box; }
@@ -78,6 +79,15 @@ p {line-height: 160%; color: var(--color-neutral-700); }
   padding: 3rem;
   display: flex;
   justify-content: center; /* This centers items horizontally */
+}
+
+.aside {
+
+}
+
+.dashboard-main {
+  margin: 1rem;
+  padding: 2rem;
 }
 
 /* --- Card--- */
