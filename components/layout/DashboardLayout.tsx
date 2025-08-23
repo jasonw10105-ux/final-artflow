@@ -1,52 +1,112 @@
-import React from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
-import { LayoutDashboard, Palette, MessageSquare, Image, Settings, LogOut, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Palette, MessageSquare, Image, Settings, LogOut, BarChart3, Users, CreditCard, Menu, X } from 'lucide-react';
 
 const DashboardLayout = () => {
     const { profile } = useAuth();
     const navigate = useNavigate();
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
     const handleLogout = async () => {
         await supabase.auth.signOut();
         navigate('/');
     };
+    
     const isArtist = profile?.role === 'artist' || profile?.role === 'both';
-    const isCollector = profile?.role === 'collector' || profile?.role === 'both';
+    
+    const artistSidebarLinks = [
+        { to: "/artist/dashboard", icon: <LayoutDashboard size={18} />, label: "Dashboard" },
+        { to: "/artist/artworks", icon: <Image size={18} />, label: "Artworks" },
+        { to: "/artist/catalogues", icon: <Palette size={18} />, label: "Catalogues" },
+        { to: "/artist/contacts", icon: <Users size={18} />, label: "Contacts" },
+        { to: "/artist/messages", icon: <MessageSquare size={18} />, label: "Messages" },
+        { to: "/artist/sales", icon: <CreditCard size={18} />, label: "Sales" },
+        { to: "/artist/insights", icon: <BarChart3 size={18} />, label: "Insights" },
+    ];
+    
+    const artistBottomNavLinks = [
+        { to: "/artist/dashboard", icon: <LayoutDashboard size={22} />, label: "Home" },
+        { to: "/artist/artworks", icon: <Image size={22} />, label: "Art" },
+        { to: "/artist/catalogues", icon: <Palette size={18} />, label: "Catalogues" },
+        { to: "/artist/sales", icon: <CreditCard size={22} />, label: "Sales" },
+        { to: "/artist/messages", icon: <MessageSquare size={22} />, label: "Inbox" },
+    ];
 
-    const baseLinkStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', borderRadius: 'var(--radius)', textDecoration: 'none', color: 'var(--muted-foreground)', transition: 'background-color 0.2s, color 0.2s' };
-    const activeLinkStyle: React.CSSProperties = { ...baseLinkStyle, backgroundColor: 'var(--secondary)', color: 'var(--foreground)' };
+    const secondaryLinks = [
+        { to: "/artist/settings", icon: <Settings size={18} />, label: "Settings" },
+    ];
+
+    const linkClasses = ({ isActive }: { isActive: boolean }) => `sidebar-link ${isActive ? 'active' : ''}`;
+    const mobileLinkClasses = ({ isActive }: { isActive: boolean }) => `bottom-nav-link ${isActive ? 'active' : ''}`;
+    const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', height: '100vh', backgroundColor: 'var(--background)' }}>
-            <aside style={{ borderRight: '1px solid var(--border)', padding: '1rem', display: 'flex', flexDirection: 'column' }}>
-                <h2 style={{ marginBottom: '2rem', padding: '0 1rem' }}>{profile?.full_name}</h2>
-                <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 }}>
-                    {isArtist && (
-                        <>
-                            <NavLink to="/artist/dashboard" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><LayoutDashboard size={18} /> Dashboard</NavLink>
-                            <NavLink to="/artist/artworks" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><Image size={18} /> Artworks</NavLink>
-                            <NavLink to="/artist/catalogues" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><Palette size={18} /> Catalogues</NavLink>
-                            <NavLink to="/artist/messages" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><MessageSquare size={18} /> Messages</NavLink>
-                            <NavLink to="/artist/insights" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><BarChart3 size={18} /> Insights</NavLink>
-                        </>
-                    )}
-                    {isCollector && (
-                         <>
-                            <NavLink to="/collector/dashboard" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><LayoutDashboard size={18} /> Dashboard</NavLink>
-                            <NavLink to="/collector/inquiries" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><MessageSquare size={18} /> My Inquiries</NavLink>
-                        </>
-                    )}
-                </nav>
-                <div>
-                     <NavLink to="/artist/settings" style={({ isActive }) => isActive ? activeLinkStyle : baseLinkStyle}><Settings size={18} /> Settings</NavLink>
-                     <button onClick={handleLogout} style={{ ...baseLinkStyle, width: '100%', justifyContent: 'flex-start', background: 'transparent', border: 0 }}><LogOut size={18} /> Logout</button>
+        <>
+            {isArtist && (
+                <header className="mobile-top-bar">
+                    <Link to="/"><img src="/logo.svg" alt="Artflow" height="40px"/></Link>
+                    <button onClick={() => setIsMobileMenuOpen(true)} className="mobile-menu-button">
+                        <Menu size={24} />
+                    </button>
+                </header>
+            )}
+
+            {isMobileMenuOpen && (
+                <div className="mobile-menu-overlay" onClick={closeMobileMenu}>
+                    <div className="mobile-menu-content" onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                            <button onClick={closeMobileMenu} className="mobile-menu-button"><X size={24} /></button>
+                        </div>
+                        <nav className="sidebar-nav">
+                            {artistSidebarLinks.map(link => (
+                                <NavLink key={link.to} to={link.to} className={linkClasses} onClick={closeMobileMenu}>{link.icon} {link.label}</NavLink>
+                            ))}
+                        </nav>
+                        <div>
+                            {secondaryLinks.map(link => (
+                                <NavLink key={link.to} to={link.to} className={linkClasses} onClick={closeMobileMenu}>{link.icon} {link.label}</NavLink>
+                            ))}
+                            <button onClick={handleLogout} className="sidebar-link sidebar-footer-link"><LogOut size={18} /> Logout</button>
+                        </div>
+                    </div>
                 </div>
-            </aside>
-            <main style={{ padding: '2rem 3rem', overflowY: 'auto' }w}>
-                <Outlet />
-            </main>
-        </div>
+            )}
+
+            <div className="dashboard-grid">
+                <aside className="dashboard-sidebar">
+                    <Link to="/"><img src="/logo.svg" alt="Artflow" height="40px"/></Link>
+                    <nav className="sidebar-nav">
+                        {isArtist && artistSidebarLinks.map(link => (
+                            <NavLink key={link.to} to={link.to} className={linkClasses}>{link.icon} {link.label}</NavLink>
+                        ))}
+                    </nav>
+                    <div>
+                         {secondaryLinks.map(link => (
+                            <NavLink key={link.to} to={link.to} className={linkClasses}>{link.icon} {link.label}</NavLink>
+                         ))}
+                         <button onClick={handleLogout} className="sidebar-link sidebar-footer-link"><LogOut size={18} /> Logout</button>
+                    </div>
+                </aside>
+                
+                <main className="dashboard-main">
+                    <Outlet />
+                </main>
+            </div>
+            
+            {isArtist && (
+                <nav className="bottom-nav">
+                    {artistBottomNavLinks.map(link => (
+                        <NavLink key={link.to} to={link.to} className={mobileLinkClasses}>
+                            {link.icon}
+                            <span>{link.label}</span>
+                        </NavLink>
+                    ))}
+                </nav>
+            )}
+        </>
     );
 };
+
 export default DashboardLayout;
