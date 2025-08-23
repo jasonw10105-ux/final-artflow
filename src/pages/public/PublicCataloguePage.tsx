@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { ArrowLeft } from 'lucide-react';
-import '../../../index.css';
+import '../../index.css';
 
 const fetchPublicCatalogue = async (artistSlug: string, catalogueSlug: string) => {
     // First, find the catalogue ensuring it belongs to the correct artist via their slug
