@@ -36,21 +36,17 @@ const WaitlistPage = () => {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '2rem' }}>
-            <div style={{ textAlign: 'center', position: 'absolute', top: '1.5rem', right: '1.5rem' }}>
-                <Link to="/login" className="button button-secondary">Log In</Link>
-            </div>
-
             {isSubmitted ? (
-                <div style={{ textAlign: 'center', background: 'var(--card)', padding: '3rem', borderRadius: 'var(--radius)' }}>
-                    <h2 style={{ color: 'var(--primary)', marginBottom: '1rem' }}>You're on the list!</h2>
-                    <p style={{ color: 'var(--muted-foreground)', lineHeight: 1.6 }}>Thank you for joining. We'll be in touch soon with your exclusive invitation to join Artflow.</p>
+                <div class="card">
+                    <div class="logo-holder"></div><img src="../logo.svg" alt="Artflow" height="60px"/></div>
+                    <h2>You're on the list!</h2>
+                    <p>Thank you for joining. We'll be in touch soon with your exclusive invitation to join Artflow.</p>
                 </div>
             ) : (
-                <div style={{ textAlign: 'center', maxWidth: '500px' }}>
-                    <img src="../logo.svg" alt="Artflow" height="60px"/>
-                    <h1 style={{ marginBottom: '1rem' }}>Art, managed</h1>
-                    <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem', fontSize: '1.1rem' }}>Be the first to know when we launch. Join the waitlist for exclusive early access.</p>
+                <div class="card">
+                    <div class="logo-holder"><img src="../logo.svg" alt="Artflow" height="60px"/></div>
+                    <h1>Art, sorted</h1>
+                    <p>Be the first to know when we launch. Join the waitlist for exclusive early access.</p>
                     
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--card)', padding: '2rem', borderRadius: 'var(--radius)' }}>
                         <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email address" required />
@@ -71,7 +67,6 @@ const WaitlistPage = () => {
                     </form>
                 </div>
             )}
-        </div>
     );
 };
 
