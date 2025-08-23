@@ -1,13 +1,11 @@
-// src/components/dashboard/ArtworkEditorForm.tsx
-
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../contexts/AuthProvider'; // --- THIS IMPORT WAS MISSING ---
+import { useAuth } from '../../contexts/AuthProvider';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { X, Folder, Edit } from 'lucide-react';
 import CatalogueSelectionModal from './CatalogueSelectionModal';
 
-// Interfaces
+// --- INTERFACES ---
 interface ArtworkDimensions { height?: number; width?: number; depth?: number; unit?: string; }
 interface DateInfo { type?: string; year?: number; }
 interface SignatureInfo { is_signed?: boolean; location?: string; }
@@ -16,11 +14,11 @@ interface Catalogue { id: string; title: string; }
 interface ArtworkEditorFormProps {
     artworkId: string;
     formId: string;
-    onSaveSuccess?: (artworkId:string) => void;
+    onSaveSuccess?: (artworkId: string) => void;
     onTitleChange?: (newTitle: string) => void;
 }
 
-// Fetching functions
+// --- API FETCHING FUNCTIONS ---
 const fetchArtwork = async (artworkId: string) => {
     const { data, error } = await supabase.from('artworks').select('*').eq('id', artworkId).single();
     if (error) throw new Error("Artwork not found");
@@ -37,11 +35,12 @@ const fetchArtistCatalogues = async (userId: string) => {
     return data;
 }
 
+// --- COMPONENT ---
 const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: ArtworkEditorFormProps) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
-    // State management
+    // --- STATE MANAGEMENT ---
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [catalogueId, setCatalogueId] = useState<string | null>(null);
@@ -58,7 +57,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     const [tags, setTags] = useState<string[]>([]);
     const [tagInput, setTagInput] = useState('');
 
-    // Data Fetching
+    // --- DATA FETCHING ---
     const { data: artworkData, isLoading: isLoadingArtwork } = useQuery({
         queryKey: ['artwork', artworkId],
         queryFn: () => fetchArtwork(artworkId),
@@ -94,11 +93,13 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         enabled: !!user,
     });
     
+    // --- COMPUTED STATE ---
     const selectedCatalogueName = useMemo(() => {
         if (!catalogueId || !catalogues) return "No Catalogue";
         return catalogues.find(cat => cat.id === catalogueId)?.title || "No Catalogue";
     }, [catalogueId, catalogues]);
 
+    // --- EVENT HANDLERS ---
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newTitle = e.target.value;
         setTitle(newTitle);
@@ -106,36 +107,85 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             onTitleChange(newTitle);
         }
     };
+    
+    // --- NEW: MUTATION FOR IMAGE PROCESSING ---
+    // This calls the Supabase Edge Function to generate the watermark and visualization
+    const processImagesMutation = useMutation({
+        mutationFn: (variables: { artworkId: string }) => {
+            return supabase.functions.invoke('process-artwork-images', {
+                body: { 
+                    artworkId: variables.artworkId,
+                    forceWatermarkUpdate: true, // Always create on first save
+                    forceVisualizationUpdate: true // Always create on first save
+                }
+            });
+        },
+        onSuccess: () => {
+            console.log("Image processing function invoked successfully.");
+            // Refetch the artwork data to get the new image URLs
+            queryClient.invalidateQueries({ queryKey: ['artwork', artworkId] });
+        },
+        onError: (error) => {
+            // We alert the user, but don't block the UI flow.
+            // The main artwork data was already saved successfully.
+            alert(`Artwork saved, but could not process images: ${error.message}`);
+        }
+    });
 
+    // --- UPDATED: MAIN MUTATION TO SAVE ARTWORK DATA ---
     const mutation = useMutation({
         mutationFn: async () => {
             if (!user || !artworkId) throw new Error("User or Artwork ID is missing.");
             if (!title) throw new Error("Title is a required field.");
 
-            const newStatus = artworkData?.status === 'Pending' ? 'Available' : artworkData?.status;
+            // Check if this is the first time saving (status will be 'Pending')
+            const isFirstSave = artworkData?.status === 'Pending';
+            // If it's the first save, change status to 'Available' (or 'Active' based on your schema)
+            const newStatus = isFirstSave ? 'Available' : artworkData?.status;
 
             const artworkUpdateData = {
-                title, description, status: newStatus,
+                title, 
+                description, 
+                status: newStatus,
                 catalogue_id: catalogueId,
                 price: price || null,
                 is_price_negotiable: isNegotiable,
                 min_price: isNegotiable ? (minPrice || null) : null,
                 max_price: isNegotiable ? (maxPrice || null) : null,
-                dimensions, location, medium, date_info: dateInfo, signature_info: signatureInfo,
+                dimensions, 
+                location, 
+                medium, 
+                date_info: dateInfo, 
+                signature_info: signatureInfo,
             };
             const { error: artworkError } = await supabase.from('artworks').update(artworkUpdateData).eq('id', artworkId);
             if (artworkError) throw artworkError;
 
+            // Update tags separately
             await supabase.from('artwork_tags').delete().eq('artwork_id', artworkId);
             if (tags.length > 0) {
                 const newTags = tags.map(tag => ({ artwork_id: artworkId, tag }));
                 await supabase.from('artwork_tags').insert(newTags);
             }
+            
+            // Return whether this was the first save to the onSuccess callback
+            return { isFirstSave };
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
+            // Invalidate queries to refetch data across the app
             queryClient.invalidateQueries({ queryKey: ['artwork', artworkId] });
             queryClient.invalidateQueries({ queryKey: ['artwork_tags', artworkId] });
-            queryClient.invalidateQueries({ queryKey: ['artworks-wizard'] });
+            queryClient.invalidateQueries({ queryKey: ['artworks-wizard'] }); // For the wizard UI
+            queryClient.invalidateQueries({ queryKey: ['artworks'] }); // For the main list
+
+            // --- NEW LOGIC ---
+            // If this was the first save, trigger the image processing function
+            if (data.isFirstSave) {
+                console.log("First save detected, triggering image processing...");
+                processImagesMutation.mutate({ artworkId });
+            }
+
+            // Call the success callback passed from the parent (e.g., to go to the next wizard step)
             if (onSaveSuccess) onSaveSuccess(artworkId);
         },
         onError: (error: any) => alert(`Error saving artwork: ${error.message}`)
@@ -149,9 +199,11 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             setTagInput('');
         }
     };
+
     const removeTag = (tagToRemove: string) => {
         setTags(tags.filter(tag => tag !== tagToRemove));
     };
+
     const handleSelectCatalogue = (newCatalogueId: string | null) => {
         setCatalogueId(newCatalogueId);
     };
@@ -188,7 +240,6 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                     </div>
                 </fieldset>
 
-                {/* All other fieldsets remain the same */}
                 <fieldset>
                     <legend>Pricing</legend>
                     <label>List Price (USD)</label>
@@ -243,7 +294,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                         {tags.map(tag => (
                             <div key={tag} style={{ background: 'var(--primary)', color: 'var(--primary-foreground)', padding: '0.25rem 0.75rem', borderRadius: '99px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 {tag}
-                                <button onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}><X size={14} /></button>
+                                <button type="button" onClick={() => removeTag(tag)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}><X size={14} /></button>
                             </div>
                         ))}
                     </div>
