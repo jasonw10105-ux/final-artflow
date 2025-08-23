@@ -84,6 +84,16 @@ p { margin: 0 0 1rem 0; line-height: 1.6; color: var(--muted-foreground); }
   text-align: center;
 }
 
+#artwork_grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+#artwork_grid > div {
+  grid-column: span 2;
+}
+
 .carousel-section {
   margin-top: 3rem;
   padding: 2rem;
