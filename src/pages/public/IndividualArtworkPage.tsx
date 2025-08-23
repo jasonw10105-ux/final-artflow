@@ -75,7 +75,6 @@ const IndividualArtworkPage = () => {
     const hasAboutTab = artwork.rarity || artwork.medium || artwork.condition || artwork.framing_info?.is_framed || artwork.signature_info?.is_signed;
     const hasProvenance = artwork.provenance;
     const showTabs = hasAboutTab || hasProvenance;
-
     const primaryMedium = artwork.medium?.split(',')[0];
 
     const renderPrice = () => {
@@ -110,34 +109,40 @@ const IndividualArtworkPage = () => {
                 </div>
                 <div>
                     <h1>
-                      <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><br />
-                      <i>{artwork.title}</i>
-                      {creationYear && (
-                        <> <span className="artwork_date">({creationYear})</span></>
-                      )}
+                        <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link><br />
+                        <i>{artwork.title}</i>
+                        {creationYear && <span className="artwork_date"> ({creationYear})</span>}
                     </h1>
 
                     {primaryMedium && <p>{primaryMedium}</p>}
 
                     <div>
-                        {renderPrice()}
+                        {artwork.status === 'Sold' && (
+                            <p><strong>Status:</strong> Sold</p>
+                        )}
+                        
+                        {artwork.status !== 'Sold' && renderPrice()}
+
                         <div id="artwork_actions">
-                            {!artwork.is_price_negotiable && (
-                                <button className="button button-primary" onClick={handleBuyNow}>
-                                    Purchase
-                                </button>
+                            {artwork.status !== 'Sold' && (
+                                <>
+                                    {!artwork.is_price_negotiable && (
+                                        <button className="button button-primary" onClick={handleBuyNow}>
+                                            Purchase
+                                        </button>
+                                    )}
+                                    <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire</button>
+                                </>
                             )}
-                            <button className="button" onClick={() => setShowInquiryModal(true)}>Inquire</button>
                             <button className="button button-secondary" onClick={handleShare}>
                                 <Share2 size={16} /> Share
                             </button>
                         </div>
+
                         {artwork.catalogue_id && (
                             <p>
                                 This work is part of a curated catalogue.{' '}
-                                <Link to={`/catalogue/${artwork.catalogue_id}`}>
-                                    View Catalogue
-                                </Link>
+                                <Link to={`/catalogue/${artwork.catalogue_id}`}>View Catalogue</Link>
                             </p>
                         )}
                     </div>
@@ -162,22 +167,32 @@ const IndividualArtworkPage = () => {
                     <div>
                         {activeTab === 'about' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                
                                 <div id="artwork_description">
                                     <p>{artwork.description || "No description provided."}</p>
                                 </div>
-                                
+
                                 {artwork.rarity && <p><strong>Rarity:</strong> {artwork.rarity}</p>}
                                 {artwork.medium && <p><strong>Medium:</strong> {artwork.medium}</p>}
                                 {artwork.condition && <p><strong>Condition:</strong> {artwork.condition}</p>}
+                                {artwork.dimensions && (
+                                    <p><strong>Dimensions:</strong> {artwork.dimensions.height} × {artwork.dimensions.width} {artwork.dimensions.unit || 'cm'}</p>
+                                )}
+                                {artwork.location && <p><strong>Location of Artwork:</strong> {artwork.location}</p>}
+                                {artwork.date_info?.display && <p><strong>Date Info:</strong> {artwork.date_info.display}</p>}
                                 {artwork.framing_info?.is_framed !== undefined && (
                                     <p><strong>Framing:</strong> {artwork.framing_info.is_framed ? 'Framed' : 'Not framed'}</p>
                                 )}
                                 {artwork.framing_info?.location && (
                                     <p><strong>Framing Location:</strong> {artwork.framing_info.location}</p>
                                 )}
+                                {artwork.frame_details && (
+                                    <p><strong>Frame Details:</strong> {artwork.frame_details}</p>
+                                )}
                                 {artwork.signature_info?.is_signed && (
                                     <p><strong>Signature:</strong> Signed{artwork.signature_info.location ? ` (${artwork.signature_info.location})` : ''}</p>
+                                )}
+                                {artwork.signature_info?.description && (
+                                    <p><strong>Signature Details:</strong> {artwork.signature_info.description}</p>
                                 )}
                             </div>
                         )}
@@ -190,39 +205,47 @@ const IndividualArtworkPage = () => {
                     </div>
                 </div>
             )}
-                
+
             {(artwork.artist.bio || artwork.artist.short_bio) && (
-              <div className="section_details">
-                <img
-                  src={artwork.artist.avatar_url || 'https://placehold.co/128x128'}
-                  alt={artwork.artist.full_name || ''}
-                  style={{
-                    width: '128px',
-                    height: '128px',
-                    borderRadius: '50%',
-                    objectFit: 'cover',
-                    border: '2px solid var(--border)',
-                  }}
-                />
-            
-                <h3>{artwork.artist.full_name}</h3>
-            
-                {artwork.artist.location?.city || artwork.artist.location?.country ? (
-                  <p>
-                    {artwork.artist.location.city}
-                    {artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}
-                    {artwork.artist.location.country}
-                  </p>
-                ) : null}
-            
-                <p>{artwork.artist.bio || artwork.artist.short_bio}</p>
-            
-                <Link to={`/${artwork.artist.slug}`}>More</Link>
-              </div>
+                <div className="section_details">
+                    <img
+                        src={artwork.artist.avatar_url || 'https://placehold.co/128x128'}
+                        alt={artwork.artist.full_name || ''}
+                        style={{
+                            width: '128px',
+                            height: '128px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            border:```jsx
+                            border: '2px solid var(--border)',
+                        }}
+                    />
+
+                    <h3>{artwork.artist.full_name}</h3>
+
+                    {artwork.artist.location?.city || artwork.artist.location?.country ? (
+                        <p>
+                            {artwork.artist.location.city}
+                            {artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}
+                            {artwork.artist.location.country}
+                        </p>
+                    ) : null}
+
+                    <p>{artwork.artist.bio || artwork.artist.short_bio}</p>
+
+                    <Link to={`/${artwork.artist.slug}`}>More</Link>
+                </div>
             )}
 
             <div className="section_details">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '1rem', marginBottom: '2rem' }}>
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    borderBottom: '1px solid var(--border)',
+                    paddingBottom: '1rem',
+                    marginBottom: '2rem'
+                }}>
                     <h3>Other works by {artwork.artist.full_name}</h3>
                     <Link to={`/${artwork.artist.slug}`}>View all</Link>
                 </div>
@@ -231,8 +254,16 @@ const IndividualArtworkPage = () => {
                     <div>
                         {relatedArtworks.map((art) => (
                             <Link to={`/${artwork.artist.slug}/artwork/${art.slug}`} key={art.id} style={{ textDecoration: 'none', color: 'inherit' }}>
-                                <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                                    <img src={art.image_url || 'https://placehold.co/300x300?text=Image+Not+Available'} alt={art.title || ''} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }} />
+                                <div style={{
+                                    background: 'var(--card)',
+                                    borderRadius: 'var(--radius)',
+                                    overflow: 'hidden'
+                                }}>
+                                    <img
+                                        src={art.image_url || 'https://placehold.co/300x300?text=Image+Not+Available'}
+                                        alt={art.title || ''}
+                                        style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }}
+                                    />
                                     <div style={{ padding: '1rem' }}>
                                         <h4>{art.title}</h4>
                                         <p style={{ color: 'var(--primary)' }}>${art.price?.toLocaleString('en-US')}</p>
