@@ -168,13 +168,12 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             />
             <form id={formId} onSubmit={(e) => { e.preventDefault(); mutation.mutate(); }} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                 <fieldset>
-                    <legend>Core Details</legend>
                     <label>Title*</label>
                     <input className="input" value={title} onChange={handleTitleChange} required />
-                    <label>Description</label>
+                    <label>Optional description</label>
                     <textarea className="input" value={description} onChange={e => setDescription(e.target.value)} rows={5}></textarea>
                     
-                    <label>Catalogue</label>
+                    <label>Add this to a catalogue</label>
                     <div style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         padding: '0.75rem 1rem', background: 'var(--input)', borderRadius: 'var(--radius)'
@@ -207,7 +206,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 </fieldset>
 
                 <fieldset>
-                    <legend>Physical Details</legend>
+                    <legend>Details</legend>
                     <label>Medium</label>
                     <input className="input" value={medium} onChange={e => setMedium(e.target.value)} placeholder="e.g., Oil on canvas" />
                     <label>Dimensions</label>
@@ -222,7 +221,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 </fieldset>
 
                 <fieldset>
-                    <legend>Artwork History</legend>
+                    <legend>History</legend>
                     <label>Creation Date</label>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <select className="input" value={dateInfo.type} onChange={e => setDateInfo(d => ({...d, type: e.target.value}))}><option>Created</option><option>Circa</option></select>
