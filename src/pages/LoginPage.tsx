@@ -19,9 +19,14 @@ const LoginPage = () => {
     };
 
     return (
-        <div class="gradient-polish" style={{ maxWidth: '400px', margin: '5rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
-            <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Login to Your Account</h2>
-            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div class="gradient-polish">
+            <div className="card">
+            <div className="logo-holder">
+                            <img src="../logo.svg" alt="Artflow" height="60px" />
+                        </div>
+            <h2>Welcome back</h2>
+            <p>Sign in to your account</p>
+            <form onSubmit={handleLogin}>
                 <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required/>
                 <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required/>
                 <button className="button button-primary" type="submit" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>
@@ -30,6 +35,7 @@ const LoginPage = () => {
             <div style={{ marginTop: '1rem', textAlign: 'center' }}>
                 <Link to="/forgot-password">Forgot your password?</Link>
             </div>
+        </div>
             <div style={{ marginTop: '1rem', textAlign: 'center', color: 'var(--muted-foreground)' }}>
                 Don't have an account? <Link to="/register">Register here</Link>
             </div>
