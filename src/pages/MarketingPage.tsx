@@ -1,11 +1,18 @@
-// src/pages/MarketingPage.tsx
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabaseClient';
 
-// --- TYPE DEFINITIONS for strict type safety ---
+// Import Swiper React components and modules
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Navigation, Pagination } from 'swiper/modules';
+
+// Import Swiper styles
+import 'swiper/css';
+import 'swiper/css/navigation';
+import 'swiper/css/pagination';
+
+// --- TYPE DEFINITIONS ---
 interface Artwork {
     id: string; title: string; image_url: string; slug: string; price: number;
     profiles: { full_name: string; slug: string; };
@@ -15,10 +22,10 @@ interface Catalogue {
     profiles: { full_name: string; slug: string; };
 }
 interface Artist {
-    id: string; full_name: string; avatar_url: string; slug: string; bio: string;
+    id: string; full_name: string; avatar_url: string; slug: string; short_bio: string;
 }
 
-// --- API FUNCTIONS to call the database RPCs ---
+// --- API FUNCTIONS ---
 const fetchRandomArtworks = async (count: number): Promise<Artwork[]> => {
     const { data, error } = await supabase.rpc('get_random_artworks', { limit_count: count });
     if (error) throw new Error(error.message);
@@ -26,7 +33,6 @@ const fetchRandomArtworks = async (count: number): Promise<Artwork[]> => {
         ...art, profiles: { full_name: art.profile_full_name, slug: art.profile_slug }
     }));
 };
-
 const fetchRandomCatalogues = async (count: number): Promise<Catalogue[]> => {
     const { data, error } = await supabase.rpc('get_random_catalogues', { limit_count: count });
     if (error) throw new Error(error.message);
@@ -34,30 +40,27 @@ const fetchRandomCatalogues = async (count: number): Promise<Catalogue[]> => {
         ...cat, profiles: { full_name: cat.profile_full_name, slug: cat.profile_slug }
     }));
 };
-
 const fetchRandomArtists = async (count: number): Promise<Artist[]> => {
     const { data, error } = await supabase.rpc('get_random_artists', { limit_count: count });
     if (error) throw new Error(error.message);
     return data || [];
 };
 
-// --- GENERIC UI CARD COMPONENTS ---
+// --- UI CARD COMPONENTS ---
 const ArtworkCard = ({ item }: { item: Artwork }) => (
-    // --- FIXED: Link updated to the new URL structure ---
     <Link to={`/${item.profiles.slug}/artwork/${item.slug}`} className="card-link">
         <img src={item.image_url} alt={item.title} className="card-image" />
         <div className="card-info">
             <h4>{item.title}</h4>
             <p className="card-subtext">{item.profiles.full_name}</p>
-            <p className="card-price">${item.price}</p>
+            <p className="card-price">${item.price.toLocaleString()}</p>
         </div>
     </Link>
 );
 
 const CatalogueCard = ({ item }: { item: Catalogue }) => (
-    // --- FIXED: Link updated to the new URL structure ---
     <Link to={`/${item.profiles.slug}/catalogue/${item.slug}`} className="card-link">
-        <img src={item.cover_image_url || 'https://placehold.co/600x600'} alt={item.title} className="card-image" />
+        <img src={item.cover_image_url || 'https://placehold.co/400x400'} alt={item.title} className="card-image" />
         <div className="card-info">
             <h4>{item.title}</h4>
             <p className="card-subtext">by {item.profiles.full_name}</p>
@@ -67,21 +70,42 @@ const CatalogueCard = ({ item }: { item: Catalogue }) => (
 
 const ArtistCard = ({ item }: { item: Artist }) => (
      <Link to={`/${item.slug}`} className="card-link">
-        <img src={item.avatar_url || 'https://placehold.co/600x600'} alt={item.full_name} className="card-image" />
+        <img src={item.avatar_url || 'https://placehold.co/400x400'} alt={item.full_name} className="card-image" />
         <div className="card-info">
             <h4>{item.full_name}</h4>
-            <p className="card-subtext artist-bio">{item.bio}</p>
+            <p className="card-subtext artist-bio">{item.short_bio}</p>
         </div>
     </Link>
 );
 
-// --- GENERIC CAROUSEL COMPONENT ---
+// --- REFACTORED CAROUSEL COMPONENT USING SWIPER ---
 const ContentCarousel = ({ title, data, isLoading, renderCard }: { title: string, data: any[] | undefined, isLoading: boolean, renderCard: (item: any) => React.ReactNode }) => (
-    <section style={{ marginTop: '4rem' }}>
-        <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>{title}</h2>
-        <div style={{ display: 'flex', gap: '1.5rem', overflowX: 'auto', paddingBottom: '1rem' }}>
-            {isLoading ? <p>Loading...</p> : data?.map(item => renderCard(item))}
-        </div>
+    <section className="carousel-section">
+        <h2 className="carousel-title">{title}</h2>
+        {isLoading ? (
+            <p>Loading...</p>
+        ) : (
+            <Swiper
+                modules={[Navigation, Pagination]}
+                spaceBetween={24}
+                slidesPerView={1.5}
+                navigation
+                pagination={{ clickable: true }}
+                breakpoints={{
+                    640: { slidesPerView: 2.5, spaceBetween: 24 },
+                    768: { slidesPerView: 3, spaceBetween: 24 },
+                    1024: { slidesPerView: 4, spaceBetween: 30 },
+                    1280: { slidesPerView: 5, spaceBetween: 30 },
+                }}
+                className="content-swiper"
+            >
+                {data?.map(item => (
+                    <SwiperSlide key={item.id}>
+                        {renderCard(item)}
+                    </SwiperSlide>
+                ))}
+            </Swiper>
+        )}
     </section>
 );
 
@@ -93,35 +117,26 @@ const MarketingPage = () => {
     });
     const { data: featuredCatalogues, isLoading: isLoadingCatalogues } = useQuery({
         queryKey: ['featuredCatalogues'],
-        queryFn: () => fetchRandomCatalogues(5),
+        queryFn: () => fetchRandomCatalogues(8),
     });
     const { data: featuredArtists, isLoading: isLoadingArtists } = useQuery({
         queryKey: ['featuredArtists'],
-        queryFn: () => fetchRandomArtists(5),
+        queryFn: () => fetchRandomArtists(8),
     });
 
     return (
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '2rem' }}>
-            <style>{`
-                .card-link { text-decoration: none; color: inherit; flex-shrink: 0; width: 300px; }
-                .card-image { width: 100%; height: 280px; object-fit: cover; border-radius: var(--radius); }
-                .card-info { padding-top: 1rem; }
-                .card-subtext { color: var(--muted-foreground); font-size: 0.875rem; margin-top: 0.25rem; }
-                .card-price { color: var(--primary); font-weight: 600; margin-top: 0.5rem; }
-                .artist-bio { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-            `}</style>
-            
-            <header style={{ textAlign: 'center', padding: '5rem 2rem' }}>
-                <h1 style={{ fontSize: '3rem', marginBottom: '1rem' }}>Art, managed</h1>
-                <p style={{ fontSize: '1.25rem', color: 'var(--muted-foreground)', marginBottom: '2rem' }}>For artists to build their careers and for collectors to discover their next acquisition</p>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
-                    <Link to="/register"><button className="button button-primary">Get started for free</button></Link>
+        <div className="marketing-page-container">
+            <header className="hero-section">
+                <h1 className="hero-title">Art, managed</h1>
+                <p className="hero-subtitle">For artists to build their careers and for collectors to discover their next acquisition.</p>
+                <div className="hero-actions">
+                    <Link to="/register" className="button button-primary">Get started for free</Link>
                 </div>
             </header>
 
-            <ContentCarousel title="Featured Artworks" data={featuredArtworks} isLoading={isLoadingArtworks} renderCard={(item: Artwork) => <ArtworkCard key={item.id} item={item} />} />
-            <ContentCarousel title="Featured Catalogues" data={featuredCatalogues} isLoading={isLoadingCatalogues} renderCard={(item: Catalogue) => <CatalogueCard key={item.id} item={item} />} />
-            <ContentCarousel title="Featured Artists" data={featuredArtists} isLoading={isLoadingArtists} renderCard={(item: Artist) => <ArtistCard key={item.id} item={item} />} />
+            <ContentCarousel title="Featured Artworks" data={featuredArtworks} isLoading={isLoadingArtworks} renderCard={(item: Artwork) => <ArtworkCard item={item} />} />
+            <ContentCarousel title="Featured Catalogues" data={featuredCatalogues} isLoading={isLoadingCatalogues} renderCard={(item: Catalogue) => <CatalogueCard item={item} />} />
+            <ContentCarousel title="Featured Artists" data={featuredArtists} isLoading={isLoadingArtists} renderCard={(item: Artist) => <ArtistCard item={item} />} />
         </div>
     );
 };
