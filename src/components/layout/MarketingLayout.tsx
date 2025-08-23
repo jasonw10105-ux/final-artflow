@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthProvider';
-import '../../../index.css'; // Added import
 import NotificationIcon from '../notifications/NotificationIcon';
 
 const useIsMobile = (breakpoint = 768) => {
