@@ -1,15 +1,14 @@
-// src/pages/public/IndividualArtworkPage.tsx
-
-import React from 'react';
+import React, { useState, useEffect } from 'react'; // UPDATED: Added useState and useEffect
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import InquiryModal from '../../components/public/InquiryModal';
-import { Share2, ShoppingCart, ArrowLeft } from 'lucide-react'; // RESTORED: ShoppingCart icon import
+// UPDATED: Added Eye and X icons for the new modal feature
+import { Share2, ShoppingCart, ArrowLeft, Eye, X } from 'lucide-react'; 
 import '../../index.css';
 
-// --- (These fetch functions are correct) ---
+// --- (These fetch functions are correct and will fetch the 'visualization_image_url' because of `select('*')`) ---
 const fetchArtworkBySlug = async (artworkSlug: string | undefined) => {
     if (!artworkSlug) throw new Error("Artwork slug is required.");
     const { data, error } = await supabase
@@ -36,8 +35,10 @@ const fetchRelatedArtworks = async (artworkId: string, artistId: string) => {
 
 const IndividualArtworkPage = () => {
     const { artworkSlug } = useParams<{ artworkSlug: string }>();
-    const [showInquiryModal, setShowInquiryModal] = React.useState(false);
-    const [activeTab, setActiveTab] = React.useState('about');
+    const [showInquiryModal, setShowInquiryModal] = useState(false);
+    // --- NEW: State to control the visualization modal ---
+    const [showVisualizationModal, setShowVisualizationModal] = useState(false);
+    const [activeTab, setActiveTab] = useState('about');
     const { addViewedArtwork } = useRecentlyViewed();
     const navigate = useNavigate();
 
@@ -53,19 +54,31 @@ const IndividualArtworkPage = () => {
         enabled: !!artwork,
     });
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (artwork) {
             addViewedArtwork?.(artwork.id);
             supabase.rpc('log_artwork_view', { p_artwork_id: artwork.id, p_artist_id: artwork.user_id });
         }
     }, [artwork, addViewedArtwork]);
 
+    // --- NEW: Effect to prevent background scrolling when modal is open ---
+    useEffect(() => {
+        if (showVisualizationModal) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'unset';
+        }
+        // Cleanup function to restore scrolling when component unmounts
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, [showVisualizationModal]);
+
     const handleShare = () => {
         navigator.clipboard.writeText(window.location.href);
         alert('Link copied to clipboard!');
     };
     
-    // RESTORED: Original handleBuyNow function
     const handleBuyNow = () => {
         alert('Payment gateway integration needed.');
     };
@@ -79,13 +92,11 @@ const IndividualArtworkPage = () => {
         </div>
     );
 
-    // --- RESTORED: All original data variables and logic ---
     const creationYear = artwork.created_at ? new Date(artwork.created_at).getFullYear() : null;
     const hasAboutTab = artwork.medium || artwork.framing_info?.is_framed || artwork.signature_info?.is_signed;
     const hasProvenance = artwork.provenance;
     const showTabs = hasAboutTab || hasProvenance;
 
-    // RESTORED: The complete, original price rendering logic
     const renderPrice = () => {
         if (artwork.status === 'Sold') {
             return <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>Sold</p>;
@@ -98,6 +109,18 @@ const IndividualArtworkPage = () => {
         }
         return <h2 className="artwork-price">Price on request</h2>;
     };
+    
+    // --- NEW: Inline component for the visualization modal ---
+    const VisualizationModal = () => (
+        <div style={modalStyles.backdrop} onClick={() => setShowVisualizationModal(false)}>
+            <div style={modalStyles.content} onClick={(e) => e.stopPropagation()}>
+                <button style={modalStyles.closeButton} onClick={() => setShowVisualizationModal(false)}>
+                    <X size={24} color="black" />
+                </button>
+                <img src={artwork.visualization_image_url!} alt={`Visualization of ${artwork.title}`} style={modalStyles.image} />
+            </div>
+        </div>
+    );
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
@@ -110,14 +133,23 @@ const IndividualArtworkPage = () => {
                 Back
             </button>
 
-            {/* RESTORED: Original grid with all IDs and classes */}
             <div id="artwork_grid">
                 <div id="artwork_img">
                     <img src={artwork.image_url || 'https://placehold.co/600x600?text=Image+Not+Available'} alt={artwork.title || ''}/>
+                    
+                    {/* --- NEW: Button to trigger the visualization modal --- */}
+                    {artwork.visualization_image_url && (
+                        <button 
+                            className="button button-secondary" 
+                            style={{ width: '100%', marginTop: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }} 
+                            onClick={() => setShowVisualizationModal(true)}
+                        >
+                            <Eye size={16} /> View in a Room
+                        </button>
+                    )}
                 </div>
                 <div className="artwork-main-info">
                     <h1>
-                        {/* ROUTING FIX APPLIED */}
                         <Link to={`/${artwork.artist.slug}`} className="artist-link">{artwork.artist.full_name}</Link>
                     </h1>
                     <h2>
@@ -131,7 +163,6 @@ const IndividualArtworkPage = () => {
                         {renderPrice()}
                     </div>
 
-                    {/* RESTORED: Original actions section with all buttons and logic */}
                     <div id="artwork_actions">
                         {artwork.status !== 'Sold' && (
                             <>
@@ -148,18 +179,15 @@ const IndividualArtworkPage = () => {
                         </button>
                     </div>
 
-                    {/* RESTORED: Catalogue link */}
                     {artwork.catalogue_id && (
                         <p className="catalogue-note">
                             This work is part of a curated catalogue.
-                            {/* NOTE: Ensure your routes support this link structure */}
                             <Link to={`/${artwork.artist.slug}/catalogue/${artwork.catalogue_id}`}> View Catalogue</Link>
                         </p>
                     )}
                 </div>
             </div>
 
-            {/* RESTORED: Original tabs section */}
             {showTabs && (
                 <div className="section_details artwork-tabs">
                     <div className="tab-header">
@@ -178,7 +206,6 @@ const IndividualArtworkPage = () => {
                         {activeTab === 'about' && (
                             <div id="artwork_description">
                                 <p>{artwork.description || "No description provided."}</p>
-                                {/* RESTORED: Full details list */}
                                 <ul className="details-list">
                                     {artwork.medium && <li><strong>Medium:</strong> {artwork.medium}</li>}
                                     {artwork.dimensions?.width && artwork.dimensions?.height && <li><strong>Dimensions:</strong> {artwork.dimensions.height} × {artwork.dimensions.width}{artwork.dimensions.depth ? ` × ${artwork.dimensions.depth}`: ''} {artwork.dimensions.unit || ''}</li>}
@@ -196,7 +223,6 @@ const IndividualArtworkPage = () => {
                 </div>
             )}
 
-            {/* RESTORED: Original artist spotlight section */}
             {(artwork.artist.bio || artwork.artist.short_bio) && (
                 <div className="section_details artist-spotlight">
                     <img src={artwork.artist.avatar_url || 'https://placehold.co/128x128'} alt={artwork.artist.full_name || ''} className="artist-avatar" />
@@ -208,24 +234,20 @@ const IndividualArtworkPage = () => {
                             </p>
                         ) : null}
                         <p className="artist-bio">{artwork.artist.bio || artwork.artist.short_bio}</p>
-                        {/* ROUTING FIX APPLIED */}
                         <Link to={`/${artwork.artist.slug}`} className="button-link">View artist profile &rarr;</Link>
                     </div>
                 </div>
             )}
             
-            {/* RESTORED: Original related artworks section */}
             <div className="section_details">
                 <div className="related-header">
                     <h3>Other works by {artwork.artist.full_name}</h3>
-                    {/* ROUTING FIX APPLIED */}
                     <Link to={`/${artwork.artist.slug}`} className="button-link">View all</Link>
                 </div>
                 {isLoadingRelated && <p>Loading suggestions...</p>}
                 {relatedArtworks && relatedArtworks.length > 0 ? (
                     <div className="related-grid">
                         {relatedArtworks.map((art) => (
-                            // ROUTING FIX APPLIED
                             <Link to={`/${artwork.artist.slug}/artwork/${art.slug}`} key={art.id} className="artwork-card-link">
                                 <div className="artwork-card">
                                     <img src={art.image_url || 'https://placehold.co/300x300'} alt={art.title || ''} className="artwork-card-image" />
@@ -241,8 +263,59 @@ const IndividualArtworkPage = () => {
             </div>
 
             {showInquiryModal && <InquiryModal artworkId={artwork.id} onClose={() => setShowInquiryModal(false)} previewImageUrl={artwork.image_url || undefined} previewTitle={artwork.title || undefined} />}
+            {/* --- NEW: Render the visualization modal when its state is true --- */}
+            {showVisualizationModal && <VisualizationModal />}
         </div>
     );
+};
+
+// --- NEW: Styles for the modal ---
+const modalStyles: { [key: string]: React.CSSProperties } = {
+    backdrop: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(5px)',
+    },
+    content: {
+        position: 'relative',
+        padding: '1rem',
+        background: '#fff',
+        borderRadius: '8px',
+        maxWidth: '90%',
+        maxHeight: '90%',
+        boxShadow: '0 4px 30px rgba(0, 0, 0, 0.2)',
+        overflow: 'hidden',
+    },
+    image: {
+        display: 'block',
+        maxWidth: '100%',
+        maxHeight: 'calc(90vh - 2rem)', // account for padding
+        objectFit: 'contain',
+    },
+    closeButton: {
+        position: 'absolute',
+        top: '12px',
+        right: '12px',
+        background: 'rgba(255, 255, 255, 0.8)',
+        border: 'none',
+        borderRadius: '50%',
+        cursor: 'pointer',
+        width: '32px',
+        height: '32px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 0,
+        zIndex: 1001,
+    }
 };
 
 export default IndividualArtworkPage;
