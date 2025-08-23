@@ -8,14 +8,19 @@ import { ArrowLeft } from 'lucide-react';
 import '../../index.css';
 import InquiryModal from '../../components/public/InquiryModal';
 
-// ... (fetchPublicCatalogue function remains the same) ...
+// --- (Keep your existing fetch function) ---
+const fetchPublicCatalogue = async (artistSlug: string, catalogueSlug: string) => {
+    const { data: catalogue, error: catalogueError } = await supabase.from('catalogues').select('*, artist:profiles!inner(full_name, slug)').eq('slug', catalogueSlug).eq('artist.slug', artistSlug).single();
+    if (catalogueError) { console.error("Supabase error fetching catalogue:", catalogueError.message); throw new Error('Catalogue not found.'); }
+    const { data: artworks, error: artworksError } = await supabase.from('artworks').select('id, title, slug, image_url, price').eq('catalogue_id', catalogue.id).eq('status', 'Active').order('created_at', { ascending: false });
+    if (artworksError) { console.error("Supabase error fetching artworks:", artworksError.message); throw new Error('Could not fetch artworks for this catalogue.'); }
+    return { catalogue, artworks };
+};
 
 type ArtworkForModal = {
     id: string;
     title: string | null;
-    slug: string;
     image_url: string | null;
-    price: number;
 };
 
 const PublicCataloguePage = () => {
@@ -31,46 +36,57 @@ const PublicCataloguePage = () => {
     });
 
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading Catalogue...</p>;
-    if (isError || !data) return <p style={{ textAlign: 'center', padding: '5rem' }}>This catalogue could not be found.</p>;
+    if (isError || !data) return (
+        <div style={{ textAlign: 'center', padding: '5rem' }}>
+            <h1>404 - Catalogue Not Found</h1>
+            <p>This catalogue could not be found or is no longer available.</p>
+            <Link to="/artists" className="button button-primary">Browse Artists</Link>
+        </div>
+    );
 
     const { catalogue, artworks } = data;
 
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-            {/* ... (header and back button remain the same) ... */}
+            <button onClick={() => navigate(-1)} className="button button-secondary" style={{ marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ArrowLeft size={16} /> Back
+            </button>
+
+            <header style={{ marginBottom: '3rem', textAlign: 'center' }}>
+                <h1 style={{ fontSize: 'clamp(2rem, 5vw, 2.5rem)' }}>{catalogue.title}</h1>
+                {/* FIX: Ensure a leading slash for an absolute path */}
+                <Link to={`/${catalogue.artist.slug}`} style={{textDecoration: 'none'}}>
+                    <h2 style={{ fontSize: '1.2rem', color: 'var(--muted-foreground)', marginTop: '0.5rem' }}>
+                        From the collection of {catalogue.artist.full_name}
+                    </h2>
+                </Link>
+                {catalogue.description && <p style={{ marginTop: '1rem', maxWidth: '800px', margin: '1rem auto', lineHeight: 1.6 }}>{catalogue.description}</p>}
+            </header>
 
             {artworks && artworks.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                     {artworks.map(art => (
                         <div key={art.id} style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                            {/* CRITICAL FIX: The URL must match the pattern /:profileSlug/artwork/:artworkSlug */}
                             <Link to={`/${catalogue.artist.slug}/artwork/${art.slug}`} className="artwork-card-link" style={{ textDecoration: 'none', color: 'inherit' }}>
-                                <img src={art.image_url || 'https://placehold.co/600x400?text=No+Image'} alt={art.title || 'Artwork'} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }}/>
+                                <img src={art.image_url || 'https://placehold.co/600x400?text=No+Image'} alt={art.title || 'Artwork'} className="artwork-card-image" style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }} />
                                 <div className="artwork-card-info" style={{ padding: '1rem' }}>
                                     <h4>{art.title}</h4>
                                     <p>${new Intl.NumberFormat('en-US').format(art.price)}</p>
                                 </div>
                             </Link>
                              <div style={{ padding: '0 1rem 1rem', marginTop: 'auto' }}>
-                                <button className="button button-secondary" style={{ width: '100%' }} onClick={() => setInquiryArtwork(art)}>
+                                <button className="button button-secondary" style={{ width: '100%' }} onClick={() => setInquiryArtwork(art as ArtworkForModal)}>
                                     Inquire
                                 </button>
                             </div>
                         </div>
                     ))}
                 </div>
-            ) : (
-                <div style={{ textAlign: 'center', padding: '3rem 1rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
-                    <p style={{ color: 'var(--muted-foreground)' }}>There are no available artworks in this catalogue at the moment.</p>
-                </div>
-            )}
+            ) : ( <p>There are no available artworks in this catalogue at the moment.</p> )}
             
             {inquiryArtwork && (
-                <InquiryModal
-                    artworkId={inquiryArtwork.id}
-                    onClose={() => setInquiryArtwork(null)}
-                    previewImageUrl={inquiryArtwork.image_url || undefined}
-                    previewTitle={inquiryArtwork.title || undefined}
-                />
+                <InquiryModal artworkId={inquiryArtwork.id} onClose={() => setInquiryArtwork(null)} previewImageUrl={inquiryArtwork.image_url || undefined} previewTitle={inquiryArtwork.title || undefined} />
             )}
         </div>
     );
