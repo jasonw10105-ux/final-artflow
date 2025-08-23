@@ -119,12 +119,6 @@ const IndividualArtworkPage = () => {
 
                     {primaryMedium && <p>{primaryMedium}</p>}
 
-                    {artwork.artist.location?.city || artwork.artist.location?.country ? (
-                        <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
-                            {artwork.artist.location.city}{artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}{artwork.artist.location.country}
-                        </p>
-                    ) : null}
-
                     <div>
                         {renderPrice()}
                         <div id="artwork_actions">
@@ -198,14 +192,34 @@ const IndividualArtworkPage = () => {
                 </div>
             )}
 
-            {artwork.artist.bio && (
-                <div id="artist_details">
-                    <img src={artwork.artist.avatar_url || 'https://placehold.co/128x128'} alt={artwork.artist.full_name || ''} style={{ width: '128px', height: '128px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }} />
-                
-                    <h3>{artwork.artist.full_name}</h3>
-                    <p>{artwork.artist.bio}</p>
-                    <Link to={`/${artwork.artist.slug}`}>{artwork.artist.full_name}</Link>
-                </div>
+            {(artwork.artist.bio || artwork.artist.short_bio) && (
+              <div id="artist_details">
+                <img
+                  src={artwork.artist.avatar_url || 'https://placehold.co/128x128'}
+                  alt={artwork.artist.full_name || ''}
+                  style={{
+                    width: '128px',
+                    height: '128px',
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '2px solid var(--border)',
+                  }}
+                />
+            
+                <h3>{artwork.artist.full_name}</h3>
+            
+                {artwork.artist.location?.city || artwork.artist.location?.country ? (
+                  <p style={{ color: 'var(--muted-foreground)', marginTop: '0.25rem' }}>
+                    {artwork.artist.location.city}
+                    {artwork.artist.location.city && artwork.artist.location.country ? ', ' : ''}
+                    {artwork.artist.location.country}
+                  </p>
+                ) : null}
+            
+                <p>{artwork.artist.bio || artwork.artist.short_bio}</p>
+            
+                <Link to={`/${artwork.artist.slug}`}>More</Link>
+              </div>
             )}
 
             <div style={{ marginTop: '4rem' }}>
