@@ -63,7 +63,7 @@ const CatalogueCard = ({ item }: { item: Catalogue }) => (
         <img src={item.cover_image_url || 'https://placehold.co/400x400'} alt={item.title} className="card-image" />
         <div className="card-info">
             <h4>{item.title}</h4>
-            <p className="card-subtext">by {item.profiles.full_name}</p>
+            <p className="card-subtext">{item.profiles.full_name}</p>
         </div>
     </Link>
 );
