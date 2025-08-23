@@ -127,10 +127,6 @@ const WaitlistPage = () => {
                         spaceBetween={30}
                         slidesPerView={1}
                         pagination={{ clickable: true }}
-                        breakpoints={{
-                            768: { slidesPerView: 2 },
-                            1024: { slidesPerView: 3 }
-                        }}
                     >
                         <SwiperSlide>
                             <div className="testimonial-card">
