@@ -29,13 +29,14 @@ const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: Inq
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!message.trim()) {
-            alert('Please enter a message.');
+        if (!message.trim() || !name.trim() || !email.trim()) {
+            alert('Please fill out all fields.');
             return;
         }
         setIsSubmitting(true);
 
         try {
+            // This function now triggers the new, more powerful backend logic
             const { error } = await supabase.functions.invoke('create-inquiry', {
                 body: { 
                     artworkId, 
@@ -47,7 +48,7 @@ const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: Inq
 
             if (error) throw error;
 
-            alert('Your inquiry has been sent successfully!');
+            alert('Your inquiry has been sent successfully! The artist has been notified.');
             onClose();
 
         } catch (error: any) {
