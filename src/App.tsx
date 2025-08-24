@@ -3,6 +3,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
+import { Toaster } from 'react-hot-toast'; // Import the Toaster component
 
 // --- Layout Imports ---
 import MarketingLayout from './components/layout/MarketingLayout';
@@ -69,14 +70,14 @@ const ProtectedRoute = () => {
 const AppRoutes = () => {
   return (
       <Routes>
-        {/* --- 1. Public Standalone Routes --- */}
+        {/* --- Public Standalone Routes --- */}
         <Route path="/" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         
-        {/* --- 2. Public Routes with Layouts --- */}
+        {/* --- Public Routes with Layouts --- */}
         <Route element={<MarketingLayout />}>
             <Route path="/home" element={<MarketingPage />} />
             <Route path="/artists" element={<BrowseArtistsPage />} />
@@ -89,8 +90,7 @@ const AppRoutes = () => {
             <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
         </Route>
 
-        {/* --- 3. Protected Routes --- */}
-        {/* This wrapper handles auth checks. All routes inside require a logged-in user. */}
+        {/* --- Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
             <Route path="/complete-profile" element={<CompleteProfilePage />} />
             <Route path="/dashboard" element={<DashboardRedirector />} />
@@ -128,6 +128,29 @@ const App = () => {
   return (
     <Router>
       <AuthProvider>
+        {/* The Toaster component provides notifications for the entire app */}
+        <Toaster 
+          position="bottom-right"
+          toastOptions={{
+            // Define default options
+            className: '',
+            style: {
+              background: '#333',
+              color: '#fff',
+            },
+            // Default options for specific types
+            success: {
+              duration: 3000,
+              theme: {
+                primary: 'green',
+                secondary: 'black',
+              },
+            },
+             error: {
+              duration: 5000,
+            },
+          }}
+        />
         <AppRoutes />
       </AuthProvider>
     </Router>
