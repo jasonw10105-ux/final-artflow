@@ -1,5 +1,3 @@
-// src/App.tsx
-
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
@@ -38,33 +36,36 @@ import BrowseArtistsPage from './pages/public/BrowseArtistsPage';
 import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
 import SalesPage from './pages/dashboard/artist/SalesPage';
-// --- NEW COLLECTOR PAGE IMPORTS ---
 import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
 import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
 
+// --- Loading Component for Auth Checks ---
+const AuthLoading = () => (
+    <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>
+        Loading Application...
+    </div>
+);
 
+// --- Route Components ---
 const DashboardRedirector = () => {
     const { profile, loading } = useAuth();
-    if (loading) return <div>Loading...</div>;
+    if (loading) return <AuthLoading />;
     if (profile && !profile.profile_completed) return <Navigate to="/complete-profile" replace />;
-    // Default to artist dashboard if role is 'both' or 'artist'
     if (profile?.role === 'artist' || profile?.role === 'both') return <Navigate to="/artist/dashboard" replace />;
     if (profile?.role === 'collector') return <Navigate to="/collector/dashboard" replace />;
-    // Fallback if no role is set after completion
-    return <Navigate to="/complete-profile" replace />;
+    return <Navigate to="/login" replace />; // Fallback if no user or role
 };
 
 const ProtectedRoute = () => {
     const { user, profile, loading } = useAuth();
-    if (loading) return <div>Loading...</div>;
+    if (loading) return <AuthLoading />;
     if (!user) return <Navigate to="/login" replace />;
     if (!profile?.profile_completed) return <Navigate to="/complete-profile" replace />;
     return <Outlet />;
 };
 
-function AppRoutes() {
+const AppRoutes = () => {
   return (
-    <Router>
       <Routes>
         {/* --- 1. Standalone Routes (No Layout) --- */}
         <Route path="/" element={<WaitlistPage />} />
@@ -72,6 +73,8 @@ function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
+        
+        {/* Special case for profile completion, requires a user but not a completed profile */}
         <Route path="/complete-profile" element={<CompleteProfilePage />} />
         
         {/* --- 2. Public Routes (Wrapped in Marketing Layout) --- */}
@@ -116,21 +119,25 @@ function AppRoutes() {
                 {/* Collector Routes */}
                 <Route path="/collector/dashboard" element={<CollectorDashboardPage />} />
                 <Route path="/collector/inquiries" element={<CollectorInquiriesPage />} />
-                <Route path="/collector/collection" element={<CollectorSalesPage />} /> {/* <-- NEW */}
-                <Route path="/collector/settings" element={<CollectorSettingsPage />} /> {/* <-- NEW */}
+                <Route path="/collector/collection" element={<CollectorSalesPage />} />
+                <Route path="/collector/settings" element={<CollectorSettingsPage />} />
             </Route>
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+  );
+}
+
+// CORRECTED: This is the main App component that provides all context.
+const App: React.FC = () => {
+  return (
+    <Router>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </Router>
   );
 }
 
-export default function App() {
-  const { loading } = useAuth();
-  if (loading) {
-    return <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>Loading Application...</div>;
-  }
-  return <AppRoutes />;
-}
+export default App;
