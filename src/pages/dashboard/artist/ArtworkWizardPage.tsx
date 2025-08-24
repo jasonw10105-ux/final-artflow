@@ -1,29 +1,18 @@
-// src/pages/dashboard/artist/ArtworkWizardPage.tsx
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabaseClient';
-import ArtworkEditorForm from '../../../components/dashboard/ArtworkEditorForm';
+import ArtworkEditorForm from '../../../components/dashboard/ArtworkEditorForm'; // <-- IMPORT THE FORM
 import { ArrowLeft, ArrowRight, PlusCircle, Trash2 } from 'lucide-react';
 import ArtworkUploadModal from '../../../components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '../../../stores/artworkUploadStore';
 
-const fetchArtworksByIds = async (ids: string[]) => { /* ... (no changes) ... */ };
-
-// --- NEW: Helper function to trigger image generation ---
-const triggerImageGeneration = async (artworkId: string) => {
-    try {
-        const { data, error } = await supabase.functions.invoke('generate-images', {
-            body: { artworkId },
-        });
-        if (error) throw new Error(`Failed to trigger image generation: ${error.message}`);
-        console.log(`Background image generation started for ${artworkId}`, data);
-    } catch (error) {
-        console.error(error);
-        // We don't alert the user here as it's a background task.
-        // It will be re-attempted on the next edit if it fails.
-    }
+const fetchArtworksByIds = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return [];
+    const { data, error } = await supabase.from('artworks').select('*').in('id', ids);
+    if (error) throw new Error(error.message);
+    // Sort the data to match the order of IDs in the URL
+    return ids.map(id => data.find(artwork => artwork.id === id)).filter(Boolean) as any[];
 };
 
 const ArtworkWizardPage = () => {
@@ -49,18 +38,20 @@ const ArtworkWizardPage = () => {
         mainContentRef.current?.scrollTo(0, 0);
     }, [currentIndex]);
 
-    const handleTitleChange = (artworkIdToUpdate: string, newTitle: string) => { /* ... (no changes) ... */ };
-    const handleRemoveArtwork = async (artworkIdToRemove: string, artworkTitle: string) => { /* ... (no changes) ... */ };
+    const handleTitleChange = (artworkIdToUpdate: string, newTitle: string) => {
+        queryClient.setQueryData(wizardQueryKey, (oldData: any[] | undefined) => {
+            if (!oldData) return [];
+            return oldData.map(art => 
+                art.id === artworkIdToUpdate ? { ...art, title: newTitle } : art
+            );
+        });
+    };
+    
+    const handleRemoveArtwork = async (artworkIdToRemove: string, artworkTitle: string) => {
+        // ... (This function's logic does not need to change)
+    };
 
-    // --- MODIFIED: This function now triggers the image generation ---
     const handleSaveAndNext = () => {
-        const savedArtworkId = currentArtwork?.id;
-        
-        // Trigger generation in the background. Don't await it.
-        if (savedArtworkId) {
-            triggerImageGeneration(savedArtworkId);
-        }
-
         if (currentIndex < artworkIds.length - 1) {
             setCurrentIndex(currentIndex + 1);
         } else {
@@ -69,39 +60,54 @@ const ArtworkWizardPage = () => {
         }
     };
     
-    const handleMoreUploadsComplete = (newArtworkIds: string[]) => { /* ... (no changes) ... */ };
+    const handleMoreUploadsComplete = (newArtworkIds: string[]) => {
+        const combinedIds = [...artworkIds, ...newArtworkIds];
+        setSearchParams({ ids: combinedIds.join(',') });
+        setShowUploadModal(false);
+        clearStore();
+    };
+
     const currentArtwork = useMemo(() => artworks?.[currentIndex], [artworks, currentIndex]);
-    const FORM_ID = 'artwork-wizard-form';
-    const triggerFormSubmit = () => { document.getElementById(FORM_ID)?.requestSubmit(); };
+    const FORM_ID = `artwork-wizard-form-${currentArtwork?.id}`; // Use a dynamic ID
+
+    const triggerFormSubmit = () => {
+        const form = document.getElementById(FORM_ID) as HTMLFormElement;
+        if (form) {
+            form.requestSubmit();
+        }
+    };
 
     if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork wizard...</div>;
     if (isSuccess && (!artworks || artworks.length === 0)) return <div style={{padding: '2rem'}}>No artworks found to edit. <Link to="/artist/artworks">Go back</Link></div>;
 
-    // --- The rest of the component's JSX remains the same ---
     return (
-        <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
-            {/* ... (header, aside, main content JSX is unchanged) ... */}
-            {/* --- The key is that ArtworkEditorForm's onSaveSuccess prop is now correctly wired --- */}
-             <main ref={mainContentRef} style={{ maxHeight: 'calc(100vh - 8rem)', overflowY: 'auto', paddingRight: '1rem' }}>
-                    {currentArtwork && (
-                        <div id="form">
-                            <img src={currentArtwork.image_url} alt={currentArtwork.title || 'Untitled'} style={{ width: '100%', borderRadius: 'var(--radius)', objectFit: 'contain', alignSelf: 'start', position: 'sticky', top: 0 }}/>
-                            <div>
-                                <ArtworkEditorForm 
-                                    key={currentArtwork.id} 
-                                    artworkId={currentArtwork.id} 
-                                    onSaveSuccess={handleSaveAndNext} // <-- THIS IS THE CRITICAL LINK
-                                    formId={FORM_ID}
-                                    onTitleChange={(newTitle) => handleTitleChange(currentArtwork.id, newTitle)}
-                                />
-                                <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1rem'}}>
-                                    <button type="button" onClick={triggerFormSubmit} className="button button-primary"> {currentIndex === (artworks?.length ?? 0) - 1 ? 'Finish Wizard' : 'Save & Go to Next'} <ArrowRight size={16} /> </button>
-                                </div>
-                            </div>
+        // ... (The main page layout, header, and aside are unchanged)
+        <main ref={mainContentRef} style={{ maxHeight: 'calc(100vh - 8rem)', overflowY: 'auto', paddingRight: '1rem' }}>
+            {currentArtwork && (
+                <div id="form">
+                    <img src={currentArtwork.image_url} alt={currentArtwork.title || 'Untitled'} style={{ width: '100%', borderRadius: 'var(--radius)', objectFit: 'contain', alignSelf: 'start', position: 'sticky', top: 0 }}/>
+                    <div>
+                        <ArtworkEditorForm 
+                            key={currentArtwork.id} // <-- Use key to force re-mount
+                            artworkId={currentArtwork.id} 
+                            onSaveSuccess={handleSaveAndNext} 
+                            formId={FORM_ID}
+                            onTitleChange={(newTitle) => handleTitleChange(currentArtwork.id, newTitle)}
+                        />
+                        <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1rem'}}>
+                             <button type="button" onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))} className="button button-secondary" disabled={currentIndex === 0}>
+                                <ArrowLeft size={16} /> Previous
+                            </button>
+                            <button type="button" onClick={triggerFormSubmit} className="button button-primary">
+                                {currentIndex === (artworks?.length ?? 0) - 1 ? 'Finish Wizard' : 'Save & Go to Next'}
+                                <ArrowRight size={16} />
+                            </button>
                         </div>
-                    )}
-                </main>
-        </div>
+                    </div>
+                </div>
+            )}
+        </main>
+        // ...
     );
 };
 
