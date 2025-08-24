@@ -1,86 +1,75 @@
-// supabase/functions/generate-images/index.ts
-
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Image } from 'https://deno.land/x/imagescript@1.2.17/mod.ts';
 
-// --- IMPORTANT CONFIGURATION ---
-// Upload your room scene image to a public bucket in Supabase Storage
-// and paste its public URL here.
-const ROOM_SCENE_URL = 'https://YOUR_PROJECT_REF.supabase.co/storage/v1/object/public/your-public-bucket/your-room-scene.jpg';
-const BENCH_REAL_WIDTH_M = 2.0; // Real-world width (in meters) of the reference object (e.g., a bench).
-const BENCH_PIXEL_WIDTH = 800; // The width (in pixels) of that same reference object in your scene image.
-
-// Helper function to fetch the font data
-async function getFont(): Promise<Uint8Array> {
-  const fontUrl = 'https://github.com/google/fonts/raw/main/ofl/opensans/OpenSans-Regular.ttf';
-  const response = await fetch(fontUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch font: ${response.statusText}`);
-  }
-  return new Uint8Array(await response.arrayBuffer());
-}
-
+// --- CONFIGURATION ---
+const ROOM_SCENE_URL = 'https://mfddxrpiuawggmnzqagn.supabase.co/storage/v1/object/public/Visualization/IMG-20250823-WA0008.jpg'; 
+const BENCH_REAL_WIDTH_M = 2.0;
+const BENCH_PIXEL_WIDTH = 800;
 
 serve(async (req) => {
-  const supabaseClient = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  );
-
   try {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1mZGR4cnBpdWF3Z2dtbnpxYWduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTMzNjYyNywiZXhwIjoyMDcwOTEyNjI3fQ.xlbMk-Jq9yLMUBjRhzxtQUunDfG6eku5XKmxGR1crZQ') ?? '' // Use your NEW, secure service_role key here
+    );
+
     const { artworkId, forceWatermarkUpdate = false, forceVisualizationUpdate = false } = await req.json();
+    console.log(`[${artworkId}] Function invoked.`);
     if (!artworkId) throw new Error("Artwork ID is required.");
 
-    // 1. Fetch artwork and artist data
+    // 1. Fetch data
+    console.log(`[${artworkId}] Fetching artwork and artist data...`);
     const { data: artwork, error: artworkError } = await supabaseClient
       .from('artworks')
-      .select(`*, user_id:profiles!user_id(full_name)`) // Correctly join on profiles
+      .select(`*, artist:profiles!user_id(full_name)`)
       .eq('id', artworkId)
       .single();
 
-    if (artworkError || !artwork) throw new Error(artworkError?.message || "Artwork not found.");
-
-    const artistName = (artwork.user_id as any)?.full_name || 'Untitled Artist';
+    if (artworkError) throw new Error(`Artwork fetch error: ${artworkError.message}`);
+    if (!artwork) throw new Error(`Artwork with ID ${artworkId} not found.`);
+    
+    const artistName = (artwork.artist as any)?.full_name || 'Untitled Artist';
     const originalImageUrl = artwork.image_url;
-    if (!originalImageUrl) throw new Error("Artwork is missing an image URL.");
+    if (!originalImageUrl) throw new Error("Artwork is missing an image_url.");
 
+    console.log(`[${artworkId}] Fetching original image...`);
     const originalImageResponse = await fetch(originalImageUrl);
+    if (!originalImageResponse.ok) throw new Error(`Failed to fetch original image.`);
     const originalImageBuffer = await originalImageResponse.arrayBuffer();
 
     let watermarkedImageUrl = artwork.watermarked_image_url;
     let visualizationImageUrl = artwork.visualization_image_url;
+    let needsDbUpdate = false;
 
-    const fontData = await getFont(); // Fetch font once
+    // --- NEW LOGIC: Generate watermarked image object first ---
+    const image = await Image.decode(originalImageBuffer);
+    const font = await Image.loadFont('https://deno.land/x/imagescript@1.2.17/formats/fonts/opensans/OpenSans-Regular.ttf');
+    const watermarkText = `© ${artistName}`;
+    const textImage = Image.renderText(font, 32, watermarkText, 0xFFFFFFFF);
+    // Create a clone of the original image to apply the watermark to
+    const watermarkedImageObject = image.clone().composite(textImage, image.width - textImage.width - 20, image.height - textImage.height - 20);
+    console.log(`[${artworkId}] Watermarked image generated in memory.`);
 
-    // --- TASK A: WATERMARKING ---
+    // --- TASK A: UPLOAD WATERMARKED IMAGE ---
     if (forceWatermarkUpdate || !artwork.watermarked_image_url) {
-      console.log(`Generating watermark for artwork: ${artworkId}`);
-      const image = await Image.decode(originalImageBuffer);
-      const font = Image.font(fontData);
-      
-      const watermarkText = `© ${artistName}`;
-      const watermark = Image.renderText(font, 32, watermarkText, 0xFFFFFFFF);
-      
-      image.composite(watermark, image.width - watermark.width - 20, image.height - watermark.height - 20);
-      
-      const watermarkedImageBytes = await image.encode();
+      console.log(`[${artworkId}] Uploading watermarked image to storage...`);
+      const watermarkedImageBytes = await watermarkedImageObject.encode();
       const watermarkPath = `watermarked/${artwork.id}-${Date.now()}.png`;
-
-      const { error: uploadError } = await supabaseClient.storage
-          .from('artworks')
-          .upload(watermarkPath, watermarkedImageBytes, { contentType: 'image/png', upsert: true });
-
+      const { error: uploadError } = await supabaseClient.storage.from('artworks').upload(watermarkPath, watermarkedImageBytes, { contentType: 'image/png', upsert: true });
       if (uploadError) throw new Error(`Watermark upload failed: ${uploadError.message}`);
+
       watermarkedImageUrl = supabaseClient.storage.from('artworks').getPublicUrl(watermarkPath).data.publicUrl;
+      needsDbUpdate = true;
+      console.log(`[${artworkId}] Watermark uploaded successfully.`);
     }
 
-    // --- TASK B: VISUALIZATION ---
+    // --- TASK B: UPLOAD VISUALIZATION (USING THE WATERMARKED IMAGE) ---
     if (forceVisualizationUpdate || !artwork.visualization_image_url) {
       if (!artwork.dimensions?.width || !artwork.dimensions?.height || !artwork.dimensions?.unit) {
-        console.log(`Skipping visualization for ${artworkId}: dimensions are incomplete.`);
+        console.log(`[${artworkId}] Skipping visualization: dimensions incomplete.`);
       } else {
-        console.log(`Generating visualization for artwork: ${artworkId}`);
+        console.log(`[${artworkId}] Generating visualization using watermarked image...`);
         const roomSceneResponse = await fetch(ROOM_SCENE_URL);
         const roomSceneBuffer = await roomSceneResponse.arrayBuffer();
         const roomImage = await Image.decode(roomSceneBuffer);
@@ -92,47 +81,47 @@ serve(async (req) => {
         const pixelsPerMeter = BENCH_PIXEL_WIDTH / BENCH_REAL_WIDTH_M;
         const artworkPixelWidth = Math.round(artworkRealWidthM * pixelsPerMeter);
         
-        const artworkImage = await Image.decode(originalImageBuffer);
-        artworkImage.resize(artworkPixelWidth, Image.RESIZE_AUTO);
+        // Resize the watermarked image object from memory
+        watermarkedImageObject.resize(artworkPixelWidth, Image.RESIZE_AUTO);
 
         const centerX = roomImage.width / 2;
-        const positionX = Math.round(centerX - (artworkImage.width / 2));
-        const positionY = 150; // Adjust this Y-coordinate to position artwork vertically
+        const positionX = Math.round(centerX - (watermarkedImageObject.width / 2));
+        const positionY = 150;
 
-        roomImage.composite(artworkImage, positionX, positionY);
-
-        const visualizationImageBytes = await roomImage.encode(0.8); // Encode JPEG with 80% quality
+        roomImage.composite(watermarkedImageObject, positionX, positionY);
+        const visualizationImageBytes = await roomImage.encode(0.8);
         const visualizationPath = `visualizations/${artwork.id}-${Date.now()}.jpg`;
         
-        const { error: uploadError } = await supabaseClient.storage
-            .from('artworks')
-            .upload(visualizationPath, visualizationImageBytes, { contentType: 'image/jpeg', upsert: true });
-            
+        console.log(`[${artworkId}] Uploading visualization to storage...`);
+        const { error: uploadError } = await supabaseClient.storage.from('artworks').upload(visualizationPath, visualizationImageBytes, { contentType: 'image/jpeg', upsert: true });
         if (uploadError) throw new Error(`Visualization upload failed: ${uploadError.message}`);
+        
         visualizationImageUrl = supabaseClient.storage.from('artworks').getPublicUrl(visualizationPath).data.publicUrl;
+        needsDbUpdate = true;
+        console.log(`[${artworkId}] Visualization uploaded successfully.`);
       }
     }
 
-    // --- Final Step: Update the artwork record ---
-    if (watermarkedImageUrl !== artwork.watermarked_image_url || visualizationImageUrl !== artwork.visualization_image_url) {
-        const { error: updateError } = await supabaseClient
-          .from('artworks')
-          .update({ watermarked_image_url: watermarkedImageUrl, visualization_image_url: visualizationImageUrl })
-          .eq('id', artworkId);
+    // 4. Update the database if anything changed
+    if (needsDbUpdate) {
+      console.log(`[${artworkId}] Updating database record...`);
+      const { error: updateError } = await supabaseClient
+        .from('artworks')
+        .update({ watermarked_image_url: watermarkedImageUrl, visualization_image_url: visualizationImageUrl })
+        .eq('id', artworkId);
 
-        if (updateError) throw new Error(`Failed to update artwork record: ${updateError.message}`);
+      if (updateError) throw new Error(`Failed to update artwork record: ${updateError.message}`);
+      console.log(`[${artworkId}] Database record updated successfully.`);
     }
 
     return new Response(JSON.stringify({ success: true, watermarkedImageUrl, visualizationImageUrl }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200,
+      headers: { 'Content-Type': 'application/json' }, status: 200,
     });
 
   } catch (error) {
-    console.error('Error in Edge Function:', error.message);
+    console.error('!!! EDGE FUNCTION ERROR:', error.message);
     return new Response(JSON.stringify({ error: error.message }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 500,
+      headers: { 'Content-Type': 'application/json' }, status: 500,
     });
   }
 });
