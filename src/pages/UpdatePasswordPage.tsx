@@ -61,5 +61,4 @@ const UpdatePasswordPage = () => {
         </div>
     );
 };
-
 export default UpdatePasswordPage;
