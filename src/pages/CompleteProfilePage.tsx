@@ -1,12 +1,9 @@
-// src/pages/public/CompleteProfilePage.tsx
-
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
-import { useAuth } from '../contexts/AuthProvider'
+import { supabase } from '../../lib/supabaseClient'; // Corrected path
+import { useAuth } from '../../contexts/AuthProvider';   // Corrected path
 
 const CompleteProfilePage = () => {
     const { user } = useAuth();
-    // --- FIXED: State split into first and last name ---
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [role, setRole] = useState('');
@@ -25,7 +22,6 @@ const CompleteProfilePage = () => {
             return;
         }
 
-        // --- FIXED: Validation updated for first and last name ---
         if (!user || !role || !firstName || !lastName || password.length < 6) {
             setError("Please fill all fields. Password must be at least 6 characters.");
             return;
@@ -33,9 +29,9 @@ const CompleteProfilePage = () => {
 
         setLoading(true);
 
-        // --- FIXED: Combine names for slug generation and full_name column ---
         const fullName = `${firstName} ${lastName}`.trim();
 
+        // 1. Generate a unique slug for the profile
         const { data: slugData, error: slugError } = await supabase.rpc('generate_unique_slug', { input_text: fullName, table_name: 'profiles' });
         if (slugError) {
             setError("Could not create a unique profile URL. Please try again.");
@@ -43,6 +39,7 @@ const CompleteProfilePage = () => {
             return;
         }
 
+        // 2. Update the user's password
         const { error: passwordError } = await supabase.auth.updateUser({ password });
         if (passwordError) {
             setError(passwordError.message);
@@ -50,7 +47,7 @@ const CompleteProfilePage = () => {
             return;
         }
         
-        // --- FIXED: Profile data includes new first_name and last_name fields ---
+        // 3. Update the user's profile data
         const profileUpdates = {
             id: user.id,
             first_name: firstName,
@@ -61,25 +58,49 @@ const CompleteProfilePage = () => {
             slug: slugData,
             updated_at: new Date(),
         };
-
         const { error: profileError } = await supabase.from('profiles').upsert(profileUpdates);
-
         if (profileError) {
             setError(profileError.message);
-        } else {
-            // Use replace to prevent user from going back to this page
-            window.location.replace('/dashboard'); 
+            setLoading(false);
+            return;
         }
+
+        // 4. Create the default "Available Work" catalogue if the user is an artist
+        if (role === 'artist' || role === 'both') {
+            try {
+                const { data: catalogueSlugData } = await supabase.rpc('generate_unique_slug', { input_text: 'Available Work', table_name: 'catalogues' });
+                
+                const defaultCatalogue = {
+                    user_id: user.id,
+                    title: 'Available Work',
+                    description: 'A system-generated catalogue of all available artworks. Artworks can be managed from the catalogue editor.',
+                    is_system_catalogue: true, // The special flag to protect it
+                    status: 'Published',
+                    is_published: true,
+                    slug: catalogueSlugData,
+                };
+                
+                const { error: catalogueError } = await supabase.from('catalogues').insert(defaultCatalogue);
+                if (catalogueError) {
+                    // This is a non-critical error, so we log it but still let the user proceed
+                    console.error("Could not create default catalogue:", catalogueError.message);
+                }
+            } catch (catError) {
+                 console.error("An unexpected error occurred while creating the default catalogue:", catError);
+            }
+        }
+        
+        // 5. Redirect to the dashboard
+        window.location.replace('/dashboard'); 
         setLoading(false);
     };
 
     return (
-        <div class="gradient-polish" style={{ maxWidth: '500px', margin: '3rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+        <div className="gradient-polish" style={{ maxWidth: '500px', margin: '3rem auto', padding: '2rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
             <h2 style={{ textAlign: 'center' }}>Complete Your Profile</h2>
             <p style={{ textAlign: 'center', color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Just a few more details to get you started.</p>
             <form onSubmit={handleProfileComplete}>
                 <fieldset>
-                    {/* --- FIXED: Replaced single name input with two --- */}
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
                         <div>
                             <label>First Name</label>
