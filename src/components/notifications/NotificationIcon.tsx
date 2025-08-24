@@ -1,5 +1,3 @@
-// src/components/notifications/NotificationIcon.tsx
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -54,7 +52,7 @@ const NotificationIcon = () => {
             mutation.mutate(unreadIds);
         }
     };
-    
+
     // Listen for Realtime updates
     useEffect(() => {
         if (!user) return;
@@ -80,44 +78,16 @@ const NotificationIcon = () => {
         return () => { document.removeEventListener("mousedown", handleClickOutside); };
     }, [wrapperRef]);
 
-    const iconContainerStyle: React.CSSProperties = {
-        position: 'relative',
-    };
-
-    const buttonStyle: React.CSSProperties = {
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        color: 'var(--foreground)',
-        position: 'relative',
-    };
-
-    const badgeStyle: React.CSSProperties = {
-        position: 'absolute',
-        top: '-5px',
-        right: '-10px',
-        background: 'var(--destructive)',
-        color: 'white',
-        borderRadius: '50%',
-        width: '20px',
-        height: '20px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '0.75rem',
-        fontWeight: 'bold',
-    };
-
     return (
-        <div style={iconContainerStyle} ref={wrapperRef}>
-            <button onClick={() => setIsPanelOpen(!isPanelOpen)} style={buttonStyle}>
+        <div className="notification-icon-wrapper" ref={wrapperRef}>
+            <button onClick={() => setIsPanelOpen(!isPanelOpen)} className="notification-icon-button">
                 <Bell size={24} />
                 {unreadCount > 0 && (
-                    <span style={badgeStyle}>{unreadCount}</span>
+                    <span className="notification-badge">{unreadCount}</span>
                 )}
             </button>
             {isPanelOpen && (
-                <NotificationPanel 
+                <NotificationPanel
                     notifications={notifications}
                     onMarkAllRead={handleMarkAllRead}
                     isLoading={isLoading}
