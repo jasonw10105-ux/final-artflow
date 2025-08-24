@@ -9,9 +9,11 @@ const BENCH_PIXEL_WIDTH = 800;
 
 serve(async (req) => {
   try {
+    // This is the only correct way to initialize the client.
+    // It securely reads the environment variables you set in the Supabase dashboard.
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1mZGR4cnBpdWF3Z2dtbnpxYWduIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTMzNjYyNywiZXhwIjoyMDcwOTEyNjI3fQ.xlbMk-Jq9yLMUBjRhzxtQUunDfG6eku5XKmxGR1crZQ') ?? '' // Use your NEW, secure service_role key here
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '' 
     );
 
     const { artworkId, forceWatermarkUpdate = false, forceVisualizationUpdate = false } = await req.json();
@@ -42,12 +44,11 @@ serve(async (req) => {
     let visualizationImageUrl = artwork.visualization_image_url;
     let needsDbUpdate = false;
 
-    // --- NEW LOGIC: Generate watermarked image object first ---
+    // --- Generate watermarked image object in memory first ---
     const image = await Image.decode(originalImageBuffer);
     const font = await Image.loadFont('https://deno.land/x/imagescript@1.2.17/formats/fonts/opensans/OpenSans-Regular.ttf');
     const watermarkText = `© ${artistName}`;
     const textImage = Image.renderText(font, 32, watermarkText, 0xFFFFFFFF);
-    // Create a clone of the original image to apply the watermark to
     const watermarkedImageObject = image.clone().composite(textImage, image.width - textImage.width - 20, image.height - textImage.height - 20);
     console.log(`[${artworkId}] Watermarked image generated in memory.`);
 
@@ -81,7 +82,6 @@ serve(async (req) => {
         const pixelsPerMeter = BENCH_PIXEL_WIDTH / BENCH_REAL_WIDTH_M;
         const artworkPixelWidth = Math.round(artworkRealWidthM * pixelsPerMeter);
         
-        // Resize the watermarked image object from memory
         watermarkedImageObject.resize(artworkPixelWidth, Image.RESIZE_AUTO);
 
         const centerX = roomImage.width / 2;
