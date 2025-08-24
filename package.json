@@ -1,11 +1,14 @@
+// package.json
+
 {
-  "name": "artflow-02",
+  "name": "artflow-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc && vite build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -35,9 +38,13 @@
     "@types/react-dom": "^18.3.0",
     "@types/recharts": "^1.8.29",
     "@types/uuid": "^9.0.8",
+    "@typescript-eslint/eslint-plugin": "^7.2.0",
+    "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^8.57.0",
-    "typescript": "^5.5.4",
-    "vite": "^7.1.3"
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.6",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
   }
 }
