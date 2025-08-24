@@ -25,7 +25,7 @@ import MessagingCenterPage from './pages/dashboard/artist/MessagingCenterPage';
 import CollectorInquiriesPage from './pages/dashboard/collector/CollectorInquiriesPage';
 import ArtworkEditorPage from './pages/dashboard/artist/ArtworkEditorPage';
 import ArtworkListPage from './pages/dashboard/artist/ArtworkListPage';
-import ArtistSettingsPage from './pages/dashboard/artist/ArtistSettingsPage'; // FIX: Correctly imported as default
+import ArtistSettingsPage from './pages/dashboard/artist/ArtistSettingsPage';
 import ArtistPortfolioPage from './pages/public/ArtistPortfolioPage';
 import CatalogueWizardPage from './pages/dashboard/artist/CatalogueWizardPage';
 import CatalogueListPage from './pages/dashboard/artist/CatalogueListPage';
@@ -61,22 +61,62 @@ const ProtectedRoute = () => {
     if (loading) return <AuthLoading />;
     if (!user) return <Navigate to="/login" replace />;
     if (!profile?.profile_completed) return <Navigate to="/complete-profile" replace />;
-    return <Outlet />; // FIX: This is a valid return, the error was a symptom of the App component structure
+    return <Outlet />;
 };
 
 const AppRoutes = () => {
   return (
       <Routes>
-        {/* All your Route definitions go here, they are correct */}
-        {/* ... */}
         <Route path="/" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
-        {/* ... etc. */}
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/update-password" element={<UpdatePasswordPage />} />
+        <Route path="/complete-profile" element={<CompleteProfilePage />} />
+        
+        <Route element={<MarketingLayout />}>
+            <Route path="/home" element={<MarketingPage />} />
+            <Route path="/artists" element={<BrowseArtistsPage />} />
+            <Route path="/artworks" element={<BrowseArtworksPage />} />
+            <Route path="/catalogues" element={<BrowseCataloguesPage />} />
+            <Route path="/:profileSlug" element={<ArtistPortfolioPage />} />
+        </Route>
+        
+        <Route element={<DynamicPublicPageLayout />}>
+            <Route path="/:artistSlug/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
+            <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
+        </Route>
+
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirector /></ProtectedRoute>} />
+
+        <Route element={<ProtectedRoute />}>
+            <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
+            <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
+            <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
+            <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
+            
+            <Route element={<DashboardLayout />}>
+                <Route path="/artist/dashboard" element={<ArtistDashboardPage />} />
+                <Route path="/artist/artworks" element={<ArtworkListPage />} />
+                <Route path="/artist/catalogues" element={<CatalogueListPage />} />
+                <Route path="/artist/contacts" element={<ContactListPage />} />
+                <Route path="/artist/contacts/edit/:contactId" element={<ContactEditorPage />} />
+                <Route path="/artist/messages" element={<MessagingCenterPage />} />
+                <Route path="/artist/sales" element={<SalesPage />} />
+                <Route path="/artist/insights" element={<ArtistInsightsPage />} />
+                <Route path="/artist/settings" element={<ArtistSettingsPage />} />
+                <Route path="/collector/dashboard" element={<CollectorDashboardPage />} />
+                <Route path="/collector/inquiries" element={<CollectorInquiriesPage />} />
+                <Route path="/collector/collection" element={<CollectorSalesPage />} />
+                <Route path="/collector/settings" element={<CollectorSettingsPage />} />
+            </Route>
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
   );
 }
 
-// FIX: Corrected main App component structure
 const App = () => {
   return (
     <Router>
