@@ -28,7 +28,7 @@ interface ArtworkEditorFormProps {
   onTitleChange?: (newTitle: string) => void;
 }
 
-// --- MEDIA TAXONOMY (ensure this is complete) ---
+// --- MEDIA TAXONOMY (Complete) ---
 const mediaTaxonomy: Record<string, string[]> = {
     'Drawing': ['Graphite (pencil, powder, mechanical)', 'Charcoal (vine, compressed)', 'Chalk (red/white/black, sanguine)', 'Conté (sticks, pencils)', 'Pastel (soft, hard, oil, pan)', 'Ink (India, sumi, iron-gall; brush/pen; wash)', 'Markers (alcohol/water/paint)', 'Silverpoint/metalpoint', 'Colored pencil (wax/oil/water-soluble)'],
     'Painting': ['Oil (alla prima, glazing, impasto, grisaille)', 'Acrylic (impasto, pouring, airbrush, glazing)', 'Watercolor (transparent, wet-on-wet, drybrush)', 'Gouache (opaque watercolor)', 'Tempera (egg tempera, casein)', 'Encaustic (hot wax)', 'Fresco (buon fresco, fresco secco)', 'Ink painting (sumi-e)', 'Spray/Aerosol (stencil, freehand)', 'Vitreous enamel'],
@@ -44,11 +44,29 @@ const mediaTaxonomy: Record<string, string[]> = {
     'Mixed / Hybrid & Non-traditional / Experimental': ['Collage (paper/photo/digital)', 'Assemblage (found materials, shadow boxes)', 'Material painting (sand/soil/cement with binder)', 'Light-based (neon, LED, projection, holography)', 'Bio-art (living cultures, DNA, mycelium)', 'Ephemeral (ice, sand, chalk, smoke, soap bubbles, food)'],
 };
 
-// --- API FUNCTIONS --- (No changes needed here)
-const fetchArtwork = async (artworkId: string): Promise<Artwork> => { /* ... */ };
-const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: string, identifier: string, isSold: boolean }) => { /* ... */ };
-const triggerImageGeneration = async (artworkId: string, flags: { forceWatermark?: boolean, forceVisualization?: boolean } = {}) => { /* ... */ };
+// --- API FUNCTIONS ---
+const fetchArtwork = async (artworkId: string): Promise<Artwork> => {
+    const { data, error } = await supabase.from('artworks').select('*, artist:profiles!user_id(full_name)').eq('id', artworkId).single();
+    if (error) throw new Error(`Artwork not found: ${error.message}`);
+    return data as any;
+};
 
+const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: string, identifier: string, isSold: boolean }) => {
+    const { error } = await supabase.rpc('update_artwork_edition_sale', { p_artwork_id: artworkId, p_edition_identifier: identifier, p_is_sold: isSold });
+    if (error) throw error;
+};
+
+const triggerImageGeneration = async (artworkId: string, flags: { forceWatermark?: boolean, forceVisualization?: boolean } = {}) => {
+    console.log(`Triggering image generation for ${artworkId} with flags:`, flags);
+    try {
+        const { error } = await supabase.functions.invoke('generate-images', {
+            body: { artworkId, forceWatermarkUpdate: !!flags.forceWatermark, forceVisualizationUpdate: !!flags.forceVisualization },
+        });
+        if (error) throw error;
+    } catch (err) {
+        console.error("Background image generation failed:", (err as Error).message);
+    }
+};
 
 const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: ArtworkEditorFormProps) => {
     const { profile } = useAuth();
@@ -66,12 +84,64 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         }
     }, [originalArtwork]);
     
-    // (All other hooks like useMutation, etc. are unchanged)
-    const haveDimensionsChanged = (oldDim: any, newDim: any): boolean => { /* ... */ };
-    const saleMutation = useMutation({ /* ... */ });
-    const updateMutation = useMutation({ /* ... */ });
+    const haveDimensionsChanged = (oldDim: any, newDim: any): boolean => {
+        if (!oldDim || !newDim) return false;
+        return oldDim.width !== newDim.width || oldDim.height !== newDim.height || oldDim.unit !== newDim.unit;
+    };
     
-    // --- MEDIUM SELECTION LOGIC (UPDATED) ---
+    const saleMutation = useMutation({
+        mutationFn: updateSaleStatus,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey });
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+        },
+        onError: (error: any) => alert(`Error updating sale: ${error.message}`),
+    });
+
+    const updateMutation = useMutation({
+        mutationFn: async (formData: Partial<Artwork>) => {
+            if (!profile) throw new Error("You must be logged in.");
+            if (!formData.title) throw new Error("Title is required.");
+            
+            let finalSlug = formData.slug;
+            if (formData.title !== originalTitle) {
+                const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: formData.title, table_name: 'artworks' });
+                finalSlug = slugData;
+            }
+
+            const { artist, ...dataToUpdate } = formData;
+            const payload = { ...dataToUpdate, slug: finalSlug };
+
+            const { error } = await supabase.from('artworks').update(payload).eq('id', artworkId);
+            if (error) throw error;
+            return formData; 
+        },
+        onSuccess: (savedData) => {
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+            queryClient.invalidateQueries({ queryKey });
+
+            const isInitialCreation = !originalArtwork?.watermarked_image_url || !originalArtwork?.visualization_image_url;
+            
+            if (isInitialCreation) {
+                triggerImageGeneration(artworkId, { forceWatermark: true, forceVisualization: true });
+            } else {
+                const forceVisualization = haveDimensionsChanged(originalArtwork?.dimensions, savedData.dimensions);
+                const originalArtistName = originalArtwork?.artist?.full_name;
+                const currentArtistName = profile?.full_name;
+                const hasArtistNameChanged = originalArtistName && currentArtistName && originalArtistName !== currentArtistName;
+
+                if (forceVisualization || hasArtistNameChanged) {
+                    triggerImageGeneration(artworkId, {
+                        forceVisualization: forceVisualization,
+                        forceWatermark: hasArtistNameChanged,
+                    });
+                }
+            }
+            onSaveSuccess();
+        },
+        onError: (error: any) => alert(`Error saving artwork: ${error.message}`),
+    });
+    
     const { parentMedium, childMedium } = useMemo(() => {
         const mediumStr = artwork.medium || '';
         const [parent, ...childParts] = mediumStr.split(': ');
@@ -93,58 +163,83 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             newChild = newValue || '';
         }
 
-        let combinedMedium = '';
-        if (newParent) {
-            combinedMedium = newChild ? `${newParent}: ${newChild}` : newParent;
-        }
+        let combinedMedium = newParent ? (newChild ? `${newParent}: ${newChild}` : newParent) : '';
         setArtwork(prev => ({ ...prev, medium: combinedMedium }));
     };
 
-    // Prepare options for the Autocomplete components
-    const primaryMediumOptions = Object.keys(mediaTaxonomy).map(key => ({ label: key }));
+    const primaryMediumOptions = Object.keys(mediaTaxonomy);
     const secondaryMediumOptions = useMemo(() => {
-        return parentMedium && mediaTaxonomy[parentMedium]
-            ? mediaTaxonomy[parentMedium].map(key => ({ label: key }))
-            : [];
+        return parentMedium && mediaTaxonomy[parentMedium] ? mediaTaxonomy[parentMedium] : [];
     }, [parentMedium]);
     
-    // --- (All other handlers like handleJsonChange, handleFormChange, etc. are unchanged) ---
-    const handleJsonChange = (parent: keyof Artwork, field: string, value: any) => { /* ... */ };
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { /* ... */ };
-    const allEditions = useMemo(() => { /* ... */ }, [artwork.edition_info]);
-    const handleEditionSaleChange = (identifier: string, isChecked: boolean) => { /* ... */ };
-    const handleSubmit = (e: React.FormEvent) => { /* ... */ };
+    const handleJsonChange = (parent: keyof Artwork, field: string, value: any) => {
+        const oldParentState = artwork[parent] as object || {};
+        if (parent === 'edition_info' && field === 'is_edition' && value === false) {
+            setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: false, numeric_size: undefined, ap_size: undefined } }));
+        } else {
+            setArtwork(prev => ({ ...prev, [parent]: { ...oldParentState, [field]: value } }));
+        }
+    };
+
+    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const { name, value, type } = e.target;
+        const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
+        const newArtworkState = { ...artwork, [name]: checked !== undefined ? checked : value };
+        setArtwork(newArtworkState);
+        if (name === 'title' && onTitleChange) onTitleChange(value);
+    };
+
+    const allEditions = useMemo(() => {
+        if (!artwork.edition_info?.is_edition) return [];
+        const editions = [];
+        const numericSize = artwork.edition_info?.numeric_size || 0;
+        const apSize = artwork.edition_info?.ap_size || 0;
+        for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`);
+        for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`);
+        return editions;
+    }, [artwork.edition_info]);
+
+    const handleEditionSaleChange = (identifier: string, isChecked: boolean) => {
+        saleMutation.mutate({ artworkId, identifier, isSold: isChecked });
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const { status, ...formData } = artwork;
+        const payload: Partial<Artwork> = { ...formData, price: formData.price ? parseFloat(String(formData.price)) : null };
+        if (originalArtwork?.status === 'Pending') payload.status = 'Active';
+        updateMutation.mutate(payload);
+    };
 
     if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork details...</div>;
 
     return (
         <form id={formId} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            <fieldset>
-                <legend>Primary Information</legend>
+            <fieldset className="fieldset">
+                <legend className="legend">Primary Information</legend>
                 <label className="label">Title</label>
                 <input name="title" className="input" type="text" value={artwork.title || ''} onChange={handleFormChange} required />
                 
-                {/* --- REVISED: Searchable Medium Dropdowns --- */}
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem'}}>
                     <div>
                         <label className="label">Primary Medium</label>
                         <Autocomplete
                             options={primaryMediumOptions}
-                            value={parentMedium ? { label: parentMedium } : null}
-                            onChange={(event, newValue) => handleMediumChange('parent', newValue?.label ?? null)}
-                            isOptionEqualToValue={(option, value) => option.label === value.label}
+                            value={parentMedium || null}
+                            onChange={(event, newValue) => handleMediumChange('parent', newValue)}
+                            isOptionEqualToValue={(option, value) => option === value}
                             renderInput={(params) => <TextField {...params} placeholder="Search categories..." required={!parentMedium} />}
                         />
                     </div>
                     <div>
                         <label className="label">Secondary Medium (Optional)</label>
                         <Autocomplete
+                            freeSolo
                             options={secondaryMediumOptions}
-                            value={childMedium ? { label: childMedium } : null}
-                            onChange={(event, newValue) => handleMediumChange('child', newValue?.label ?? null)}
-                            isOptionEqualToValue={(option, value) => option.label === value.label}
+                            value={childMedium || null}
+                            onInputChange={(event, newInputValue) => handleMediumChange('child', newInputValue)}
                             disabled={!parentMedium}
-                            renderInput={(params) => <TextField {...params} placeholder={parentMedium ? "Search details..." : "Select a primary medium first"} />}
+                            renderInput={(params) => <TextField {...params} placeholder={parentMedium ? "Search or type..." : "Select a primary medium"} />}
                         />
                     </div>
                 </div>
@@ -153,14 +248,28 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 <textarea name="description" className="textarea" value={artwork.description || ''} onChange={handleFormChange} />
             </fieldset>
 
-            {/* --- (Artwork Details Fieldset is unchanged) --- */}
-            <fieldset>
-                {/* ... */}
+            <fieldset className="fieldset">
+                <legend className="legend">Artwork Details</legend>
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem'}}>
+                    <div><label className="label">Height</label><input type="text" value={artwork.dimensions?.height || ''} onChange={e => handleJsonChange('dimensions', 'height', e.target.value)} className="input" placeholder="e.g., 24" required /></div>
+                    <div><label className="label">Width</label><input type="text" value={artwork.dimensions?.width || ''} onChange={e => handleJsonChange('dimensions', 'width', e.target.value)} className="input" placeholder="e.g., 18" required /></div>
+                    <div><label className="label">Depth (Optional)</label><input type="text" value={artwork.dimensions?.depth || ''} onChange={e => handleJsonChange('dimensions', 'depth', e.target.value)} className="input" /></div>
+                    <div><label className="label">Unit</label><input type="text" value={artwork.dimensions?.unit || ''} onChange={e => handleJsonChange('dimensions', 'unit', e.target.value)} className="input" placeholder="e.g., in, cm" /></div>
+                </div>
+                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem'}}>
+                    <div>
+                        <label className="label" style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}><input type="checkbox" checked={!!artwork.framing_info?.is_framed} onChange={e => handleJsonChange('framing_info', 'is_framed', e.target.checked)} /> Framed</label>
+                        {artwork.framing_info?.is_framed && (<div><label className="label">Frame Details</label><textarea className="textarea" placeholder="e.g., Black gallery frame" value={artwork.framing_info?.details || ''} onChange={e => handleJsonChange('framing_info', 'details', e.target.value)} required /></div>)}
+                    </div>
+                    <div>
+                        <label className="label" style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}><input type="checkbox" checked={!!artwork.signature_info?.is_signed} onChange={e => handleJsonChange('signature_info', 'is_signed', e.target.checked)} /> Signed</label>
+                        {artwork.signature_info?.is_signed && (<div><label className="label">Signature Location & Details</label><input type="text" className="input" placeholder="e.g., Verso, bottom right" value={artwork.signature_info?.location || ''} onChange={e => handleJsonChange('signature_info', 'location', e.target.value)} required /></div>)}
+                    </div>
+                </div>
             </fieldset>
 
-            {/* --- REVISED: Edition Information Fieldset with Dropdown --- */}
-            <fieldset>
-                <legend>Edition Information</legend>
+            <fieldset className="fieldset">
+                <legend className="legend">Edition Information</legend>
                 <label className="label">Is this a unique work or part of an edition?</label>
                 <select
                     className="select"
@@ -175,48 +284,43 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                         <div>
                             <label className="label">Numeric Edition Size</label>
-                            <input
-                                type="number"
-                                value={artwork.edition_info?.numeric_size || ''}
-                                onChange={e => handleJsonChange('edition_info', 'numeric_size', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                                className="input"
-                                placeholder="e.g., 50"
-                                required
-                            />
+                            <input type="number" value={artwork.edition_info?.numeric_size || ''} onChange={e => handleJsonChange('edition_info', 'numeric_size', e.target.value ? parseInt(e.target.value, 10) : undefined)} className="input" placeholder="e.g., 50" required />
                         </div>
                         <div>
                             <label className="label">Total Artist's Proofs (APs)</label>
-                            <input
-                                type="number"
-                                value={artwork.edition_info?.ap_size || ''}
-                                onChange={e => handleJsonChange('edition_info', 'ap_size', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                                className="input"
-                                placeholder="e.g., 5"
-                            />
+                            <input type="number" value={artwork.edition_info?.ap_size || ''} onChange={e => handleJsonChange('edition_info', 'ap_size', e.target.value ? parseInt(e.target.value, 10) : undefined)} className="input" placeholder="e.g., 5" />
                         </div>
                     </div>
                 )}
             </fieldset>
 
-            {/* --- Sales & Inventory Management Section (RESTORED) --- */}
             {artwork.edition_info?.is_edition && originalArtwork?.status !== 'Pending' && (
-                <fieldset>
-                    <legend>Sales & Inventory Management</legend>
-                    <p>Check the box next to an edition to mark it as sold. The artwork's main status will update automatically.</p>
+                <fieldset className="fieldset">
+                    <legend className="legend">Sales & Inventory Management</legend>
+                    <p>Check the box next to an edition to mark it as sold.</p>
                     <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.5rem', background: 'var(--background)', padding: '1rem', borderRadius: 'var(--radius)' }}>
-                        {allEditions.map(identifier => (
+                        {allEditions.length > 0 ? allEditions.map(identifier => (
                             <label key={identifier} style={{display: 'flex', gap: '0.5rem', padding: '0.5rem', borderRadius: 'var(--radius-sm)', background: 'var(--card)', cursor: 'pointer'}}>
                                 <input type="checkbox" checked={originalArtwork?.edition_info?.sold_editions?.includes(identifier)} onChange={(e) => handleEditionSaleChange(identifier, e.target.checked)} disabled={saleMutation.isPending}/>
                                 {identifier}
                             </label>
-                        ))}
+                        )) : <p>No editions defined for this artwork.</p>}
                     </div>
                 </fieldset>
             )}
 
-            {/* --- (Provenance and Pricing fieldsets are unchanged) --- */}
-            <fieldset>
-                {/* ... */}
+            <fieldset className="fieldset">
+                <legend className="legend">Provenance</legend>
+                <textarea name="provenance" className="textarea" placeholder="History of ownership, exhibitions, etc." value={artwork.provenance || ''} onChange={handleFormChange} />
+            </fieldset>
+            
+            <fieldset className="fieldset">
+                <legend className="legend">Pricing</legend>
+                <label className="label">Price ($)</label>
+                <input name="price" className="input" type="number" step="0.01" value={artwork.price || ''} onChange={handleFormChange} />
+                <label style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem'}}>
+                    <input name="is_price_negotiable" type="checkbox" checked={!!artwork.is_price_negotiable} onChange={handleFormChange} /> Price is negotiable
+                </label>
             </fieldset>
         </form>
     );
