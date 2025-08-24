@@ -1,46 +1,60 @@
 // src/pages/dashboard/collector/CollectorSettingsPage.tsx
 
 import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../contexts/AuthProvider';
 
 const CollectorSettingsPage = () => {
     const { user } = useAuth();
-    const [preferredMediums, setPreferredMediums] = useState<string[]>([]);
-    const [preferredStyles, setPreferredStyles] = useState<string[]>([]);
+    const queryClient = useQueryClient();
+    const [preferredMediums, setPreferredMediums] = useState('');
+    const [preferredStyles, setPreferredStyles] = useState('');
 
     const { data: preferences, isLoading } = useQuery({
         queryKey: ['userPreferences', user?.id],
         queryFn: async () => {
             if (!user) return null;
-            const { data } = await supabase.from('user_preferences').select('*').eq('user_id', user.id).single();
+            const { data, error } = await supabase.from('user_preferences').select('*').eq('user_id', user.id).single();
+            if (error && error.code !== 'PGRST116') { // PGRST116 is "No rows found"
+                throw error;
+            }
             return data;
         },
         enabled: !!user,
         onSuccess: (data) => {
             if (data) {
-                setPreferredMediums(data.preferred_mediums || []);
-                setPreferredStyles(data.preferred_styles || []);
+                setPreferredMediums((data.preferred_mediums || []).join(', '));
+                setPreferredStyles((data.preferred_styles || []).join(', '));
             }
         }
     });
 
-    const updatePreferences = useMutation({
+    const mutation = useMutation({
         mutationFn: async (updatedPrefs: { preferred_mediums: string[], preferred_styles: string[] }) => {
             if (!user) throw new Error("User not found");
             const { data, error } = await supabase.from('user_preferences').upsert({
                 user_id: user.id,
-                ...updatedPrefs
-            }).select();
+                ...updatedPrefs,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' }).select().single();
+            
             if (error) throw error;
             return data;
         },
-        // You can add onSuccess and onError handlers for feedback
+        onSuccess: () => {
+            alert('Preferences saved successfully!');
+            queryClient.invalidateQueries({ queryKey: ['userPreferences', user?.id] });
+        },
+        onError: (error) => {
+            alert(`Error saving preferences: ${error.message}`);
+        }
     });
 
     const handleSave = () => {
-        updatePreferences.mutate({ preferred_mediums: preferredMediums, preferred_styles: preferredStyles });
+        const mediums = preferredMediums.split(',').map(s => s.trim()).filter(Boolean);
+        const styles = preferredStyles.split(',').map(s => s.trim()).filter(Boolean);
+        mutation.mutate({ preferred_mediums: mediums, preferred_styles: styles });
     };
 
     if (isLoading) return <p>Loading settings...</p>;
@@ -48,42 +62,49 @@ const CollectorSettingsPage = () => {
     return (
         <div>
             <h1>Collector Settings</h1>
+            <p style={{ color: 'var(--muted-foreground)', marginTop: '-0.5rem', marginBottom: '2rem' }}>Manage your preferences to get better recommendations.</p>
 
             <div className="widget" style={{background: 'var(--card)', padding: '1.5rem', borderRadius: 'var(--radius)', marginBottom: '2rem'}}>
                 <h3>Your Preferences</h3>
-                <p style={{color: 'var(--muted-foreground)'}}>Help us recommend art you'll love by telling us what you like.</p>
+                <p style={{color: 'var(--muted-foreground)'}}>Help us recommend art you'll love by telling us what you like. Separate multiple items with a comma.</p>
 
-                <div style={{ marginTop: '1rem' }}>
-                    <label>Preferred Mediums (comma-separated)</label>
+                <div style={{ marginTop: '1.5rem' }}>
+                    <label style={{display: 'block', marginBottom: '0.5rem'}}>Preferred Mediums</label>
                     <input
                         type="text"
-                        value={preferredMediums.join(', ')}
-                        onChange={(e) => setPreferredMediums(e.target.value.split(',').map(s => s.trim()))}
-                        style={{ width: '100%', padding: '0.5rem' }}
+                        placeholder="e.g., Oil on canvas, Photography, Bronze sculpture"
+                        value={preferredMediums}
+                        onChange={(e) => setPreferredMediums(e.target.value)}
+                        style={{ width: '100%', padding: '0.75rem' }}
                     />
                 </div>
-                <div style={{ marginTop: '1rem' }}>
-                    <label>Preferred Styles (e.g., Abstract, Portraiture)</label>
+                <div style={{ marginTop: '1.5rem' }}>
+                    <label style={{display: 'block', marginBottom: '0.5rem'}}>Preferred Styles / Genres</label>
                     <input
                         type="text"
-                        value={preferredStyles.join(', ')}
-                        onChange={(e) => setPreferredStyles(e.target.value.split(',').map(s => s.trim()))}
-                        style={{ width: '100%', padding: '0.5rem' }}
+                        placeholder="e.g., Abstract, Portraiture, Impressionism"
+                        value={preferredStyles}
+                        onChange={(e) => setPreferredStyles(e.target.value)}
+                        style={{ width: '100%', padding: '0.75rem' }}
                     />
                 </div>
-                <button onClick={handleSave} style={{ marginTop: '1.5rem' }}>Save Preferences</button>
+                <button onClick={handleSave} disabled={mutation.isPending} style={{ marginTop: '1.5rem' }}>
+                    {mutation.isPending ? 'Saving...' : 'Save Preferences'}
+                </button>
             </div>
 
             <div className="widget" style={{background: 'var(--card)', padding: '1.5rem', borderRadius: 'var(--radius)'}}>
                 <h3>What We've Learned About You</h3>
                 <p style={{color: 'var(--muted-foreground)'}}>Based on your activity, we think you're interested in:</p>
-                {/* In a real implementation, this would be populated from the `learned_preferences` field */}
-                <ul>
-                    <li>Contemporary Art</li>
-                    <li>Oil Paintings</li>
-                    <li>South African Artists</li>
-                </ul>
-                <p style={{ fontStyle: 'italic', fontSize: '0.9rem' }}>This feature is still in development. Soon, you'll be able to refine these learned tastes.</p>
+                {preferences?.learned_preferences ? (
+                     <ul>
+                        {Object.entries(preferences.learned_preferences).map(([key, value]) => (
+                            <li key={key}>{`${key}: ${JSON.stringify(value)}`}</li>
+                        ))}
+                     </ul>
+                ) : (
+                    <p style={{ fontStyle: 'italic', fontSize: '0.9rem' }}>No learned preferences to show yet. Start exploring the platform!</p>
+                )}
             </div>
         </div>
     );
