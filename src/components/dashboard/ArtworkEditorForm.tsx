@@ -7,7 +7,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 type EditionInfo = { is_edition?: boolean; numeric_size?: number; ap_size?: number; sold_editions?: string[] };
 type Artwork = {
     id: string; title: string | null; description: string | null; image_url: string | null;
-    price: number | null; status: 'Pending' 'Active' | 'Sold'; medium: string | null;
+    price: number | null; 
+    // --- THIS IS THE CORRECTED LINE ---
+    status: 'Pending' | 'Active' | 'Sold'; 
+    medium: string | null;
     dimensions: { height?: string; width?: string; depth?: string; unit?: string } | null;
     signature_info: { is_signed?: boolean; location?: string } | null;
     framing_info: { is_framed?: boolean; details?: string } | null;
@@ -53,6 +56,7 @@ const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: 
 };
 
 const triggerImageGeneration = async (artworkId: string, flags: { forceWatermark?: boolean, forceVisualization?: boolean } = {}) => {
+    console.log(`Triggering image generation for ${artworkId} with flags:`, flags);
     try {
         const { error } = await supabase.functions.invoke('generate-images', {
             body: { artworkId, forceWatermarkUpdate: !!flags.forceWatermark, forceVisualizationUpdate: !!flags.forceVisualization },
@@ -70,7 +74,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     const [originalTitle, setOriginalTitle] = useState('');
     
     const queryKey = ['artwork-form', artworkId];
-    const { data: originalArtwork, isLoading, isError, error } = useQuery({ queryKey, queryFn: () => fetchArtwork(artworkId) });
+    const { data: originalArtwork, isLoading } = useQuery({ queryKey, queryFn: () => fetchArtwork(artworkId) });
 
     useEffect(() => {
         if (originalArtwork) {
@@ -126,7 +130,10 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 const hasArtistNameChanged = originalArtistName && currentArtistName && originalArtistName !== currentArtistName;
 
                 if (forceVisualization || hasArtistNameChanged) {
-                    triggerImageGeneration(artworkId, { forceVisualization, forceWatermark: hasArtistNameChanged });
+                    triggerImageGeneration(artworkId, {
+                        forceVisualization: forceVisualization,
+                        forceWatermark: hasArtistNameChanged,
+                    });
                 }
             }
             onSaveSuccess();
@@ -147,7 +154,12 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     const handleMediumChange = (newParent?: string, newChild?: string) => {
         const currentParent = newParent !== undefined ? newParent : parentMedium;
         const currentChild = newChild !== undefined ? newChild : childMedium;
-        let combinedMedium = currentParent ? (currentChild ? `${currentParent}: ${currentChild}` : currentParent) : currentChild;
+        let combinedMedium = '';
+        if (currentParent) {
+            combinedMedium = newChild !== undefined ? (currentChild ? `${currentParent}: ${currentChild}` : currentParent) : currentParent;
+        } else {
+            combinedMedium = currentChild;
+        }
         setArtwork(prev => ({ ...prev, medium: combinedMedium }));
     };
 
@@ -191,9 +203,6 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     };
 
     if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork details...</div>;
-    if (isError) return <div style={{padding: '2rem'}}>Error loading artwork: {error.message}</div>;
-    if (!originalArtwork) return <div style={{padding: '2rem'}}>Artwork not found.</div>;
-
 
     return (
         <form id={formId} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -201,6 +210,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 <legend>Primary Information</legend>
                 <label>Title</label>
                 <input name="title" className="input" type="text" value={artwork.title || ''} onChange={handleFormChange} required />
+                
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem'}}>
                     <div>
                         <label>Primary Medium</label>
@@ -215,6 +225,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                         {parentMedium && mediaTaxonomy[parentMedium] && <datalist id="media-suggestions">{mediaTaxonomy[parentMedium].map(suggestion => <option key={suggestion} value={suggestion} />)}</datalist>}
                     </div>
                 </div>
+
                 <label style={{marginTop: '1rem'}}>Description</label>
                 <textarea name="description" className="input" value={artwork.description || ''} onChange={handleFormChange} />
             </fieldset>
@@ -269,6 +280,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             )}
 
             <fieldset><legend>Provenance</legend><textarea name="provenance" className="input" placeholder="History of ownership, exhibitions, etc." value={artwork.provenance || ''} onChange={handleFormChange} /></fieldset>
+            
             <fieldset><legend>Pricing</legend><label>Price ($)</label><input name="price" className="input" type="number" step="0.01" value={artwork.price || ''} onChange={handleFormChange} /><label style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}><input name="is_price_negotiable" type="checkbox" checked={!!artwork.is_price_negotiable} onChange={handleFormChange} /> Price is negotiable </label></fieldset>
         </form>
     );
