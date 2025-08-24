@@ -13,7 +13,7 @@ type Artwork = {
     framing_info: { is_framed?: boolean; details?: string } | null;
     provenance: string | null; edition_info: EditionInfo | null; is_price_negotiable?: boolean;
     slug?: string; watermarked_image_url: string | null; visualization_image_url: string | null;
-    artist: { full_name: string | null } | null; // For the join
+    artist: { full_name: string | null } | null;
 };
 
 // --- PROPS INTERFACE ---
@@ -24,13 +24,20 @@ interface ArtworkEditorFormProps {
   onTitleChange?: (newTitle: string) => void;
 }
 
-// --- MEDIA TAXONOMY (ensure this is complete) ---
+// --- MEDIA TAXONOMY (COMPLETE AND CORRECTED) ---
 const mediaTaxonomy: Record<string, string[]> = {
     'Drawing': ['Graphite (pencil, powder, mechanical)', 'Charcoal (vine, compressed)', 'Chalk (red/white/black, sanguine)', 'Conté (sticks, pencils)', 'Pastel (soft, hard, oil, pan)', 'Ink (India, sumi, iron-gall; brush/pen; wash)', 'Markers (alcohol/water/paint)', 'Silverpoint/metalpoint', 'Colored pencil (wax/oil/water-soluble)'],
     'Painting': ['Oil (alla prima, glazing, impasto, grisaille)', 'Acrylic (impasto, pouring, airbrush, glazing)', 'Watercolor (transparent, wet-on-wet, drybrush)', 'Gouache (opaque watercolor)', 'Tempera (egg tempera, casein)', 'Encaustic (hot wax)', 'Fresco (buon fresco, fresco secco)', 'Ink painting (sumi-e)', 'Spray/Aerosol (stencil, freehand)', 'Vitreous enamel'],
     'Printmaking': ['Relief (woodcut, linocut, wood engraving)', 'Intaglio (engraving, etching, drypoint, aquatint, mezzotint, photogravure)', 'Planographic (lithography)', 'Stencil (screenprint/serigraph, pochoir)', 'Monotype/monoprint', 'Collagraph', 'Digital print (inkjet/pigment/giclée, UV flatbed)', 'Risograph'],
     'Sculpture': ['Stone (carving)', 'Wood (carving, turning)', 'Metal (lost-wax bronze, sand casting, forging, fabrication/welding)', 'Clay/Terracotta (modeling, casting)', 'Plaster (modeling, molds)', 'Resin & plastics (casting, vacuum forming, 3D printing)', 'Found-object/assemblage', 'Kinetic', 'Soft sculpture'],
-    // ... (include all other categories from your original file)
+    'Ceramics & Glass': ['Ceramics (earthenware, stoneware, porcelain, raku, terra sigillata; wheel-thrown, handbuilt/coil/slab, slip-cast; sgraffito, inlay/mishima; glaze/underglaze)', 'Glass (blown, cast, kiln-formed/fused, stained, lampworking)'],
+    'Textile / Fiber': ['Weaving (tapestry)', 'Knitting', 'Crochet', 'Embroidery (including culturally specific forms like tatreez)', 'Quilting (patchwork, appliqué)', 'Felting (wet/needle/nuno)', 'Macramé', 'Resist dyeing (batik, shibori, tie-dye, ikat)'],
+    'Photography': ['Analog: daguerreotype, ambrotype, tintype/ferrotype, salt print, albumen print, gelatin silver, platinum/palladium, cyanotype, gum bichromate, carbon print', 'Color: chromogenic (C-print/RA-4), dye transfer, Cibachrome/Ilfochrome, autochrome', 'Digital: pigment inkjet, LightJet/laser exposure, dye-sublimation', 'Cameraless: photogram, chemigram, lumen'],
+    'Time-based Media (Film/Video/Animation/Sound)': ['Film (8mm/Super 8, 16mm, 35mm, hand-processed)', 'Video (single-channel, multichannel installation, projection mapping)', 'Animation (stop-motion, hand-drawn, CGI)', 'Sound (field recording, electroacoustic, sound installation, generative audio)'],
+    'Digital / Computational / New Media': ['Digital painting (raster/vector)', '3D modeling (polygon/NURBS/sculpting)', 'Generative/code art (algorithmic, Processing/p5.js)', 'Interactive/realtime (game art, sensor-based install, projection mapping)', 'XR (VR/AR/MR)', 'AI-assisted (text-to-image, image-to-image, style transfer)', 'Net art (website/networked performance)'],
+    'Book & Text Arts': ['Artist’s books, zines, altered books', 'Letterpress (and historical linotype/monotype)', 'Calligraphy/illumination (Western/Arabic/brush lettering)'],
+    'Street / Public / Environmental': ['Street art (graffiti, stencil, wheatpaste, sticker art, murals)', 'Public art (monumental sculpture, light/environmental)', 'Land art/earthworks (site interventions, stone arrangements, earth mounds, ice/snow)'],
+    'Mixed / Hybrid & Non-traditional / Experimental': ['Collage (paper/photo/digital)', 'Assemblage (found materials, shadow boxes)', 'Material painting (sand/soil/cement with binder)', 'Light-based (neon, LED, projection, holography)', 'Bio-art (living cultures, DNA, mycelium)', 'Ephemeral (ice, sand, chalk, smoke, soap bubbles, food)'],
 };
 
 // --- API FUNCTIONS ---
@@ -98,7 +105,6 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 finalSlug = slugData;
             }
 
-            // The joined 'artist' object should not be part of the update payload
             const { artist, ...dataToUpdate } = formData;
             const payload = { ...dataToUpdate, slug: finalSlug };
 
@@ -132,7 +138,6 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         onError: (error: any) => alert(`Error saving artwork: ${error.message}`),
     });
 
-    // --- CORRECTED: Medium selection logic restored ---
     const { parentMedium, childMedium } = useMemo(() => {
         const mediumStr = artwork.medium || '';
         const [parent, ...childParts] = mediumStr.split(': ');
@@ -148,7 +153,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         const currentChild = newChild !== undefined ? newChild : childMedium;
         let combinedMedium = '';
         if (currentParent) {
-            combinedMedium = currentChild ? `${currentParent}: ${currentChild}` : currentParent;
+            combinedMedium = newChild !== undefined ? (currentChild ? `${currentParent}: ${currentChild}` : currentParent) : currentParent;
         } else {
             combinedMedium = currentChild;
         }
@@ -190,7 +195,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         updateMutation.mutate(payload);
     };
 
-    if (isLoading) return <div>Loading artwork details...</div>;
+    if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork details...</div>;
 
     return (
         <form id={formId} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
