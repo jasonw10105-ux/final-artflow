@@ -1,5 +1,3 @@
-// src/components/notifications/NotificationPanel.tsx
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
@@ -34,63 +32,33 @@ const getNotificationIcon = (type: string) => {
 };
 
 const NotificationPanel = ({ notifications, onMarkAllRead, isLoading }: NotificationPanelProps) => {
-    const panelStyle: React.CSSProperties = {
-        position: 'absolute',
-        top: 'calc(100% + 10px)',
-        right: 0,
-        width: '380px',
-        background: 'var(--card)',
-        borderRadius: 'var(--radius)',
-        boxShadow: 'var(--shadow-lg)',
-        border: '1px solid var(--border)',
-        zIndex: 1010,
-        maxHeight: '400px',
-        display: 'flex',
-        flexDirection: 'column',
-    };
-
-    const headerStyle: React.CSSProperties = {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '0.75rem 1rem',
-        borderBottom: '1px solid var(--border)',
-    };
-
-    const listStyle: React.CSSProperties = {
-        listStyle: 'none',
-        padding: 0,
-        margin: 0,
-        overflowY: 'auto',
-    };
-
     const hasUnread = notifications.some(n => !n.is_read);
 
     return (
-        <div style={panelStyle}>
-            <div style={headerStyle}>
-                <h4 style={{ margin: 0, fontSize: '1rem' }}>Notifications</h4>
+        <div className="notification-panel">
+            <div className="notification-panel-header">
+                <h4>Notifications</h4>
                 {hasUnread && (
                     <button className="button-link" onClick={onMarkAllRead}>
                         Mark all as read
                     </button>
                 )}
             </div>
-            <ul style={listStyle}>
-                {isLoading && <li style={{ padding: '2rem', textAlign: 'center' }}>Loading...</li>}
+            <ul className="notification-list">
+                {isLoading && <li className="notification-list-message">Loading...</li>}
                 {!isLoading && notifications.length === 0 && (
-                    <li style={{ padding: '2rem', textAlign: 'center', color: 'var(--muted-foreground)' }}>You're all caught up!</li>
+                    <li className="notification-list-message">You're all caught up!</li>
                 )}
                 {!isLoading && notifications.map(n => (
-                    <li key={n.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <Link to={n.link_url || '#'} style={{ textDecoration: 'none', color: 'inherit', display: 'block', padding: '1rem' }}>
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                                <div>{getNotificationIcon(n.type)}</div>
-                                <div style={{ flex: 1 }}>
-                                    <p style={{ margin: 0, lineHeight: 1.4, fontWeight: n.is_read ? 400 : 600 }}>
+                    <li key={n.id} className="notification-list-item">
+                        <Link to={n.link_url || '#'} className="notification-link">
+                            <div className="notification-content">
+                                <div className="notification-icon">{getNotificationIcon(n.type)}</div>
+                                <div className="notification-body">
+                                    <p className={`notification-message ${!n.is_read ? 'unread' : ''}`}>
                                         {n.message}
                                     </p>
-                                    <small style={{ color: 'var(--muted-foreground)' }}>
+                                    <small className="notification-timestamp">
                                         {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
                                     </small>
                                 </div>
