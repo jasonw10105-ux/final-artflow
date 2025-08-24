@@ -1,5 +1,3 @@
-// src/types/database.types.ts
-
 export type Json =
   | string
   | number
@@ -144,36 +142,48 @@ export type Database = {
       }
       catalogues: {
         Row: {
+          access_type: string
+          access_until: string | null
           cover_image_url: string | null
           created_at: string
           description: string | null
           id: string
-          is_public: boolean
+          is_published: boolean | null
+          is_system_catalogue: boolean
+          password: string | null
           slug: string | null
+          status: string
           title: string
-          updated_at: string
           user_id: string
         }
         Insert: {
+          access_type?: string
+          access_until?: string | null
           cover_image_url?: string | null
           created_at?: string
           description?: string | null
           id?: string
-          is_public?: boolean
+          is_published?: boolean | null
+          is_system_catalogue?: boolean
+          password?: string | null
           slug?: string | null
+          status?: string
           title: string
-          updated_at?: string
           user_id: string
         }
         Update: {
+          access_type?: string
+          access_until?: string | null
           cover_image_url?: string | null
           created_at?: string
           description?: string | null
           id?: string
-          is_public?: boolean
+          is_published?: boolean | null
+          is_system_catalogue?: boolean
+          password?: string | null
           slug?: string | null
+          status?: string
           title?: string
-          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -417,7 +427,7 @@ export type Database = {
           collector_id: string
           created_at: string | null
           id: string
-          sale_date: string
+          sale_date: string | null
           sale_price: number
           status: string
           updated_at: string | null
@@ -428,7 +438,7 @@ export type Database = {
           collector_id: string
           created_at?: string | null
           id?: string
-          sale_date?: string
+          sale_date?: string | null
           sale_price: number
           status?: string
           updated_at?: string | null
@@ -439,7 +449,7 @@ export type Database = {
           collector_id?: string
           created_at?: string | null
           id?: string
-          sale_date?: string
+          sale_date?: string | null
           sale_price?: number
           status?: string
           updated_at?: string | null
