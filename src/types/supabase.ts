@@ -1,5 +1,3 @@
-// src/types/supabase.ts
-
 export type Json =
   | string
   | number
@@ -30,6 +28,16 @@ export interface Database {
           medium: string | null
           date_info: Json | null
           signature_info: Json | null
+          // --- ADDED FIELDS START ---
+          catalogue_id: string | null
+          framing_info: Json | null
+          watermarked_image_url: string | null
+          visualization_image_url: string | null
+          provenance: string | null
+          currency: string | null
+          updated_at: string | null
+          edition_info: Json | null
+          // --- ADDED FIELDS END ---
         }
         Insert: {
           id?: string
@@ -49,6 +57,16 @@ export interface Database {
           medium?: string | null
           date_info?: Json | null
           signature_info?: Json | null
+          // --- ADDED FIELDS START ---
+          catalogue_id?: string | null
+          framing_info?: Json | null
+          watermarked_image_url?: string | null
+          visualization_image_url?: string | null
+          provenance?: string | null
+          currency?: string | null
+          updated_at?: string | null
+          edition_info?: Json | null
+          // --- ADDED FIELDS END ---
         }
         Update: {
           id?: string
@@ -68,6 +86,54 @@ export interface Database {
           medium?: string | null
           date_info?: Json | null
           signature_info?: Json | null
+          // --- ADDED FIELDS START ---
+          catalogue_id?: string | null
+          framing_info?: Json | null
+          watermarked_image_url?: string | null
+          visualization_image_url?: string | null
+          provenance?: string | null
+          currency?: string | null
+          updated_at?: string | null
+          edition_info?: Json | null
+          // --- ADDED FIELDS END ---
+        }
+      }
+      catalogues: { // Assumed structure based on previous context
+        Row: {
+          id: string
+          user_id: string
+          title: string
+          description: string | null
+          cover_image_url: string | null
+          slug: string | null
+          status: string
+          is_published: boolean | null
+          created_at: string
+          is_system_catalogue: boolean // Required for the "Available Work" feature
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title: string
+          description?: string | null
+          cover_image_url?: string | null
+          slug?: string | null
+          status?: string
+          is_published?: boolean | null
+          created_at?: string
+          is_system_catalogue?: boolean
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string
+          description?: string | null
+          cover_image_url?: string | null
+          slug?: string | null
+          status?: string
+          is_published?: boolean | null
+          created_at?: string
+          is_system_catalogue?: boolean
         }
       }
       conversations: {
@@ -124,6 +190,15 @@ export interface Database {
           role: "artist" | "collector" | "both" | null
           profile_completed: boolean | null
           exhibition_history: Json | null
+          // --- ADDED FIELDS based on previous context ---
+          first_name: string | null
+          last_name: string | null
+          short_bio: string | null
+          artist_statement: string | null
+          contact_number: string | null
+          location: Json | null
+          social_links: Json | null
+          display_name: string | null
         }
         Insert: {
           id: string
@@ -137,6 +212,15 @@ export interface Database {
           role?: "artist" | "collector" | "both" | null
           profile_completed?: boolean | null
           exhibition_history?: Json | null
+          // --- ADDED FIELDS based on previous context ---
+          first_name?: string | null
+          last_name?: string | null
+          short_bio?: string | null
+          artist_statement?: string | null
+          contact_number?: string | null
+          location?: Json | null
+          social_links?: Json | null
+          display_name?: string | null
         }
         Update: {
           id?: string
@@ -150,6 +234,15 @@ export interface Database {
           role?: "artist" | "collector" | "both" | null
           profile_completed?: boolean | null
           exhibition_history?: Json | null
+          // --- ADDED FIELDS based on previous context ---
+          first_name?: string | null
+          last_name?: string | null
+          short_bio?: string | null
+          artist_statement?: string | null
+          contact_number?: string | null
+          location?: Json | null
+          social_links?: Json | null
+          display_name?: string | null
         }
       }
     }
