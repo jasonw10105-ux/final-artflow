@@ -1,79 +1,45 @@
-// src/components/dashboard/ArtworkActionsMenu.tsx
-
-import React, { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, Download, Image, Eye, Pencil, Trash2, DollarSign } from 'lucide-react';
+import React from 'react';
+import { Menu, MenuItem } from '@mui/material';
+import { handleDownload } from '../../utils/imageUtils'; // CORRECTED: Import the new utility
 import { Database } from '../../types/supabase';
-import { downloadImageAsInstagramSquare } from '../../utils/imageUtils';
 
+// CORRECTED: Use the official type from supabase.ts
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 
 interface ArtworkActionsMenuProps {
-  artwork: Artwork;
-  onEdit: () => void;
-  onDelete: () => void;
-  onMarkAsSold: () => void;
+    artwork: Artwork;
+    anchorEl: null | HTMLElement;
+    onClose: () => void;
+    onEdit: (id: string) => void;
+    onDelete: (id: string, title: string | null) => void;
+    onMarkAsSold: (id: string) => void;
 }
 
-const ArtworkActionsMenu = ({ artwork, onEdit, onDelete, onMarkAsSold }: ArtworkActionsMenuProps) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+const ArtworkActionsMenu = ({ artwork, anchorEl, onClose, onEdit, onDelete, onMarkAsSold }: ArtworkActionsMenuProps) => {
+    const isOpen = Boolean(anchorEl);
 
-  // Close menu if clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleDownload = (type: 'artwork' | 'visualization') => {
-    const url = type === 'artwork' ? artwork.watermarked_image_url : artwork.visualization_image_url;
-    const baseFilename = artwork.slug || artwork.id;
-    if (url) {
-      downloadImageAsInstagramSquare(url, `${baseFilename}-${type}-insta.jpg`);
-    } else {
-      alert(`The ${type} image is missing.`);
-    }
-    setIsOpen(false);
-  };
-  
-  const isSold = artwork.status === 'Sold';
-
-  return (
-    <div style={{ position: 'relative' }} ref={menuRef}>
-      <button 
-        className="button-secondary button" 
-        onClick={() => setIsOpen(!isOpen)}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
-      >
-        <MoreHorizontal size={16} />
-      </button>
-
-      {isOpen && (
-        <div className="dropdown-menu">
-          <ul className="dropdown-list">
-            <li><button onClick={() => { onEdit(); setIsOpen(false); }} className="dropdown-button"><Pencil size={16} /> Edit Details</button></li>
-            {!isSold && (
-              <li><button onClick={() => { onMarkAsSold(); setIsOpen(false); }} className="dropdown-button"><DollarSign size={16} /> Mark as Sold</button></li>
+    return (
+        <Menu anchorEl={anchorEl} open={isOpen} onClose={onClose}>
+            <MenuItem onClick={() => { onEdit(artwork.id); onClose(); }}>Edit Details</MenuItem>
+            {artwork.status === 'Active' && (
+                <MenuItem onClick={() => { onMarkAsSold(artwork.id); onClose(); }}>Mark as Sold</MenuItem>
             )}
-            <hr className="dropdown-divider" />
+            {/* CORRECTED: Properties now exist on the correct Artwork type */}
             {artwork.watermarked_image_url && (
-              <li><button onClick={() => handleDownload('artwork')} className="dropdown-button"><Image size={16} /> Download Artwork (Insta)</button></li>
+                <MenuItem onClick={() => handleDownload(artwork.watermarked_image_url, `${artwork.slug}-watermarked.png`)}>
+                    Download Watermarked
+                </MenuItem>
             )}
             {artwork.visualization_image_url && (
-              <li><button onClick={() => handleDownload('visualization')} className="dropdown-button"><Eye size={16} /> Download Visualization (Insta)</button></li>
+                <MenuItem onClick={() => handleDownload(artwork.visualization_image_url, `${artwork.slug}-visualization.jpg`)}>
+                    Download Visualization
+                </MenuItem>
             )}
-            <hr className="dropdown-divider" />
-            <li><button onClick={() => { onDelete(); setIsOpen(false); }} className="dropdown-button dropdown-button-danger"><Trash2 size={16} /> Delete Artwork</button></li>
-          </ul>
-        </div>
-      )}
-    </div>
-  );
+            <MenuItem onClick={() => { onDelete(artwork.id, artwork.title); onClose(); }} sx={{ color: 'red' }}>
+                Delete Artwork
+            </MenuItem>
+        </Menu>
+    );
 };
 
 export default ArtworkActionsMenu;
