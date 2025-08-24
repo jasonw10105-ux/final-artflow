@@ -1,7 +1,7 @@
 // src/components/dashboard/ArtworkActionsMenu.tsx
 
-import React, { useState } from 'react';
-import { MoreHorizontal, Download, Image, Eye } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { MoreHorizontal, Download, Image, Eye, Pencil, Trash2, DollarSign } from 'lucide-react';
 import { Database } from '../../types/supabase';
 import { downloadImageAsInstagramSquare } from '../../utils/imageUtils';
 
@@ -9,38 +9,41 @@ type Artwork = Database['public']['Tables']['artworks']['Row'];
 
 interface ArtworkActionsMenuProps {
   artwork: Artwork;
+  onEdit: () => void;
+  onDelete: () => void;
+  onMarkAsSold: () => void;
 }
 
-const ArtworkActionsMenu = ({ artwork }: ArtworkActionsMenuProps) => {
+const ArtworkActionsMenu = ({ artwork, onEdit, onDelete, onMarkAsSold }: ArtworkActionsMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu if clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleDownload = (type: 'artwork' | 'visualization') => {
-    let url: string | null = null;
-    let baseFilename = artwork.slug || artwork.id;
-
-    if (type === 'artwork' && artwork.watermarked_image_url) {
-      url = artwork.watermarked_image_url;
-      baseFilename += '-artwork-insta.jpg';
-    } else if (type === 'visualization' && artwork.visualization_image_url) {
-      url = artwork.visualization_image_url;
-      baseFilename += '-viz-insta.jpg';
-    }
-
+    const url = type === 'artwork' ? artwork.watermarked_image_url : artwork.visualization_image_url;
+    const baseFilename = artwork.slug || artwork.id;
     if (url) {
-      downloadImageAsInstagramSquare(url, baseFilename);
+      downloadImageAsInstagramSquare(url, `${baseFilename}-${type}-insta.jpg`);
     } else {
-      alert(`The ${type} image URL is missing.`);
+      alert(`The ${type} image is missing.`);
     }
-    setIsOpen(false); // Close menu after action
+    setIsOpen(false);
   };
-
-  // Only render the component if there's at least one downloadable image
-  if (!artwork.watermarked_image_url && !artwork.visualization_image_url) {
-    return null;
-  }
+  
+  const isSold = artwork.status === 'Sold';
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }} ref={menuRef}>
       <button 
         className="button-secondary button" 
         onClick={() => setIsOpen(!isOpen)}
@@ -51,36 +54,21 @@ const ArtworkActionsMenu = ({ artwork }: ArtworkActionsMenuProps) => {
       </button>
 
       {isOpen && (
-        <div 
-            style={{ 
-                position: 'absolute', 
-                top: '100%', 
-                right: 0, 
-                background: 'var(--card)', 
-                border: '1px solid var(--border)', 
-                borderRadius: 'var(--radius)', 
-                marginTop: '0.5rem',
-                zIndex: 10,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                width: '240px'
-            }}
-            onMouseLeave={() => setIsOpen(false)}
-        >
-          <ul style={{ listStyle: 'none', margin: 0, padding: '0.5rem' }}>
+        <div className="dropdown-menu">
+          <ul className="dropdown-list">
+            <li><button onClick={() => { onEdit(); setIsOpen(false); }} className="dropdown-button"><Pencil size={16} /> Edit Details</button></li>
+            {!isSold && (
+              <li><button onClick={() => { onMarkAsSold(); setIsOpen(false); }} className="dropdown-button"><DollarSign size={16} /> Mark as Sold</button></li>
+            )}
+            <hr className="dropdown-divider" />
             {artwork.watermarked_image_url && (
-              <li>
-                <button onClick={() => handleDownload('artwork')} className="dropdown-button">
-                  <Image size={16} /> Download Artwork (Insta)
-                </button>
-              </li>
+              <li><button onClick={() => handleDownload('artwork')} className="dropdown-button"><Image size={16} /> Download Artwork (Insta)</button></li>
             )}
             {artwork.visualization_image_url && (
-              <li>
-                <button onClick={() => handleDownload('visualization')} className="dropdown-button">
-                  <Eye size={16} /> Download Visualization (Insta)
-                </button>
-              </li>
+              <li><button onClick={() => handleDownload('visualization')} className="dropdown-button"><Eye size={16} /> Download Visualization (Insta)</button></li>
             )}
+            <hr className="dropdown-divider" />
+            <li><button onClick={() => { onDelete(); setIsOpen(false); }} className="dropdown-button dropdown-button-danger"><Trash2 size={16} /> Delete Artwork</button></li>
           </ul>
         </div>
       )}
