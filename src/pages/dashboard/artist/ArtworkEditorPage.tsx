@@ -2,7 +2,7 @@ import React from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trash2, CheckCircle } from 'lucide-react';
 import ArtworkEditorForm from '../../../components/dashboard/ArtworkEditorForm';
 
 const ArtworkEditorPage = () => {
@@ -15,15 +15,12 @@ const ArtworkEditorPage = () => {
         return null;
     }
     
-    // Fetch minimal data needed for the page layout (the sidebar image)
-    const { data: artworkPreview, isLoading } = useQuery({
-        queryKey: ['artwork-preview', artworkId],
+    const queryKey = ['artwork-editor-page', artworkId];
+    const { data: artworkData, isLoading } = useQuery({
+        queryKey: queryKey,
         queryFn: async () => {
-            const { data, error } = await supabase.from('artworks').select('image_url, title').eq('id', artworkId).single();
-            if (error) {
-                console.error("Error fetching artwork preview:", error);
-                return null;
-            }
+            const { data, error } = await supabase.from('artworks').select('image_url, title, status').eq('id', artworkId).single();
+            if (error) throw new Error(error.message);
             return data;
         },
     });
@@ -40,10 +37,29 @@ const ArtworkEditorPage = () => {
         },
         onError: (error: any) => alert(`Error deleting artwork: ${error.message}`),
     });
+
+    const soldMutation = useMutation({
+        mutationFn: async () => {
+            const { error } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKey });
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+            alert('Artwork has been marked as sold.');
+        },
+        onError: (error: any) => alert(`Error updating status: ${error.message}`),
+    });
     
     const handleDelete = () => {
         if (window.confirm('Are you sure you want to permanently delete this artwork? This action cannot be undone.')) {
             deleteMutation.mutate();
+        }
+    };
+
+    const handleMarkAsSold = () => {
+        if (window.confirm('Are you sure you want to mark this artwork as sold? This will hide pricing and purchase options.')) {
+            soldMutation.mutate();
         }
     };
 
@@ -62,8 +78,8 @@ const ArtworkEditorPage = () => {
             
             <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '3rem', alignItems: 'start' }}>
                 <aside style={{ position: 'sticky', top: '2rem' }}>
-                    {isLoading ? <p>Loading image...</p> : artworkPreview?.image_url && (
-                        <img src={artworkPreview.image_url} alt={artworkPreview.title || "Artwork"} style={{ width: '100%', height: 'auto', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
+                    {isLoading ? <p>Loading image...</p> : artworkData?.image_url && (
+                        <img src={artworkData.image_url} alt={artworkData.title || "Artwork"} style={{ width: '100%', height: 'auto', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
                     )}
                 </aside>
                 
@@ -77,13 +93,22 @@ const ArtworkEditorPage = () => {
                         <button type="button" onClick={handleDelete} className="button button-danger" disabled={deleteMutation.isPending}>
                             {deleteMutation.isPending ? 'Deleting...' : <><Trash2 size={14} /> Delete Artwork</>}
                         </button>
-                        <button type="submit" form={FORM_ID} className="button button-primary">
-                            Save Changes
-                        </button>
+
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {artworkData?.status === 'Active' && (
+                                <button type="button" onClick={handleMarkAsSold} className="button button-secondary" disabled={soldMutation.isPending}>
+                                    {soldMutation.isPending ? 'Updating...' : <><CheckCircle size={14} /> Mark as Sold</>}
+                                </button>
+                            )}
+                            <button type="submit" form={FORM_ID} className="button button-primary" disabled={updateMutation.isLoading}>
+                                {updateMutation.isLoading ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
                     </div>
                 </main>
             </div>
         </div>
     );
 };
+
 export default ArtworkEditorPage;
