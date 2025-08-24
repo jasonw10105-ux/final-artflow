@@ -11,30 +11,74 @@ const Header = () => {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        navigate('/login');
+        // Use replace to prevent the user from going back to a protected page
+        navigate('/login', { replace: true });
+    };
+
+    // Basic styles for nav items, you can move these to a CSS file
+    const navItemStyle = {
+        padding: '0.5rem 1rem',
+        textDecoration: 'none',
+        color: 'var(--foreground)',
+        borderRadius: 'var(--radius)',
+        transition: 'background 0.2s',
+    };
+
+    const activeStyle = {
+        background: 'var(--accent)',
+        fontWeight: '500',
     };
 
     return (
-        <header className="main-header">
-            <Link to={user ? "/dashboard" : "/home"} className="logo-link">
+        <header style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            padding: '1rem 2rem', 
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--card)'
+        }}>
+            <Link to={user ? "/dashboard" : "/home"} style={{ display: 'flex', alignItems: 'center' }}>
                 <img src="/logo.svg" alt="Artflow" height="40px" />
             </Link>
-            <nav className="main-nav">
+            <nav style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 {user ? (
+                    // --- LOGGED-IN NAVIGATION ---
                     <>
-                        <NavLink to="/artworks" className="nav-item">Browse Art</NavLink>
-                        <NavLink to="/artists" className="nav-item">Browse Artists</NavLink>
-                        <div className="nav-separator"></div>
+                        <NavLink 
+                            to="/artworks" 
+                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
+                        >
+                            Browse Art
+                        </NavLink>
+                        <NavLink 
+                            to="/artists" 
+                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
+                        >
+                            Browse Artists
+                        </NavLink>
+                        <div style={{width: '1px', height: '24px', background: 'var(--border)'}}></div>
                         <NavLink to="/dashboard" className="button button-secondary">
                             My Dashboard
                         </NavLink>
                         <button onClick={handleLogout} className="button button-primary">Logout</button>
                     </>
                 ) : (
+                    // --- LOGGED-OUT NAVIGATION ---
                     <>
-                        <NavLink to="/artworks" className="nav-item">Browse Art</NavLink>
-                        <NavLink to="/artists" className="nav-item">Browse Artists</NavLink>
-                        <NavLink to="/login" className="nav-item">Login</NavLink>
+                        <NavLink 
+                            to="/artworks" 
+                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
+                        >
+                            Browse Art
+                        </NavLink>
+                        <NavLink 
+                            to="/artists" 
+                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
+                        >
+                            Browse Artists
+                        </NavLink>
+                        <NavLink to="/login" className="button button-secondary">Login</NavLink>
                         <NavLink to="/register" className="button button-primary">Register</NavLink>
                     </>
                 )}
