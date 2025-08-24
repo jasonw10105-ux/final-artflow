@@ -4,17 +4,11 @@ import { useAuth } from '../../contexts/AuthProvider';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
+import { Database } from '../../types/supabase'; // Import the main DB type
 
 // --- TYPE DEFINITIONS ---
-type EditionInfo = { is_edition?: boolean; numeric_size?: number; ap_size?: number; sold_editions?: string[] };
-type Artwork = {
-    id: string; title: string | null; description: string | null; image_url: string | null;
-    price: number | null; status: 'Pending' | 'Active' | 'Sold'; medium: string | null;
-    dimensions: { height?: string; width?: string; depth?: string; unit?: string } | null;
-    signature_info: { is_signed?: boolean; location?: string } | null;
-    framing_info: { is_framed?: boolean; details?: string } | null;
-    provenance: string | null; edition_info: EditionInfo | null; is_price_negotiable?: boolean;
-    slug?: string; watermarked_image_url: string | null; visualization_image_url: string | null;
+// Use the official, generated type from supabase.ts and extend it for the join
+type Artwork = Database['public']['Tables']['artworks']['Row'] & {
     artist: { full_name: string | null } | null;
 };
 
@@ -69,7 +63,7 @@ const triggerImageGeneration = async (artworkId: string, flags: { forceWatermark
 const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: ArtworkEditorFormProps) => {
     const { profile } = useAuth();
     const queryClient = useQueryClient();
-    const [artwork, setArtwork] = useState<Partial<Omit<Artwork, 'id'>>>({});
+    const [artwork, setArtwork] = useState<Partial<Artwork>>({});
     const [originalTitle, setOriginalTitle] = useState('');
     
     const queryKey = ['artwork-form', artworkId];
@@ -170,10 +164,16 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         return parentMedium && mediaTaxonomy[parentMedium] ? mediaTaxonomy[parentMedium] : [];
     }, [parentMedium]);
     
-    const handleJsonChange = (parent: keyof Artwork, field: string, value: any) => {
-        const oldParentState = artwork[parent] as object || {};
-        if (parent === 'edition_info' && field === 'is_edition' && value === false) {
-            setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: false, numeric_size: undefined, ap_size: undefined } }));
+    // CORRECTED: Fixes implicit 'any' error by properly casting the artwork state object
+    const handleJsonChange = (parent: keyof Omit<Artwork, 'artist'>, field: string, value: any) => {
+        const oldParentState = (artwork as Partial<Artwork>)[parent] as object || {};
+        if (parent === 'edition_info' && field === 'is_edition') {
+            const isEdition = Boolean(value);
+            if (!isEdition) {
+                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: false, numeric_size: undefined, ap_size: undefined } }));
+            } else {
+                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: true } }));
+            }
         } else {
             setArtwork(prev => ({ ...prev, [parent]: { ...oldParentState, [field]: value } }));
         }
@@ -190,15 +190,17 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     const allEditions = useMemo(() => {
         if (!artwork.edition_info?.is_edition) return [];
         const editions = [];
-        const numericSize = artwork.edition_info?.numeric_size || 0;
-        const apSize = artwork.edition_info?.ap_size || 0;
+        const numericSize = (artwork.edition_info as any)?.numeric_size || 0;
+        const apSize = (artwork.edition_info as any)?.ap_size || 0;
         for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`);
         for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`);
         return editions;
     }, [artwork.edition_info]);
 
     const handleEditionSaleChange = (identifier: string, isChecked: boolean) => {
-        saleMutation.mutate({ artworkId, identifier, isSold: isChecked });
+        if (artworkId) {
+            saleMutation.mutate({ artworkId, identifier, isSold: isChecked });
+        }
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -249,19 +251,19 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             <fieldset className="fieldset">
                 <legend className="legend">Artwork Details</legend>
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem'}}>
-                    <div><label className="label">Height</label><input type="text" value={artwork.dimensions?.height || ''} onChange={e => handleJsonChange('dimensions', 'height', e.target.value)} className="input" placeholder="e.g., 24" required /></div>
-                    <div><label className="label">Width</label><input type="text" value={artwork.dimensions?.width || ''} onChange={e => handleJsonChange('dimensions', 'width', e.target.value)} className="input" placeholder="e.g., 18" required /></div>
-                    <div><label className="label">Depth (Optional)</label><input type="text" value={artwork.dimensions?.depth || ''} onChange={e => handleJsonChange('dimensions', 'depth', e.target.value)} className="input" /></div>
-                    <div><label className="label">Unit</label><input type="text" value={artwork.dimensions?.unit || ''} onChange={e => handleJsonChange('dimensions', 'unit', e.target.value)} className="input" placeholder="e.g., in, cm" /></div>
+                    <div><label className="label">Height</label><input type="text" value={(artwork.dimensions as any)?.height || ''} onChange={e => handleJsonChange('dimensions', 'height', e.target.value)} className="input" placeholder="e.g., 24" required /></div>
+                    <div><label className="label">Width</label><input type="text" value={(artwork.dimensions as any)?.width || ''} onChange={e => handleJsonChange('dimensions', 'width', e.target.value)} className="input" placeholder="e.g., 18" required /></div>
+                    <div><label className="label">Depth (Optional)</label><input type="text" value={(artwork.dimensions as any)?.depth || ''} onChange={e => handleJsonChange('dimensions', 'depth', e.target.value)} className="input" /></div>
+                    <div><label className="label">Unit</label><input type="text" value={(artwork.dimensions as any)?.unit || ''} onChange={e => handleJsonChange('dimensions', 'unit', e.target.value)} className="input" placeholder="e.g., in, cm" /></div>
                 </div>
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem'}}>
                     <div>
-                        <label className="label" style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}><input type="checkbox" checked={!!artwork.framing_info?.is_framed} onChange={e => handleJsonChange('framing_info', 'is_framed', e.target.checked)} /> Framed</label>
-                        {artwork.framing_info?.is_framed && (<div><label className="label">Frame Details</label><textarea className="textarea" placeholder="e.g., Black gallery frame" value={artwork.framing_info?.details || ''} onChange={e => handleJsonChange('framing_info', 'details', e.target.value)} required /></div>)}
+                        <label className="label" style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}><input type="checkbox" checked={!!(artwork.framing_info as any)?.is_framed} onChange={e => handleJsonChange('framing_info', 'is_framed', e.target.checked)} /> Framed</label>
+                        {(artwork.framing_info as any)?.is_framed && (<div><label className="label">Frame Details</label><textarea className="textarea" placeholder="e.g., Black gallery frame" value={(artwork.framing_info as any)?.details || ''} onChange={e => handleJsonChange('framing_info', 'details', e.target.value)} required /></div>)}
                     </div>
                     <div>
-                        <label className="label" style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}><input type="checkbox" checked={!!artwork.signature_info?.is_signed} onChange={e => handleJsonChange('signature_info', 'is_signed', e.target.checked)} /> Signed</label>
-                        {artwork.signature_info?.is_signed && (<div><label className="label">Signature Location & Details</label><input type="text" className="input" placeholder="e.g., Verso, bottom right" value={artwork.signature_info?.location || ''} onChange={e => handleJsonChange('signature_info', 'location', e.target.value)} required /></div>)}
+                        <label className="label" style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}><input type="checkbox" checked={!!(artwork.signature_info as any)?.is_signed} onChange={e => handleJsonChange('signature_info', 'is_signed', e.target.checked)} /> Signed</label>
+                        {(artwork.signature_info as any)?.is_signed && (<div><label className="label">Signature Location & Details</label><input type="text" className="input" placeholder="e.g., Verso, bottom right" value={(artwork.signature_info as any)?.location || ''} onChange={e => handleJsonChange('signature_info', 'location', e.target.value)} required /></div>)}
                     </div>
                 </div>
             </fieldset>
@@ -271,35 +273,36 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 <label className="label">Is this a unique work or part of an edition?</label>
                 <select
                     className="select"
-                    value={artwork.edition_info?.is_edition ? 'edition' : 'unique'}
+                    value={(artwork.edition_info as any)?.is_edition ? 'edition' : 'unique'}
                     onChange={(e) => handleJsonChange('edition_info', 'is_edition', e.target.value === 'edition')}
                 >
                     <option value="unique">Unique Work</option>
                     <option value="edition">A Set of Editions</option>
                 </select>
 
-                {artwork.edition_info?.is_edition && (
+                {(artwork.edition_info as any)?.is_edition && (
                     <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
                         <div>
                             <label className="label">Numeric Edition Size</label>
-                            <input type="number" value={artwork.edition_info?.numeric_size || ''} onChange={e => handleJsonChange('edition_info', 'numeric_size', e.target.value ? parseInt(e.target.value, 10) : undefined)} className="input" placeholder="e.g., 50" required />
+                            <input type="number" value={(artwork.edition_info as any)?.numeric_size || ''} onChange={e => handleJsonChange('edition_info', 'numeric_size', e.target.value ? parseInt(e.target.value, 10) : undefined)} className="input" placeholder="e.g., 50" required />
                         </div>
                         <div>
                             <label className="label">Total Artist's Proofs (APs)</label>
-                            <input type="number" value={artwork.edition_info?.ap_size || ''} onChange={e => handleJsonChange('edition_info', 'ap_size', e.target.value ? parseInt(e.target.value, 10) : undefined)} className="input" placeholder="e.g., 5" />
+                            <input type="number" value={(artwork.edition_info as any)?.ap_size || ''} onChange={e => handleJsonChange('edition_info', 'ap_size', e.target.value ? parseInt(e.target.value, 10) : undefined)} className="input" placeholder="e.g., 5" />
                         </div>
                     </div>
                 )}
             </fieldset>
 
-            {artwork.edition_info?.is_edition && originalArtwork?.status !== 'Pending' && (
+            {(artwork.edition_info as any)?.is_edition && originalArtwork?.status !== 'Pending' && (
                 <fieldset className="fieldset">
                     <legend className="legend">Sales & Inventory Management</legend>
                     <p>Check the box next to an edition to mark it as sold.</p>
                     <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.5rem', background: 'var(--background)', padding: '1rem', borderRadius: 'var(--radius)' }}>
                         {allEditions.length > 0 ? allEditions.map(identifier => (
                             <label key={identifier} style={{display: 'flex', gap: '0.5rem', padding: '0.5rem', borderRadius: 'var(--radius-sm)', background: 'var(--card)', cursor: 'pointer'}}>
-                                <input type="checkbox" checked={originalArtwork?.edition_info?.sold_editions?.includes(identifier)} onChange={(e) => handleEditionSaleChange(identifier, e.target.checked)} disabled={saleMutation.isPending}/>
+                                {/* CORRECTED: Fixes TS2322 by ensuring the value is always a boolean */}
+                                <input type="checkbox" checked={!!(originalArtwork?.edition_info as any)?.sold_editions?.includes(identifier)} onChange={(e) => handleEditionSaleChange(identifier, e.target.checked)} disabled={saleMutation.isPending}/>
                                 {identifier}
                             </label>
                         )) : <p>No editions defined for this artwork.</p>}
