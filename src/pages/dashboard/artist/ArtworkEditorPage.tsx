@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Trash2 } from 'lucide-react';
-import ArtworkEditorForm from '../../../components/dashboard/ArtworkEditorForm'; // <-- IMPORT THE FORM
+import ArtworkEditorForm from '../../../components/dashboard/ArtworkEditorForm';
 
 const ArtworkEditorPage = () => {
     const navigate = useNavigate();
@@ -15,12 +15,15 @@ const ArtworkEditorPage = () => {
         return null;
     }
     
-    // We only need to fetch the image URL here for the sidebar preview
-    const { data: artworkPreview } = useQuery({
+    // Fetch minimal data needed for the page layout (the sidebar image)
+    const { data: artworkPreview, isLoading } = useQuery({
         queryKey: ['artwork-preview', artworkId],
         queryFn: async () => {
             const { data, error } = await supabase.from('artworks').select('image_url, title').eq('id', artworkId).single();
-            if (error) return null;
+            if (error) {
+                console.error("Error fetching artwork preview:", error);
+                return null;
+            }
             return data;
         },
     });
@@ -45,8 +48,6 @@ const ArtworkEditorPage = () => {
     };
 
     const handleSaveSuccess = () => {
-        // The form now handles the alert and background generation
-        // We just need to navigate away after a successful save
         alert('Artwork saved successfully! Images will regenerate in the background if needed.');
         navigate('/artist/artworks');
     };
@@ -61,7 +62,7 @@ const ArtworkEditorPage = () => {
             
             <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '3rem', alignItems: 'start' }}>
                 <aside style={{ position: 'sticky', top: '2rem' }}>
-                    {artworkPreview?.image_url && (
+                    {isLoading ? <p>Loading image...</p> : artworkPreview?.image_url && (
                         <img src={artworkPreview.image_url} alt={artworkPreview.title || "Artwork"} style={{ width: '100%', height: 'auto', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
                     )}
                 </aside>
@@ -72,8 +73,7 @@ const ArtworkEditorPage = () => {
                         formId={FORM_ID}
                         onSaveSuccess={handleSaveSuccess}
                     />
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
                         <button type="button" onClick={handleDelete} className="button button-danger" disabled={deleteMutation.isPending}>
                             {deleteMutation.isPending ? 'Deleting...' : <><Trash2 size={14} /> Delete Artwork</>}
                         </button>
@@ -86,4 +86,5 @@ const ArtworkEditorPage = () => {
         </div>
     );
 };
+
 export default ArtworkEditorPage;
