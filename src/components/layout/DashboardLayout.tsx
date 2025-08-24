@@ -1,111 +1,58 @@
-import React, { useState } from 'react';
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
+// src/components/layout/DashboardLayout.tsx
+
+import React from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthProvider';
-import { supabase } from '../../lib/supabaseClient';
-import { LayoutDashboard, Palette, MessageSquare, Image, Settings, LogOut, BarChart3, Users, CreditCard, Menu, X } from 'lucide-react';
 
 const DashboardLayout = () => {
     const { profile } = useAuth();
-    const navigate = useNavigate();
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        navigate('/');
-    };
-    
     const isArtist = profile?.role === 'artist' || profile?.role === 'both';
-    
-    const artistSidebarLinks = [
-        { to: "/artist/dashboard", icon: <LayoutDashboard size={18} />, label: "Dashboard" },
-        { to: "/artist/artworks", icon: <Image size={18} />, label: "Artworks" },
-        { to: "/artist/catalogues", icon: <Palette size={18} />, label: "Catalogues" },
-        { to: "/artist/contacts", icon: <Users size={18} />, label: "Contacts" },
-        { to: "/artist/messages", icon: <MessageSquare size={18} />, label: "Messages" },
-        { to: "/artist/sales", icon: <CreditCard size={18} />, label: "Sales" },
-        { to: "/artist/insights", icon: <BarChart3 size={18} />, label: "Insights" },
-    ];
-    
-    const artistBottomNavLinks = [
-        { to: "/artist/dashboard", icon: <LayoutDashboard size={22} />, label: "Home" },
-        { to: "/artist/artworks", icon: <Image size={22} />, label: "Work" },
-        { to: "/artist/catalogues", icon: <Palette size={18} />, label: "Catalogues" },
-        { to: "/artist/sales", icon: <CreditCard size={22} />, label: "Sales" },
-        { to: "/artist/messages", icon: <MessageSquare size={22} />, label: "Inbox" },
-    ];
-
-    const secondaryLinks = [
-        { to: "/artist/settings", icon: <Settings size={18} />, label: "Settings" },
-    ];
-
-    const linkClasses = ({ isActive }: { isActive: boolean }) => `sidebar-link ${isActive ? 'active' : ''}`;
-    const mobileLinkClasses = ({ isActive }: { isActive: boolean }) => `bottom-nav-link ${isActive ? 'active' : ''}`;
-    const closeMobileMenu = () => setIsMobileMenuOpen(false);
+    const isCollector = profile?.role === 'collector' || profile?.role === 'both';
 
     return (
-        <>
-            {isArtist && (
-                <header className="mobile-top-bar">
-                    <Link to="/"><img src="/logo.svg" alt="Artflow" height="40px"/></Link>
-                    <button onClick={() => setIsMobileMenuOpen(true)} className="mobile-menu-button">
-                        <Menu size={24} />
-                    </button>
-                </header>
-            )}
+        <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
+            <aside style={{ width: '250px', background: 'var(--card)', padding: '1.5rem', borderRight: '1px solid var(--border)' }}>
+                <h2 style={{marginTop: 0}}>Dashboard</h2>
+                <nav style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {/* Common or Role-Specific Dashboard Links */}
+                    {isArtist && <NavLink to="/artist/dashboard">Artist Home</NavLink>}
+                    {isCollector && <NavLink to="/collector/dashboard">Collector Home</NavLink>}
 
-            {isMobileMenuOpen && (
-                <div className="mobile-menu-overlay" onClick={closeMobileMenu}>
-                    <div className="mobile-menu-content" onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-                            <button onClick={closeMobileMenu} className="mobile-menu-button"><X size={24} /></button>
-                        </div>
-                        <nav className="sidebar-nav">
-                            {artistSidebarLinks.map(link => (
-                                <NavLink key={link.to} to={link.to} className={linkClasses} onClick={closeMobileMenu}>{link.icon} {link.label}</NavLink>
-                            ))}
-                        </nav>
-                        <div>
-                            {secondaryLinks.map(link => (
-                                <NavLink key={link.to} to={link.to} className={linkClasses} onClick={closeMobileMenu}>{link.icon} {link.label}</NavLink>
-                            ))}
-                            <button onClick={handleLogout} className="sidebar-link sidebar-footer-link"><LogOut size={18} /> Logout</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                    <hr />
+                    
+                    {/* Artist-Specific Links */}
+                    {isArtist && (
+                        <>
+                            <h3>For Artists</h3>
+                            <NavLink to="/artist/artworks">Artworks</NavLink>
+                            <NavLink to="/artist/catalogues">Catalogues</NavLink>
+                            <NavLink to="/artist/sales">Sales</NavLink>
+                            <NavLink to="/artist/insights">Insights</NavLink>
+                            <NavLink to="/artist/contacts">Contacts</NavLink>
+                        </>
+                    )}
 
-            <div className="dashboard-grid">
-                <aside className="dashboard-sidebar">
-                    <Link to="/"><img src="/logo.svg" alt="Artflow" height="40px"/></Link>
-                    <nav className="sidebar-nav">
-                        {isArtist && artistSidebarLinks.map(link => (
-                            <NavLink key={link.to} to={link.to} className={linkClasses}>{link.icon} {link.label}</NavLink>
-                        ))}
-                    </nav>
-                    <div>
-                         {secondaryLinks.map(link => (
-                            <NavLink key={link.to} to={link.to} className={linkClasses}>{link.icon} {link.label}</NavLink>
-                         ))}
-                         <button onClick={handleLogout} className="sidebar-link sidebar-footer-link"><LogOut size={18} /> Logout</button>
-                    </div>
-                </aside>
-                
-                <main className="dashboard-main">
-                    <Outlet />
-                </main>
-            </div>
-            
-            {isArtist && (
-                <nav className="bottom-nav">
-                    {artistBottomNavLinks.map(link => (
-                        <NavLink key={link.to} to={link.to} className={mobileLinkClasses}>
-                            {link.icon}
-                            <span>{link.label}</span>
-                        </NavLink>
-                    ))}
+                    {/* Collector-Specific Links */}
+                    {isCollector && (
+                        <>
+                            <h3>For Collectors</h3>
+                            <NavLink to="/collector/collection">My Collection</NavLink>
+                            <NavLink to="/collector/inquiries">My Inquiries</NavLink>
+                        </>
+                    )}
+                    
+                    <hr />
+
+                    {/* Common Links for Both */}
+                    <NavLink to={isArtist ? "/artist/messages" : "/collector/inquiries"}>Messages</NavLink>
+                    <NavLink to={isArtist ? "/artist/settings" : "/collector/settings"}>Settings</NavLink>
+
                 </nav>
-            )}
-        </>
+            </aside>
+            <main style={{ flex: 1, padding: '2rem' }}>
+                <Outlet />
+            </main>
+        </div>
     );
 };
 
