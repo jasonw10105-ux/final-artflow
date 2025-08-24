@@ -86,5 +86,4 @@ const ArtworkEditorPage = () => {
         </div>
     );
 };
-
 export default ArtworkEditorPage;
