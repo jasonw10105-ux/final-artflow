@@ -2,29 +2,32 @@
 
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from '../../../lib/supabaseClient';
-import { useAuth } from '../../../contexts/AuthProvider';
-import { PlusCircle, List, LayoutGrid, Folder } from 'lucide-react';
-import ArtworkUploadModal from '../../../components/dashboard/ArtworkUploadModal';
-import { useArtworkUploadStore } from '../../../stores/artworkUploadStore';
-import ArtworkActionsMenu from '../../../components/dashboard/ArtworkActionsMenu'; // <-- IMPORT NEW COMPONENT
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthProvider';
+import { PlusCircle, List, LayoutGrid, Folder, MoreVertical } from 'lucide-react';
+import ArtworkUploadModal from '@/components/dashboard/ArtworkUploadModal';
+import { useArtworkUploadStore } from '@/stores/artworkUploadStore';
+import ArtworkActionsMenu from '@/components/dashboard/ArtworkActionsMenu';
+import { Database } from '@/types/database.types';
 
-const fetchArtworks = async (userId: string) => {
+type Artwork = Database['public']['Tables']['artworks']['Row'];
+type Catalogue = Database['public']['Tables']['catalogues']['Row'];
+
+const fetchArtworks = async (userId: string): Promise<Artwork[]> => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*') // Ensure all fields, including image URLs, are fetched
+        .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
-        
     if (error) throw new Error(error.message);
-    return data;
+    return data || [];
 };
 
-const fetchArtistCatalogues = async (userId: string) => {
+const fetchArtistCatalogues = async (userId: string): Promise<Pick<Catalogue, 'id' | 'title'>[]> => {
     const { data, error } = await supabase.from('catalogues').select('id, title').eq('user_id', userId);
     if (error) throw new Error("Could not fetch catalogues");
-    return data;
+    return data || [];
 };
 
 const formatPrice = (price: number | null, currency: string | null) => {
@@ -38,10 +41,24 @@ const ArtworkListPage = () => {
     const queryClient = useQueryClient();
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const { addFiles, clearStore } = useArtworkUploadStore();
+
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     
+    // State for the actions menu
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+
+    const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, artwork: Artwork) => {
+        setAnchorEl(event.currentTarget);
+        setSelectedArtwork(artwork);
+    };
+    const handleMenuClose = () => {
+        setAnchorEl(null);
+        setSelectedArtwork(null);
+    };
+
     const { data: artworks, isLoading: isLoadingArtworks } = useQuery({
         queryKey: ['artworks', user?.id],
         queryFn: () => fetchArtworks(user!.id),
@@ -54,18 +71,42 @@ const ArtworkListPage = () => {
         enabled: !!user,
     });
 
+    // Mutation for deleting an artwork
+    const deleteMutation = useMutation({
+        mutationFn: async (artworkId: string) => {
+            const { error } = await supabase.from('artworks').delete().eq('id', artworkId);
+            if (error) throw new Error(error.message);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
+            alert('Artwork deleted successfully.');
+        },
+        onError: (error) => alert(`Error deleting artwork: ${error.message}`),
+    });
+
+    // Mutation for marking an artwork as sold
+    const markAsSoldMutation = useMutation({
+        mutationFn: async (artworkId: string) => {
+            const { error } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
+            if (error) throw new Error(error.message);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
+            alert('Artwork marked as sold.');
+        },
+        onError: (error) => alert(`Error updating artwork: ${error.message}`),
+    });
+
     const filteredArtworks = useMemo(() => {
         if (!artworks) return [];
-        const lowerCaseQuery = searchQuery.toLowerCase();
-        if (!lowerCaseQuery) return artworks;
         return artworks.filter(art => 
-            (art.title || '').toLowerCase().includes(lowerCaseQuery) || 
-            (art.status || '').toLowerCase().includes(lowerCaseQuery)
+            (art.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (art.status || '').toLowerCase().includes(searchQuery.toLowerCase())
         );
     }, [artworks, searchQuery]);
     
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (event.target.files && event.target.files.length > 0) {
+        if (event.target.files?.length) {
             addFiles(Array.from(event.target.files));
             setShowUploadModal(true);
         }
@@ -100,16 +141,15 @@ const ArtworkListPage = () => {
             
             {isLoadingArtworks ? <p>Loading artworks...</p> : (
                 <div style={viewMode === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' } : { display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {filteredArtworks?.map(art => {
+                    {filteredArtworks.map((art: Artwork) => {
                         const catalogue = catalogues?.find(c => c.id === art.catalogue_id);
 
                         return (
                             <div key={art.id} style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: viewMode === 'grid' ? 'column' : 'row' }}>
-                               <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={viewMode === 'grid' ? { width: '100%', height: '200px', objectFit: 'cover' } : { width: '100px', height: '100px', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
+                               <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={viewMode === 'grid' ? { width: '100%', height: '200px', objectFit: 'cover' } : { width: '100px', height: '100px', objectFit: 'cover' }} />
                                 <div style={{ padding: '1rem', flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                                     <div>
                                         <h4 style={{ marginBottom: '0.25rem', marginTop: 0 }}>{art.title || "Untitled (Pending Details)"}</h4>
-                                        {art.medium && <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem', margin: '0 0 0.5rem 0' }}>{art.medium}</p>}
                                         <p style={{ fontWeight: 'bold', fontSize: '1rem', margin: '0 0 0.5rem 0' }}>{formatPrice(art.price, art.currency)}</p>
                                         
                                         {catalogue && (
@@ -120,14 +160,16 @@ const ArtworkListPage = () => {
                                         )}
                                     </div>
                                     <div style={{display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center'}}>
-                                        <Link to={`/artist/artworks/edit/${art.id}`} className='button-secondary button'>Edit</Link>
+                                        <Link to={`/artist/artworks/edit/${art.id}`} className='button button-secondary'>Edit</Link>
                                         {art.slug && profile?.slug && (
-                                            <a href={`/${profile.slug}/artwork/${art.slug}`} className='button-secondary button' target="_blank" rel="noopener noreferrer">
+                                            <a href={`/${profile.slug}/artwork/${art.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">
                                                 Preview
                                             </a>
                                         )}
-                                        <div style={{ flexGrow: 1 }}></div> {/* Pushes the action menu to the right */}
-                                        <ArtworkActionsMenu artwork={art} /> {/* <-- ADDED NEW COMPONENT */}
+                                        <div style={{ flexGrow: 1 }}></div>
+                                        <button onClick={(e) => handleMenuOpen(e, art)} style={{background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem'}}>
+                                            <MoreVertical size={20} />
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -135,7 +177,35 @@ const ArtworkListPage = () => {
                     })}
                 </div>
             )}
-            {filteredArtworks?.length === 0 && !isLoadingArtworks && <p>No artworks found. Click "Create New Artwork" to get started.</p>}
+
+            {selectedArtwork && (
+                <ArtworkActionsMenu 
+                    artwork={selectedArtwork}
+                    anchorEl={anchorEl}
+                    onClose={handleMenuClose}
+                    onEdit={(id) => {
+                        navigate(`/artist/artworks/edit/${id}`);
+                        handleMenuClose();
+                    }}
+                    onDelete={(id) => {
+                        if (window.confirm('Are you sure you want to delete this artwork?')) {
+                            deleteMutation.mutate(id);
+                        }
+                        handleMenuClose();
+                    }}
+                    onMarkAsSold={(id) => {
+                        markAsSoldMutation.mutate(id);
+                        handleMenuClose();
+                    }}
+                />
+            )}
+
+            {filteredArtworks?.length === 0 && !isLoadingArtworks && (
+                <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
+                    <p>No artworks found.</p>
+                    <p style={{color: 'var(--muted-foreground)'}}>Click "Create New Artwork" to get started.</p>
+                </div>
+            )}
         </div>
     );
 };
