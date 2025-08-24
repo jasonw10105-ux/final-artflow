@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { supabase } from '../../lib/supabaseClient'; // Corrected path
-import { useAuth } from '../../contexts/AuthProvider';   // Corrected path
+// --- CORRECTED IMPORT PATHS ---
+// The build log indicates the path should be two levels up from 'pages' to get to 'src', then into 'lib' or 'contexts'.
+import { supabase } from '../../lib/supabaseClient'; 
+import { useAuth } from '../../contexts/AuthProvider';
 
 const CompleteProfilePage = () => {
     const { user } = useAuth();
@@ -21,7 +23,6 @@ const CompleteProfilePage = () => {
             setError("Passwords do not match.");
             return;
         }
-
         if (!user || !role || !firstName || !lastName || password.length < 6) {
             setError("Please fill all fields. Password must be at least 6 characters.");
             return;
@@ -69,20 +70,17 @@ const CompleteProfilePage = () => {
         if (role === 'artist' || role === 'both') {
             try {
                 const { data: catalogueSlugData } = await supabase.rpc('generate_unique_slug', { input_text: 'Available Work', table_name: 'catalogues' });
-                
                 const defaultCatalogue = {
                     user_id: user.id,
                     title: 'Available Work',
-                    description: 'A system-generated catalogue of all available artworks. Artworks can be managed from the catalogue editor.',
-                    is_system_catalogue: true, // The special flag to protect it
+                    description: 'A system-generated catalogue of all available artworks.',
+                    is_system_catalogue: true, 
                     status: 'Published',
                     is_published: true,
                     slug: catalogueSlugData,
                 };
-                
                 const { error: catalogueError } = await supabase.from('catalogues').insert(defaultCatalogue);
                 if (catalogueError) {
-                    // This is a non-critical error, so we log it but still let the user proceed
                     console.error("Could not create default catalogue:", catalogueError.message);
                 }
             } catch (catError) {
@@ -111,7 +109,6 @@ const CompleteProfilePage = () => {
                             <input className="input" type="text" value={lastName} onChange={e => setLastName(e.target.value)} required />
                         </div>
                     </div>
-
                     <label>Primary Role</label>
                     <select className="input" value={role} onChange={e => setRole(e.target.value)} required>
                         <option value="" disabled>-- Select a Role --</option>
@@ -119,7 +116,6 @@ const CompleteProfilePage = () => {
                         <option value="collector">Collector</option>
                         <option value="both">Both Artist & Collector</option>
                     </select>
-
                     <label>Create a password for future logins</label>
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <input
@@ -138,9 +134,8 @@ const CompleteProfilePage = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.12 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z" /><path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" /></svg>
                         </button>
                     </div>
-
                     <label>Confirm Password</label>
-                    <input className="input" type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                    <input className="input" type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmроl(e.target.value)} required />
                 </fieldset>
                 {error && <p style={{ color: 'red', textAlign: 'center' }}>{error}</p>}
                 <button type="submit" className="button button-primary" style={{ width: '100%' }} disabled={loading}>
