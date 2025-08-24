@@ -1,97 +1,64 @@
-import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
+import React, a, { useState, useEffect, useContext } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { useQuery } from '@tanstack/react-query';
 import { Session, User } from '@supabase/supabase-js';
+import { Database } from '../types/supabase';
 
-// --- Type Definitions ---
-export interface Profile {
-  id: string;
-  full_name: string;
-  slug: string;
-  avatar_url: string;
-  role: 'artist' | 'collector' | 'both';
-  profile_completed: boolean;
-  first_name?: string;
-  last_name?: string;
-  short_bio?: string;
-  artist_statement?: string;
-  contact_number?: string;
-  location?: { country?: string, city?: string };
-  social_links?: { platform: string, url: string }[];
+type Profile = Database['public']['Tables']['profiles']['Row'];
+
+// This type definition is crucial and fixes the 'session' errors
+export interface AuthContextType {
+    session: Session | null;
+    user: User | null;
+    profile: Profile | null;
+    loading: boolean;
 }
 
-interface AuthContextType {
-  user: User | null;
-  profile: Profile | null;
-  loading: boolean;
-  refetchProfile: () => Promise<any>;
-}
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  profile: null,
-  loading: true,
-  refetchProfile: async () => {},
-});
-
-// --- API Function ---
-const fetchUserProfile = async (user: User | null): Promise<Profile | null> => {
-    if (!user) return null;
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-    if (error) {
-        console.error("Error fetching profile:", error);
-        return null;
-    }
-    return data as Profile;
-};
-
-// --- AuthProvider Component ---
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
-    const [loadingInitial, setLoadingInitial] = useState(true);
+    const [session, setSession] = useState<Session | null>(null);
+    const [profile, setProfile] = useState<Profile | null>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const getSession = async () => {
+        const getInitialSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
+            setSession(session);
             setUser(session?.user ?? null);
-            setLoadingInitial(false);
+            if (session?.user) {
+                const { data: userProfile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+                setProfile(userProfile);
+            }
+            setLoading(false);
         };
-        getSession();
 
-        const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-            setUser(session?.user ?? null);
-        });
+        getInitialSession();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            async (_event, session) => {
+                setSession(session);
+                setUser(session?.user ?? null);
+                if (session?.user) {
+                    const { data: userProfile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+                    setProfile(userProfile);
+                } else {
+                    setProfile(null);
+                }
+                setLoading(false);
+            }
+        );
 
         return () => {
-            authListener.subscription.unsubscribe();
+            authListener?.subscription.unsubscribe();
         };
     }, []);
 
-    const { data: profile, isLoading: isLoadingProfile, refetch } = useQuery({
-        queryKey: ['profile', user?.id],
-        queryFn: () => fetchUserProfile(user),
-        enabled: !loadingInitial && !!user,
-    });
+    const value = { session, user, profile, loading };
 
-    const refetchProfile = useCallback(async () => {
-        return await refetch();
-    }, [refetch]);
-
-    const value = {
-        user,
-        profile: profile || null,
-        loading: loadingInitial || (!!user && isLoadingProfile),
-        refetchProfile,
-    };
-
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
 };
 
-// --- Custom Hook ---
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (context === undefined) {
