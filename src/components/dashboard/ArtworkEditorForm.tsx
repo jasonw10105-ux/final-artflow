@@ -18,12 +18,20 @@ type Artwork = {
 
 // --- PROPS INTERFACE ---
 interface ArtworkEditorFormProps {
-  artworkId: string; formId: string; onSaveSuccess: () => void;
+  artworkId: string;
+  formId: string;
+  onSaveSuccess: () => void;
   onTitleChange?: (newTitle: string) => void;
 }
 
-// --- MEDIA TAXONOMY ---
-const mediaTaxonomy: Record<string, string[]> = { /* Paste your full mediaTaxonomy object here */ };
+// --- MEDIA TAXONOMY (ensure this is complete) ---
+const mediaTaxonomy: Record<string, string[]> = {
+    'Drawing': ['Graphite (pencil, powder, mechanical)', 'Charcoal (vine, compressed)', 'Chalk (red/white/black, sanguine)', 'Conté (sticks, pencils)', 'Pastel (soft, hard, oil, pan)', 'Ink (India, sumi, iron-gall; brush/pen; wash)', 'Markers (alcohol/water/paint)', 'Silverpoint/metalpoint', 'Colored pencil (wax/oil/water-soluble)'],
+    'Painting': ['Oil (alla prima, glazing, impasto, grisaille)', 'Acrylic (impasto, pouring, airbrush, glazing)', 'Watercolor (transparent, wet-on-wet, drybrush)', 'Gouache (opaque watercolor)', 'Tempera (egg tempera, casein)', 'Encaustic (hot wax)', 'Fresco (buon fresco, fresco secco)', 'Ink painting (sumi-e)', 'Spray/Aerosol (stencil, freehand)', 'Vitreous enamel'],
+    'Printmaking': ['Relief (woodcut, linocut, wood engraving)', 'Intaglio (engraving, etching, drypoint, aquatint, mezzotint, photogravure)', 'Planographic (lithography)', 'Stencil (screenprint/serigraph, pochoir)', 'Monotype/monoprint', 'Collagraph', 'Digital print (inkjet/pigment/giclée, UV flatbed)', 'Risograph'],
+    'Sculpture': ['Stone (carving)', 'Wood (carving, turning)', 'Metal (lost-wax bronze, sand casting, forging, fabrication/welding)', 'Clay/Terracotta (modeling, casting)', 'Plaster (modeling, molds)', 'Resin & plastics (casting, vacuum forming, 3D printing)', 'Found-object/assemblage', 'Kinetic', 'Soft sculpture'],
+    // ... (include all other categories from your original file)
+};
 
 // --- API FUNCTIONS ---
 const fetchArtwork = async (artworkId: string): Promise<Artwork> => {
@@ -53,11 +61,17 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     const { profile } = useAuth();
     const queryClient = useQueryClient();
     const [artwork, setArtwork] = useState<Partial<Omit<Artwork, 'id'>>>({});
+    const [originalTitle, setOriginalTitle] = useState('');
     
     const queryKey = ['artwork-form', artworkId];
     const { data: originalArtwork, isLoading } = useQuery({ queryKey, queryFn: () => fetchArtwork(artworkId) });
 
-    useEffect(() => { if (originalArtwork) setArtwork(originalArtwork); }, [originalArtwork]);
+    useEffect(() => {
+        if (originalArtwork) {
+            setArtwork(originalArtwork);
+            setOriginalTitle(originalArtwork.title || '');
+        }
+    }, [originalArtwork]);
 
     const haveDimensionsChanged = (oldDim: any, newDim: any): boolean => {
         if (!oldDim || !newDim) return false;
@@ -78,8 +92,17 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             if (!profile) throw new Error("You must be logged in.");
             if (!formData.title) throw new Error("Title is required.");
             
+            let finalSlug = formData.slug;
+            if (formData.title !== originalTitle) {
+                const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: formData.title, table_name: 'artworks' });
+                finalSlug = slugData;
+            }
+
+            // The joined 'artist' object should not be part of the update payload
             const { artist, ...dataToUpdate } = formData;
-            const { error } = await supabase.from('artworks').update(dataToUpdate).eq('id', artworkId);
+            const payload = { ...dataToUpdate, slug: finalSlug };
+
+            const { error } = await supabase.from('artworks').update(payload).eq('id', artworkId);
             if (error) throw error;
             return formData; 
         },
@@ -109,19 +132,26 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         onError: (error: any) => alert(`Error saving artwork: ${error.message}`),
     });
 
+    // --- CORRECTED: Medium selection logic restored ---
     const { parentMedium, childMedium } = useMemo(() => {
         const mediumStr = artwork.medium || '';
         const [parent, ...childParts] = mediumStr.split(': ');
         const child = childParts.join(': ');
-        return (parent && Object.keys(mediaTaxonomy).includes(parent))
-            ? { parentMedium: parent, childMedium: child || '' }
-            : { parentMedium: '', childMedium: mediumStr };
+        if (parent && Object.keys(mediaTaxonomy).includes(parent)) {
+            return { parentMedium: parent, childMedium: child || '' };
+        }
+        return { parentMedium: '', childMedium: mediumStr };
     }, [artwork.medium]);
 
     const handleMediumChange = (newParent?: string, newChild?: string) => {
         const currentParent = newParent !== undefined ? newParent : parentMedium;
         const currentChild = newChild !== undefined ? newChild : childMedium;
-        let combinedMedium = currentParent ? (currentChild ? `${currentParent}: ${currentChild}` : currentParent) : currentChild;
+        let combinedMedium = '';
+        if (currentParent) {
+            combinedMedium = currentChild ? `${currentParent}: ${currentChild}` : currentParent;
+        } else {
+            combinedMedium = currentChild;
+        }
         setArtwork(prev => ({ ...prev, medium: combinedMedium }));
     };
 
@@ -172,7 +202,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem'}}>
                     <div>
                         <label>Primary Medium</label>
-                        <select className="input" value={parentMedium} onChange={e => handleMediumChange(e.target.value, undefined)} required>
+                        <select className="input" value={parentMedium} onChange={e => handleMediumChange(e.target.value, '')} required>
                             <option value="" disabled>Select a category...</option>
                             {Object.keys(mediaTaxonomy).map(parent => <option key={parent} value={parent}>{parent}</option>)}
                         </select>
@@ -220,7 +250,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             </fieldset>
 
             {artwork.edition_info?.is_edition && originalArtwork?.status !== 'Pending' && (
-                <fieldset><legend>Sales & Inventory Management</legend><p>Check the box next to an edition to mark it as sold.</p><div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.5rem', padding: '1rem', background: 'var(--background-alt)'}}>{allEditions.map(id => (<label key={id}><input type="checkbox" checked={originalArtwork?.edition_info?.sold_editions?.includes(id)} onChange={(e) => handleEditionSaleChange(id, e.target.checked)} disabled={saleMutation.isPending}/> {id}</label>))}</div></fieldset>
+                <fieldset><legend>Sales & Inventory Management</legend><p>Check the box next to an edition to mark it as sold.</p><div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '0.5rem', padding: '1rem', borderRadius: 'var(--radius)', background: 'var(--card)'}}>{allEditions.map(id => (<label key={id} style={{display: 'flex', gap: '0.5rem', cursor: 'pointer'}}><input type="checkbox" checked={originalArtwork?.edition_info?.sold_editions?.includes(id)} onChange={(e) => handleEditionSaleChange(id, e.target.checked)} disabled={saleMutation.isPending}/> {id}</label>))}</div></fieldset>
             )}
 
             <fieldset><legend>Provenance</legend><textarea name="provenance" className="input" placeholder="History of ownership, exhibitions, etc." value={artwork.provenance || ''} onChange={handleFormChange} /></fieldset>
