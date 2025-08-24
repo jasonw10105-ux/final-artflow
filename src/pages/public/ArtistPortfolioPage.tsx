@@ -6,11 +6,10 @@ import { ArrowLeft, MapPin } from 'lucide-react';
 import InquiryModal from '../../components/public/InquiryModal';
 import { useAuth } from '../../contexts/AuthProvider';
 
-// --- UPDATED: Fetch function no longer selects the full 'bio' ---
 const fetchArtistPortfolio = async (slug: string) => {
     const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name, short_bio, location, slug, avatar_url') // Removed 'bio'
+        .select('id, full_name, bio, short_bio, location, slug, avatar_url')
         .eq('slug', slug)
         .single();
 
@@ -43,15 +42,13 @@ const ArtistPortfolioPage = () => {
     const { profile: currentUserProfile } = useAuth();
     const [inquiryArtwork, setInquiryArtwork] = useState<ArtworkForModal | null>(null);
 
-    const showBackButton = location.state?.from === '/artists';
-    
     const { data, isLoading, isError } = useQuery({
         queryKey: ['artistPortfolio', profileSlug],
         queryFn: () => fetchArtistPortfolio(profileSlug!),
         enabled: !!profileSlug,
     });
 
-    // isOwner must be calculated after data is available
+    const showBackButton = location.state?.from === '/artists';
     const isOwner = currentUserProfile?.id === data?.profile?.id;
 
     if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading Artist Portfolio...</p>;
@@ -91,17 +88,19 @@ const ArtistPortfolioPage = () => {
                     </div>
                 )}
                 
-                {/* --- UPDATED: Now only displays short_bio --- */}
-                {profile.short_bio && (
-                    <p style={{ fontSize: '1.1rem', color: 'var(--muted-foreground)', marginTop: '1rem', maxWidth: '800px', margin: '1rem auto' }}>
-                        {profile.short_bio}
-                    </p>
-                )}
+                <p style={{ fontSize: '1.1rem', color: 'var(--muted-foreground)', marginTop: '1rem', maxWidth: '800px', margin: '1rem auto' }}>
+                    {profile.short_bio || profile.bio}
+                </p>
             </header>
 
-            {/* --- REMOVED: The separate "About the Artist" section is gone --- */}
+            {profile.bio && (
+                <div className="artwork-details-section">
+                    <h3>About the Artist</h3>
+                    <p style={{ whiteSpace: 'pre-wrap' }}>{profile.bio}</p>
+                </div>
+            )}
 
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem', marginTop: '1rem' }}>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem', marginTop: '3rem' }}>
                 <h3 style={{ textAlign: 'center', marginBottom: '2rem' }}>Available Works</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
                     {artworks.map(art => (
