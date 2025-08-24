@@ -61,7 +61,8 @@ const ProtectedRoute = () => {
     if (loading) return <AuthLoading />;
     if (!user) return <Navigate to="/login" replace />;
     if (!profile?.profile_completed) return <Navigate to="/complete-profile" replace />;
-    return <Outlet />;
+    // FIX: Wrapping the Outlet in a fragment ensures a single parent element is returned.
+    return <><Outlet /></>;
 };
 
 const AppRoutes = () => {
