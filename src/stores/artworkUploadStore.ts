@@ -1,7 +1,7 @@
 // src/stores/artworkUploadStore.ts
 
 import { create } from 'zustand';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 
 type UploadStatus = 'pending' | 'uploading' | 'success' | 'error';
@@ -10,15 +10,16 @@ export interface UploadFile {
   id: string;
   file: File;
   status: UploadStatus;
-  progress: number; // We'll keep this for potential future use, but won't display it individually
+  progress: number;
   error?: string;
 }
 
 interface ArtworkUploadState {
   files: UploadFile[];
   isUploading: boolean;
-  totalProgress: number; // Add this line
+  totalProgress: number;
   addFiles: (files: File[]) => void;
+  removeFile: (id: string) => void; // FIX: Corrected signature and added function
   cancelUpload: (id: string) => void;
   clearStore: () => void;
   uploadAndCreatePendingArtworks: (userId: string) => Promise<string[]>;
@@ -27,7 +28,7 @@ interface ArtworkUploadState {
 export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
   files: [],
   isUploading: false,
-  totalProgress: 0, // And initialize it here
+  totalProgress: 0,
 
   addFiles: (newFiles) => {
     const fileEntries: UploadFile[] = newFiles.map(file => ({
@@ -39,6 +40,13 @@ export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
     set(state => ({ files: [...state.files, ...fileEntries] }));
   },
 
+  // FIX: Added the missing removeFile implementation
+  removeFile: (id) => {
+    set(state => ({
+      files: state.files.filter(f => f.id !== id)
+    }));
+  },
+
   cancelUpload: (id) => {
     set(state => ({
       files: state.files.filter(f => f.id !== id)
@@ -46,11 +54,11 @@ export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
   },
 
   clearStore: () => {
-    set({ files: [], isUploading: false, totalProgress: 0 }); // Reset progress
+    set({ files: [], isUploading: false, totalProgress: 0 });
   },
 
   uploadAndCreatePendingArtworks: async (userId) => {
-    set({ isUploading: true, totalProgress: 0 }); // Start uploading and reset progress
+    set({ isUploading: true, totalProgress: 0 });
     const filesToUpload = get().files.filter(f => f.status === 'pending');
     const createdArtworkIds: string[] = [];
     const totalFiles = filesToUpload.length;
@@ -81,7 +89,10 @@ export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
           
         if (insertError) throw insertError;
         
-        createdArtworkIds.push(newArtwork.id);
+        if (newArtwork) {
+            createdArtworkIds.push(newArtwork.id);
+        }
+        
         set(state => ({
           files: state.files.map(f => f.id === uploadFile.id ? { ...f, status: 'success', progress: 100 } : f)
         }));
@@ -90,7 +101,6 @@ export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
           files: state.files.map(f => f.id === uploadFile.id ? { ...f, status: 'error', error: error.message } : f)
         }));
       } finally {
-        // This block runs on success or failure of an upload
         completedFiles++;
         const progress = (completedFiles / totalFiles) * 100;
         set({ totalProgress: progress });
