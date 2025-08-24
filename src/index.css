@@ -1,5 +1,3 @@
-/* src/index.css */
-
 /* ==========================================================================
    1. Imports & Root Variables
    ========================================================================== */
@@ -34,13 +32,14 @@
   --muted-foreground: var(--color-neutral-500);
   --border: var(--color-neutral-200);
   --input: #FFFFFF;
-  --accent: hsl(var(--primary-hue), var(--primary-saturation), 95%);
+  --accent: hsl(336, 62%, 95%); /* A light pink for accents */
 
   /* Sizing & Effects */
   --radius: 0.75rem;
   --radius-sm: 0.5rem;
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 10px 15px -3px rgb(0 0 0 / 0.07), 0 4px 6px -4px rgb(0 0 0 / 0.07);
+  --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   --font-sans: 'Work Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
 }
 
@@ -63,6 +62,7 @@ input, button, textarea, select { font: inherit; }
 p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; margin: 0; }
 a { color: var(--primary); text-decoration: none; transition: color 0.2s; }
 a:hover { color: var(--primary-hover); }
+hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 h1 { font-size: 2.25rem; font-weight: 600; }
 h2 { font-size: 1.5rem; font-weight: 600; }
 h3 { font-size: 1.25rem; font-weight: 600; }
@@ -120,6 +120,19 @@ p { line-height: 1.6; }
 @keyframes rotation {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.button-link {
+    background: none;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0;
+    text-decoration: underline;
+}
+.button-link:hover {
+    color: var(--primary-hover);
 }
 
 /* --- Image Upload Component --- */
@@ -227,3 +240,224 @@ p { line-height: 1.6; }
 .auth-card-footer { text-align: center; font-size: 0.9rem; margin-top: 1.5rem; }
 .auth-switch-link { text-align: center; color: var(--muted-foreground); font-size: 0.9rem; margin-top: 3rem; }
 .auth-switch-link a { font-weight: 500; color: var(--primary); }
+
+/* ==========================================================================
+   5. Dashboard & Notifications
+   ========================================================================== */
+
+/* --- Dashboard Layout --- */
+.dashboard-container {
+  display: flex;
+  min-height: 100vh;
+  background: var(--background);
+}
+.main-content {
+  flex: 1;
+  padding: 2rem;
+  padding-bottom: 80px; /* Padding for mobile nav */
+  overflow-y: auto;
+}
+.dashboard-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-bottom: 1.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+/* --- Desktop Sidebar --- */
+.desktop-sidebar {
+  width: 250px;
+  background: var(--card);
+  padding: 1.5rem;
+  border-right: 1px solid var(--border);
+  display: none; /* Hidden by default (mobile-first) */
+  flex-direction: column;
+}
+.dashboard-logo {
+  margin-bottom: 2rem;
+}
+.desktop-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex-grow: 1;
+}
+.desktop-sidebar-footer {
+  margin-top: auto;
+}
+.nav-heading {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  padding: 0 1rem;
+  margin-top: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.nav-divider {
+  margin: 1rem 0;
+  border-color: var(--border);
+}
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  border-radius: var(--radius);
+  color: var(--foreground);
+  transition: background 0.2s, color 0.2s;
+}
+.nav-link.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.nav-link:hover:not(.active) {
+  background: var(--accent);
+}
+
+/* --- Mobile Bottom Navigation --- */
+.mobile-bottom-nav {
+  display: flex; /* Shown by default */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  justify-content: space-around;
+  align-items: center;
+  z-index: 1000;
+}
+.mobile-nav-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  text-decoration: none;
+}
+.mobile-nav-link.active {
+  color: var(--primary);
+}
+
+/* --- Responsive Media Queries for Dashboard --- */
+@media (min-width: 768px) {
+  .desktop-sidebar {
+    display: flex; /* Show sidebar on desktop */
+  }
+  .mobile-bottom-nav {
+    display: none; /* Hide bottom nav on desktop */
+  }
+  .main-content {
+    padding-bottom: 2rem; /* Reset bottom padding */
+  }
+}
+
+/* --- Notification Icon --- */
+.notification-icon-wrapper {
+  position: relative;
+}
+.notification-icon-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--foreground);
+  position: relative;
+}
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -10px;
+  background: var(--color-red-danger);
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+/* --- Notification Panel --- */
+.notification-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 380px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  z-index: 1010;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+.notification-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.notification-panel-header h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+.notification-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+}
+.notification-list-message {
+  padding: 2rem;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.notification-list-item {
+  border-bottom: 1px solid var(--border);
+}
+.notification-list-item:last-child {
+  border-bottom: none;
+}
+.notification-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  padding: 1rem;
+  transition: background-color 0.2s;
+}
+.notification-link:hover {
+  background-color: var(--accent);
+}
+.notification-content {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.notification-icon {
+  flex-shrink: 0;
+}
+.notification-body {
+  flex: 1;
+}
+.notification-message {
+  margin: 0;
+  line-height: 1.4;
+  font-weight: 400;
+}
+.notification-message.unread {
+  font-weight: 600;
+}
+.notification-timestamp {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
