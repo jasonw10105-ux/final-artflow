@@ -1,7 +1,7 @@
+
 // src/components/ui/Button.tsx
 
 import React from 'react';
-import styles from './Button.module.css'; // We will create this style file next
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger';
@@ -12,17 +12,19 @@ const Button: React.FC<ButtonProps> = ({
   children, 
   variant = 'secondary', 
   isLoading = false, 
+  className,
   ...props 
 }) => {
-  const variantClass = styles[variant] || styles.secondary;
+  // Combine the base 'button' class with the variant class and any other classes passed in
+  const buttonClassName = `button ${variant} ${className || ''}`.trim();
 
   return (
     <button 
-      className={`${styles.button} ${variantClass}`} 
+      className={buttonClassName} 
       disabled={isLoading || props.disabled}
       {...props}
     >
-      {isLoading ? <span className={styles.loader}></span> : children}
+      {isLoading ? <span className="loader"></span> : children}
     </button>
   );
 };
