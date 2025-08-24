@@ -1,7 +1,8 @@
+
 // src/stores/artworkUploadStore.ts
 
 import { create } from 'zustand';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; // Corrected Path
 import { v4 as uuidv4 } from 'uuid';
 
 type UploadStatus = 'pending' | 'uploading' | 'success' | 'error';
@@ -19,7 +20,7 @@ interface ArtworkUploadState {
   isUploading: boolean;
   totalProgress: number;
   addFiles: (files: File[]) => void;
-  removeFile: (id: string) => void; // FIX: Corrected signature and added function
+  removeFile: (id: string) => void; // Added for modal functionality
   cancelUpload: (id: string) => void;
   clearStore: () => void;
   uploadAndCreatePendingArtworks: (userId: string) => Promise<string[]>;
@@ -40,14 +41,14 @@ export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
     set(state => ({ files: [...state.files, ...fileEntries] }));
   },
 
-  // FIX: Added the missing removeFile implementation
-  removeFile: (id) => {
+  // This function was missing but required by the upload modal
+  removeFile: (id: string) => {
     set(state => ({
       files: state.files.filter(f => f.id !== id)
     }));
   },
 
-  cancelUpload: (id) => {
+  cancelUpload: (id: string) => {
     set(state => ({
       files: state.files.filter(f => f.id !== id)
     }));
@@ -90,9 +91,9 @@ export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
         if (insertError) throw insertError;
         
         if (newArtwork) {
-            createdArtworkIds.push(newArtwork.id);
+          createdArtworkIds.push(newArtwork.id);
         }
-        
+
         set(state => ({
           files: state.files.map(f => f.id === uploadFile.id ? { ...f, status: 'success', progress: 100 } : f)
         }));
