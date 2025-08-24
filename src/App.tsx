@@ -60,21 +60,23 @@ const ProtectedRoute = () => {
     const { user, profile, loading } = useAuth();
     if (loading) return <AuthLoading />;
     if (!user) return <Navigate to="/login" replace />;
-    if (!profile?.profile_completed) return <Navigate to="/complete-profile" replace />;
-    // FIX: Wrapping the Outlet in a fragment ensures a single parent element is returned.
-    return <><Outlet /></>;
+    if (!profile?.profile_completed && window.location.pathname !== '/complete-profile') {
+        return <Navigate to="/complete-profile" replace />;
+    }
+    return <Outlet />;
 };
 
 const AppRoutes = () => {
   return (
       <Routes>
+        {/* --- 1. Public Standalone Routes --- */}
         <Route path="/" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
-        <Route path="/complete-profile" element={<CompleteProfilePage />} />
         
+        {/* --- 2. Public Routes with Layouts --- */}
         <Route element={<MarketingLayout />}>
             <Route path="/home" element={<MarketingPage />} />
             <Route path="/artists" element={<BrowseArtistsPage />} />
@@ -82,20 +84,24 @@ const AppRoutes = () => {
             <Route path="/catalogues" element={<BrowseCataloguesPage />} />
             <Route path="/:profileSlug" element={<ArtistPortfolioPage />} />
         </Route>
-        
         <Route element={<DynamicPublicPageLayout />}>
             <Route path="/:artistSlug/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
             <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
         </Route>
 
-        <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirector /></ProtectedRoute>} />
-
+        {/* --- 3. Protected Routes --- */}
+        {/* This wrapper handles auth checks. All routes inside require a logged-in user. */}
         <Route element={<ProtectedRoute />}>
+            <Route path="/complete-profile" element={<CompleteProfilePage />} />
+            <Route path="/dashboard" element={<DashboardRedirector />} />
+            
+            {/* Standalone Wizard/Editor Routes */}
             <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
             <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
             <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
             <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
             
+            {/* Routes with Dashboard Layout */}
             <Route element={<DashboardLayout />}>
                 <Route path="/artist/dashboard" element={<ArtistDashboardPage />} />
                 <Route path="/artist/artworks" element={<ArtworkListPage />} />
