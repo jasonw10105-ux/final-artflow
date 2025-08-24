@@ -9,8 +9,6 @@ const BENCH_PIXEL_WIDTH = 800;
 
 serve(async (req) => {
   try {
-    // This is the only correct way to initialize the client.
-    // It securely reads the environment variables you set in the Supabase dashboard.
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '' 
@@ -65,7 +63,7 @@ serve(async (req) => {
       console.log(`[${artworkId}] Watermark uploaded successfully.`);
     }
 
-    // --- TASK B: UPLOAD VISUALIZATION (USING THE WATERMARKED IMAGE) ---
+    // --- TASK B: UPLOAD VISUALIZATION (using the watermarked image) ---
     if (forceVisualizationUpdate || !artwork.visualization_image_url) {
       if (!artwork.dimensions?.width || !artwork.dimensions?.height || !artwork.dimensions?.unit) {
         console.log(`[${artworkId}] Skipping visualization: dimensions incomplete.`);
