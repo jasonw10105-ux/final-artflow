@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from './contexts/AuthProvider';
 // --- Layout Imports ---
 import MarketingLayout from './components/layout/MarketingLayout';
 import DashboardLayout from './components/layout/DashboardLayout';
-import DynamicPublicPageLayout from './components/layout/DynamicPublicPageLayout'; // <-- IMPORT NEW LAYOUT
+import DynamicPublicPageLayout from './components/layout/DynamicPublicPageLayout';
 
 // --- Page Imports ---
 import WaitlistPage from './pages/WaitlistPage';
@@ -34,18 +34,23 @@ import ArtistInsightsPage from './pages/dashboard/artist/ArtistInsightsPage';
 import ArtworkWizardPage from './pages/dashboard/artist/ArtworkWizardPage';
 import ContactListPage from './pages/dashboard/artist/ContactListPage';
 import ContactEditorPage from './pages/dashboard/artist/ContactEditorPage';
-import ContactDetailPage from './pages/dashboard/artist/ContactDetailPage';
 import BrowseArtistsPage from './pages/public/BrowseArtistsPage';
 import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
 import SalesPage from './pages/dashboard/artist/SalesPage';
+// --- NEW COLLECTOR PAGE IMPORTS ---
+import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
+import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
+
 
 const DashboardRedirector = () => {
     const { profile, loading } = useAuth();
     if (loading) return <div>Loading...</div>;
     if (profile && !profile.profile_completed) return <Navigate to="/complete-profile" replace />;
+    // Default to artist dashboard if role is 'both' or 'artist'
     if (profile?.role === 'artist' || profile?.role === 'both') return <Navigate to="/artist/dashboard" replace />;
     if (profile?.role === 'collector') return <Navigate to="/collector/dashboard" replace />;
+    // Fallback if no role is set after completion
     return <Navigate to="/complete-profile" replace />;
 };
 
@@ -75,23 +80,21 @@ function AppRoutes() {
             <Route path="/artists" element={<BrowseArtistsPage />} />
             <Route path="/artworks" element={<BrowseArtworksPage />} />
             <Route path="/catalogues" element={<BrowseCataloguesPage />} />
-            {/* This route for the main portfolio page must be last to avoid conflict */}
             <Route path="/:profileSlug" element={<ArtistPortfolioPage />} />
         </Route>
         
         {/* --- 3. DYNAMIC LAYOUT ROUTES --- */}
-        {/* These routes show DashboardLayout for owners, and MarketingLayout for the public */}
         <Route element={<DynamicPublicPageLayout />}>
             <Route path="/:artistSlug/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
             <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
         </Route>
 
         {/* --- 4. Protected Dashboard Redirect --- */}
-        <Route path="/dashboard" element={<DashboardRedirector />} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirector /></ProtectedRoute>} />
 
         {/* --- 5. Fully Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
-            {/* Standalone Wizard/Editor Routes */}
+            {/* Standalone Wizard/Editor Routes (Mostly for Artists) */}
             <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
             <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
             <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
@@ -99,6 +102,7 @@ function AppRoutes() {
             
             {/* Routes with Dashboard Layout */}
             <Route element={<DashboardLayout />}>
+                {/* Artist Routes */}
                 <Route path="/artist/dashboard" element={<ArtistDashboardPage />} />
                 <Route path="/artist/artworks" element={<ArtworkListPage />} />
                 <Route path="/artist/catalogues" element={<CatalogueListPage />} />
@@ -108,8 +112,12 @@ function AppRoutes() {
                 <Route path="/artist/sales" element={<SalesPage />} />
                 <Route path="/artist/insights" element={<ArtistInsightsPage />} />
                 <Route path="/artist/settings" element={<ArtistSettingsPage />} />
+
+                {/* Collector Routes */}
                 <Route path="/collector/dashboard" element={<CollectorDashboardPage />} />
                 <Route path="/collector/inquiries" element={<CollectorInquiriesPage />} />
+                <Route path="/collector/collection" element={<CollectorSalesPage />} /> {/* <-- NEW */}
+                <Route path="/collector/settings" element={<CollectorSettingsPage />} /> {/* <-- NEW */}
             </Route>
         </Route>
 
