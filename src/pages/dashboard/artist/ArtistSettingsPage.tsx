@@ -50,21 +50,31 @@ const ArtistSettingsPage = () => {
             setContactNumber(profile.contact_number || '');
             setAvatarPreview(profile.avatar_url || null);
 
-            // FIX: Type guard to safely access properties of the 'location' JSONB field.
-            // This prevents build errors if 'location' is not a structured object.
             if (profile.location && typeof profile.location === 'object' && !Array.isArray(profile.location)) {
                 const loc = profile.location as Location;
                 setLocationCountry(loc.country || '');
                 setLocationCity(loc.city || '');
             }
 
-            // FIX: Type guard to safely handle the 'social_links' JSONB field.
-            // This ensures the data is an array of valid SocialLink objects before setting state.
+            // *** FUXKING FIXED PART ***
+            // This is the robust fix. We explicitly build a new, correctly typed array.
             if (Array.isArray(profile.social_links)) {
-                const validLinks = profile.social_links.filter(
-                    (link: any): link is SocialLink => 
-                        typeof link === 'object' && link !== null && 'platform' in link && 'url' in link
-                );
+                const validLinks: SocialLink[] = profile.social_links
+                    .map((link: any) => {
+                        // Ensure the item is an object with the required properties
+                        if (typeof link === 'object' && link !== null && 'platform' in link && 'url' in link) {
+                            // Create a new object that explicitly matches the SocialLink interface
+                            return {
+                                platform: String(link.platform),
+                                url: String(link.url)
+                            };
+                        }
+                        // Discard any invalid items (null, not an object, missing keys)
+                        return null;
+                    })
+                    // Filter out the discarded null items, leaving a clean array of SocialLink objects
+                    .filter((link): link is SocialLink => link !== null);
+
                 setSocialLinks(validLinks);
             }
         }
@@ -103,11 +113,10 @@ const ArtistSettingsPage = () => {
                 const filePath = `${user.id}/${Date.now()}.${fileExt}`;
                 
                 const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, {
-                    upsert: true, // Overwrite existing file
+                    upsert: true,
                 });
                 if (uploadError) throw uploadError;
 
-                // Get the public URL of the uploaded file
                 const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
                 avatarUrl = data.publicUrl;
             }
@@ -123,7 +132,6 @@ const ArtistSettingsPage = () => {
                 artist_statement: artistStatement,
                 contact_number: contactNumber,
                 location: { country: locationCountry, city: locationCity },
-                // Filter out any social links that don't have a URL
                 social_links: socialLinks.filter(link => link.url.trim() !== ''),
                 avatar_url: avatarUrl,
                 updated_at: new Date().toISOString(),
@@ -141,7 +149,6 @@ const ArtistSettingsPage = () => {
         }
     };
 
-    // Render loading state while waiting for user/profile data
     if (authLoading) {
         return <div className="p-4">Loading your profile...</div>;
     }
@@ -152,7 +159,6 @@ const ArtistSettingsPage = () => {
             <p className="page-subtitle">Manage your public profile information, contact details, and account settings.</p>
 
             <form onSubmit={handleUpdateProfile} className="settings-form">
-                {/* Section for Public Profile */}
                 <div className="form-section">
                     <h3>Public Profile</h3>
                     <p>This information will be displayed on your public artist portfolio.</p>
@@ -186,7 +192,6 @@ const ArtistSettingsPage = () => {
                     </div>
                 </div>
 
-                {/* Section for Contact & Location */}
                 <div className="form-section">
                     <h3>Contact & Location</h3>
                     <p>This information is private and will only be used for communication and shipping.</p>
@@ -206,7 +211,6 @@ const ArtistSettingsPage = () => {
                     </div>
                 </div>
                 
-                 {/* Section for Social Links */}
                  <div className="form-section">
                     <h3>Social Links</h3>
                     <p>Link to your website, social media, and other online presences.</p>
@@ -228,7 +232,6 @@ const ArtistSettingsPage = () => {
                     <button type="button" onClick={handleAddSocialLink} className="button secondary">Add Social Link</button>
                 </div>
 
-                {/* Form Submission Actions */}
                 <div className="form-actions">
                     <Button type="submit" className="primary" isLoading={loading}>Save Changes</Button>
                 </div>
