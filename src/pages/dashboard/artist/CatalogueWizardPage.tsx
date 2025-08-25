@@ -9,7 +9,12 @@ import { Database } from '@/types/database.types';
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 type Catalogue = Database['public']['Tables']['catalogues']['Row'];
 
-// API function to fetch all of a user's artworks
+// Helper function to format price, resolving the build error
+const formatPrice = (price: number | null, currency: string | null) => {
+    if (price === null || price === undefined) return 'N/A';
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(price);
+};
+
 const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price' | 'currency'>[]> => {
     const { data, error } = await supabase
         .from('artworks')
@@ -21,17 +26,14 @@ const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' 
     return data || [];
 };
 
-// API function updated for the new many-to-many relationship
 const fetchExistingCatalogue = async (catalogueId: string) => {
     const { data: catalogue, error: catError } = await supabase.from('catalogues').select('*, is_system_catalogue').eq('id', catalogueId).single();
     if (catError) throw new Error("Could not fetch catalogue details.");
 
-    // Fetch artwork IDs from the junction table
     const { data: junctions, error: juncError } = await supabase.from('artwork_catalogue_junction').select('artwork_id').eq('catalogue_id', catalogueId);
     if (juncError) throw new Error("Could not fetch artwork assignments.");
     const artworkIds = junctions.map(j => j.artwork_id);
 
-    // Fetch details for the assigned artworks
     let artworksInCatalogue: Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price' | 'currency'>[] = [];
     if (artworkIds.length > 0) {
         const { data, error: artError } = await supabase.from('artworks').select('id, title, image_url, dimensions, price, currency').in('id', artworkIds);
@@ -115,11 +117,8 @@ const CatalogueWizardPage = () => {
             if (error) throw error;
             const currentCatalogueId = savedCatalogue.id;
             
-            // Sync the junction table
             const newArtworkIds = selectedArtworks.map(art => art.id);
-            // Delete all existing junctions for this catalogue
             await supabase.from('artwork_catalogue_junction').delete().eq('catalogue_id', currentCatalogueId);
-            // Insert new junctions if there are any selected artworks
             if (newArtworkIds.length > 0) {
                 const newJunctions = newArtworkIds.map(artId => ({ catalogue_id: currentCatalogueId, artwork_id: artId }));
                 const { error: insertError } = await supabase.from('artwork_catalogue_junction').insert(newJunctions);
@@ -137,7 +136,6 @@ const CatalogueWizardPage = () => {
     const deleteMutation = useMutation({
         mutationFn: async () => {
             if (!catalogueId || isSystem) throw new Error("System catalogues cannot be deleted.");
-            // RLS policies will prevent deletion, but this client-side check is good UX.
             const { error } = await supabase.from('catalogues').delete().eq('id', catalogueId);
             if (error) throw error;
         },
