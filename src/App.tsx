@@ -43,7 +43,7 @@ import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
 import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
 
 const AuthLoading = () => (
-    <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>
+    <div className="loading-container">
         Loading Application...
     </div>
 );
@@ -132,22 +132,27 @@ const App = () => {
         <Toaster 
           position="bottom-right"
           toastOptions={{
-            // Define default options
-            className: '',
+            // Define default options for all toasts
             style: {
-              background: '#333',
-              color: '#fff',
+              background: 'var(--color-neutral-700)',
+              color: 'var(--primary-foreground)',
+              borderRadius: 'var(--radius-sm)',
+              boxShadow: 'var(--shadow-md)',
             },
-            // Default options for specific types
+            // Override for specific toast types
             success: {
               duration: 3000,
-              theme: {
-                primary: 'green',
-                secondary: 'black',
+              style: {
+                background: 'var(--color-green-success)',
+                color: 'var(--primary-foreground)',
               },
             },
-             error: {
+            error: {
               duration: 5000,
+              style: {
+                background: 'var(--color-red-danger)',
+                color: 'var(--primary-foreground)',
+              },
             },
           }}
         />
