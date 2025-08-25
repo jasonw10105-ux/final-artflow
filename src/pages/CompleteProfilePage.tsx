@@ -1,4 +1,45 @@
-// src/pages/CompleteProfilePage.tsx (Continued)
+// src/pages/CompleteProfilePage.tsx
+
+import React, { useState } from 'react';
+import { useAuth } from '@/contexts/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+import Button from '@/components/ui/Button';
+import ImageUpload from '@/components/ui/ImageUpload';
+
+const CompleteProfilePage = () => {
+    const { user } = useAuth();
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [role, setRole] = useState('');
+    const [bio, setBio] = useState('');
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    const isArtistType = role === 'artist' || role === 'both';
+
+    const handleProfileComplete = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) {
+            toast.error("You must be logged in to complete your profile.");
+            return;
+        }
+
+        if (isArtistType && !avatarFile) {
+            toast.error("Artists must upload a profile picture.");
+            return;
+        }
+
+        setLoading(true);
+        const toastId = toast.loading('Finalizing your profile...');
+
+        try {
+            let avatarUrl = null;
+            if (avatarFile) {
+                const fileExt = avatarFile.name.split('.').pop();
+                const filePath = `${user.id}/${Math.random()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile);
+                if (uploadError) throw uploadError;
                 
                 const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
                 avatarUrl = data.publicUrl;
@@ -36,7 +77,10 @@
             }
             
             toast.success('Profile complete! Redirecting...', { id: toastId });
-            window.location.replace('/dashboard'); 
+            // Using a slight delay to allow the user to see the success message
+            setTimeout(() => {
+                window.location.href = isArtistType ? '/artist/dashboard' : '/collector/dashboard';
+            }, 1000);
 
         } catch (err: any) {
             toast.error(`Error: ${err.message}`, { id: toastId });
@@ -46,11 +90,13 @@
     };
 
     return (
-        <div className="auth-layout" style={{gridTemplateColumns: '1fr'}}>
+        <div className="auth-layout single-panel">
             <main className="auth-form-panel">
-                <div className="auth-card" style={{maxWidth: '600px'}}>
+                <div className="auth-card wide">
                     <header className="auth-card-header">
-                        <img src="/logo.svg" alt="Artflow" height="50px" className="logo-holder" />
+                        <div className="logo-holder">
+                           <img src="/logo.svg" alt="Artflow" height="50px" />
+                        </div>
                         <h2>Complete Your Profile</h2>
                         <p>Just a few more details to get you started.</p>
                     </header>
@@ -58,9 +104,9 @@
                     <form onSubmit={handleProfileComplete} className="auth-form">
                         <ImageUpload onFileSelect={setAvatarFile} />
                         
-                        {isArtistType && <p style={{textAlign: 'center', marginTop: '-1rem', marginBottom: '1rem', color: 'var(--muted-foreground)'}}>A profile picture is required for artists.</p>}
+                        {isArtistType && <p className="form-hint">A profile picture is required for artists.</p>}
 
-                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                        <div className="form-grid-2-col">
                             <div className="form-group">
                                 <label className="label" htmlFor="firstName">First Name *</label>
                                 <input id="firstName" className="input" type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required />
@@ -84,7 +130,7 @@
                         {isArtistType && (
                              <div className="form-group">
                                 <label className="label" htmlFor="bio">
-                                    Your Bio * <span style={{fontWeight: 400, color: 'var(--muted-foreground)'}}>(Required for artists)</span>
+                                    Your Bio * <span className="label-hint">(Required for artists)</span>
                                 </label>
                                 <textarea 
                                     id="bio" 
@@ -97,7 +143,7 @@
                             </div>
                         )}
                         
-                        <Button type="submit" variant="primary" isLoading={loading} className="primary" style={{marginTop: '1rem'}}>
+                        <Button type="submit" variant="primary" isLoading={loading} className="primary full-width">
                             Complete Registration
                         </Button>
                     </form>
