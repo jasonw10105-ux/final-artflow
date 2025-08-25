@@ -7,6 +7,7 @@ import { PlusCircle, List, LayoutGrid, Folder, MoreVertical, Circle, CheckCircle
 import ArtworkUploadModal from '@/components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '@/stores/artworkUploadStore';
 import ArtworkActionsMenu from '@/components/dashboard/ArtworkActionsMenu';
+import AssignCatalogueModal from '@/components/dashboard/AssignCatalogueModal'; // <-- IMPORT THE NEW MODAL
 import { Database } from '@/types/database.types';
 
 type Artwork = Database['public']['Tables']['artworks']['Row'];
@@ -63,6 +64,7 @@ const ArtworkListPage = () => {
     
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+    const [showAssignModal, setShowAssignModal] = useState(false); // <-- NEW STATE FOR MODAL
 
     const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, artwork: Artwork) => {
         setAnchorEl(event.currentTarget);
@@ -71,6 +73,10 @@ const ArtworkListPage = () => {
     const handleMenuClose = () => {
         setAnchorEl(null);
         setSelectedArtwork(null);
+    };
+    const handleAssignModalOpen = () => {
+        setShowAssignModal(true);
+        handleMenuClose();
     };
 
     const { data: artworks, isLoading: isLoadingArtworks } = useQuery({
@@ -159,6 +165,7 @@ const ArtworkListPage = () => {
     return (
         <div>
             {showUploadModal && <ArtworkUploadModal onUploadComplete={handleUploadComplete} />}
+            {showAssignModal && selectedArtwork && <AssignCatalogueModal artwork={selectedArtwork} onClose={() => setShowAssignModal(false)} />}
             <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp" />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -246,6 +253,7 @@ const ArtworkListPage = () => {
                     onEdit={() => { handleEdit(selectedArtwork.id); handleMenuClose(); }}
                     onDelete={() => { handleDelete(selectedArtwork.id, selectedArtwork.title); handleMenuClose(); }}
                     onMarkAsSold={() => { handleMarkAsSold(selectedArtwork.id); handleMenuClose(); }}
+                    onAssignCatalogue={handleAssignModalOpen} // <-- PASS THE NEW HANDLER
                 />
             )}
 
