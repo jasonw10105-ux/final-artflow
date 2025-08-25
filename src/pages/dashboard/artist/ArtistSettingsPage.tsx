@@ -27,7 +27,7 @@ const ArtistSettingsPage = () => {
     // Form field states
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
-    const [displayName, setDisplayName] = useState(''); // ADDED: For the display_name field
+    const [displayName, setDisplayName] = useState('');
     const [shortBio, setShortBio] = useState('');
     const [artistStatement, setArtistStatement] = useState('');
     const [contactNumber, setContactNumber] = useState('');
@@ -44,7 +44,7 @@ const ArtistSettingsPage = () => {
         if (profile) {
             setFirstName(profile.first_name || '');
             setLastName(profile.last_name || '');
-            setDisplayName(profile.display_name || ''); // ADDED: Populate display_name
+            setDisplayName(profile.display_name || '');
             setShortBio(profile.short_bio || '');
             setArtistStatement(profile.artist_statement || '');
             setContactNumber(profile.contact_number || '');
@@ -117,7 +117,7 @@ const ArtistSettingsPage = () => {
                 id: user.id,
                 first_name: firstName,
                 last_name: lastName,
-                display_name: displayName, // ADDED: Include display_name in the update
+                display_name: displayName,
                 full_name: `${firstName} ${lastName}`.trim(),
                 short_bio: shortBio,
                 artist_statement: artistStatement,
@@ -157,7 +157,6 @@ const ArtistSettingsPage = () => {
                     <h3>Public Profile</h3>
                     <p>This information will be displayed on your public artist portfolio.</p>
                     
-                    {/* Note: The ImageUpload component requires the 'initialPreview' prop to be defined in its props interface */}
                     <ImageUpload onFileSelect={setAvatarFile} initialPreview={avatarPreview || undefined} />
                     
                     <div className="form-group">
