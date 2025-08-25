@@ -1,12 +1,13 @@
+// src/pages/dashboard/artist/ArtistSettingsPage.tsx
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import Button from '@/components/ui/Button';
 import ImageUpload from '@/components/ui/ImageUpload';
-import { LinkIcon, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
-// Define the shape of a social link
 interface SocialLink {
     platform: string;
     url: string;
@@ -15,7 +16,6 @@ interface SocialLink {
 const ArtistSettingsPage = () => {
     const { user, profile, loading: authLoading } = useAuth();
 
-    // Form state
     const [loading, setLoading] = useState(false);
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
@@ -26,11 +26,9 @@ const ArtistSettingsPage = () => {
     const [locationCity, setLocationCity] = useState('');
     const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
     
-    // Avatar state
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-    // Effect to populate the form when the profile data is available
     useEffect(() => {
         if (profile) {
             setFirstName(profile.first_name || '');
@@ -38,14 +36,22 @@ const ArtistSettingsPage = () => {
             setShortBio(profile.short_bio || '');
             setArtistStatement(profile.artist_statement || '');
             setContactNumber(profile.contact_number || '');
-            setLocationCountry(profile.location?.country || '');
-            setLocationCity(profile.location?.city || '');
-            setSocialLinks(profile.social_links || []);
             setAvatarPreview(profile.avatar_url || null);
+
+            // -- TYPE GUARD FIX for location --
+            if (profile.location && typeof profile.location === 'object') {
+                const loc = profile.location as { country?: string; city?: string };
+                setLocationCountry(loc.country || '');
+                setLocationCity(loc.city || '');
+            }
+
+            // -- TYPE GUARD FIX for social_links --
+            if (Array.isArray(profile.social_links)) {
+                setSocialLinks(profile.social_links);
+            }
         }
     }, [profile]);
 
-    // Handlers for social links
     const handleAddSocialLink = () => {
         setSocialLinks([...socialLinks, { platform: 'Website', url: '' }]);
     };
@@ -58,7 +64,6 @@ const ArtistSettingsPage = () => {
         setSocialLinks(newLinks);
     };
 
-    // Form submission handler
     const handleUpdateProfile = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -69,7 +74,6 @@ const ArtistSettingsPage = () => {
         try {
             let avatarUrl = profile?.avatar_url;
 
-            // Handle avatar upload if a new file is selected
             if (avatarFile) {
                 const fileExt = avatarFile.name.split('.').pop();
                 const filePath = `${user.id}/${Math.random()}.${fileExt}`;
@@ -83,7 +87,6 @@ const ArtistSettingsPage = () => {
                 avatarUrl = data.publicUrl;
             }
 
-            // Prepare the data for upserting
             const updates = {
                 id: user.id,
                 first_name: firstName,
@@ -93,7 +96,7 @@ const ArtistSettingsPage = () => {
                 artist_statement: artistStatement,
                 contact_number: contactNumber,
                 location: { country: locationCountry, city: locationCity },
-                social_links: socialLinks.filter(link => link.url), // Remove empty links
+                social_links: socialLinks.filter(link => link.url),
                 avatar_url: avatarUrl,
                 updated_at: new Date().toISOString(),
             };
@@ -102,6 +105,8 @@ const ArtistSettingsPage = () => {
             if (profileError) throw profileError;
             
             toast.success('Profile updated successfully!', { id: toastId });
+            // Optionally force a reload to ensure profile context is updated everywhere
+            // window.location.reload();
         } catch (error: any) {
             toast.error(error.message, { id: toastId });
         } finally {
