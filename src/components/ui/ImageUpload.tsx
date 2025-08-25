@@ -1,52 +1,55 @@
 // src/components/ui/ImageUpload.tsx
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Camera, X } from 'lucide-react';
+import { UploadCloud, X } from 'lucide-react';
 
 interface ImageUploadProps {
   onFileSelect: (file: File | null) => void;
-  initialImageUrl?: string | null;
+  initialPreview?: string; // <-- ADDED THIS PROP
 }
 
-const ImageUpload: React.FC<ImageUploadProps> = ({ onFileSelect, initialImageUrl }) => {
-  const [preview, setPreview] = useState<string | null>(initialImageUrl || null);
+const ImageUpload = ({ onFileSelect, initialPreview }: ImageUploadProps) => {
+  const [preview, setPreview] = useState<string | null>(initialPreview || null);
+
+  // -- ADDED useEffect to update preview if the initial prop changes --
+  useEffect(() => {
+    setPreview(initialPreview || null);
+  }, [initialPreview]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles && acceptedFiles.length > 0) {
-      const file = acceptedFiles[0];
-      setPreview(URL.createObjectURL(file));
+    const file = acceptedFiles[0];
+    if (file) {
       onFileSelect(file);
+      setPreview(URL.createObjectURL(file));
     }
   }, [onFileSelect]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': ['.jpeg', '.png', '.gif', '.webp'] },
-    multiple: false,
-  });
-
-  const handleRemoveImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const removeImage = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent the dropzone from opening
     setPreview(null);
     onFileSelect(null);
   };
 
-  const dropzoneClassName = `image-upload-dropzone ${isDragActive ? 'drag-active' : ''}`;
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'image/*': ['.jpeg', '.png', '.jpg', '.gif'] },
+    multiple: false,
+  });
 
   return (
-    <div {...getRootProps()} className={dropzoneClassName}>
+    <div {...getRootProps()} className={`image-upload-dropzone ${isDragActive ? 'drag-active' : ''}`}>
       <input {...getInputProps()} />
       {preview ? (
         <>
           <img src={preview} alt="Profile preview" className="image-upload-preview" />
-          <button type="button" onClick={handleRemoveImage} className="image-upload-remove-button">
+          <button onClick={removeImage} className="image-upload-remove-button">
             <X size={16} />
           </button>
         </>
       ) : (
         <div className="image-upload-placeholder">
-          <Camera size={24} />
+          <UploadCloud size={32} />
           <span>Upload Image</span>
         </div>
       )}
