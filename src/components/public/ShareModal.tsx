@@ -1,7 +1,8 @@
 // src/components/ShareModal.tsx
 
 import React, { useState } from 'react';
-import { X, Copy, Mail, MessageCircle, Twitter, Facebook } from 'lucide-react';
+// --- MODIFICATION: Added MoreHorizontal for the new share option ---
+import { X, Copy, Mail, MessageCircle, Twitter, Facebook, MoreHorizontal } from 'lucide-react';
 import '../../index.css';
 
 // --- SVG Icons for platforms not in lucide-react ---
@@ -29,7 +30,6 @@ interface ShareModalProps {
   shareUrl: string;
   previewImageUrls: string[];
   isCatalogue?: boolean;
-  // --- NEW PROPS FOR DETAILED SHARE TEXT ---
   dimensions?: string | null;
   price?: number | string | null;
   year?: string | number | null;
@@ -46,27 +46,14 @@ const ShareModal = ({
     dimensions,
     price,
     year,
-    currency = 'ZAR' // Default currency
+    currency = 'ZAR'
 }: ShareModalProps) => {
 
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
-
     const shareType = isCatalogue ? "catalogue" : "artwork";
-
-    // --- CONSTRUCT THE NEW DETAILED TEXT ---
     const formattedPrice = typeof price === 'number' ? `${currency} ${price.toLocaleString()}` : price;
-
-    // Detailed text for manual copying (e.g., for Instagram)
-    const detailedText = [
-        title,
-        dimensions,
-        formattedPrice,
-        year
-    ].filter(Boolean).join('\n'); // filter(Boolean) removes any null/undefined lines
-
+    const detailedText = [ title, dimensions, formattedPrice, year ].filter(Boolean).join('\n');
     const instagramPostText = `${detailedText}\n\nAvailable on artflow.co.za`;
-
-    // A more concise text for platforms like Twitter, WhatsApp
     const conciseShareText = `Check out "${title}" by ${byline} on Artflow: ${shareUrl}`;
     const encodedConciseShareText = encodeURIComponent(conciseShareText);
 
@@ -82,7 +69,7 @@ const ShareModal = ({
         }},
         { name: 'Instagram', icon: <InstagramIcon />, action: () => {
             navigator.clipboard.writeText(instagramPostText);
-            showSuccessMessage('Text copied for Instagram! Now save the image and create your post.');
+            showSuccessMessage('Text copied for Instagram! Now save an image and create your post.');
         }},
         { name: 'Email', icon: <Mail size={24} />, action: () => {
             window.location.href = `mailto:?subject=${encodeURIComponent(`Artflow ${shareType}: ${title}`)}&body=${encodeURIComponent(instagramPostText + `\n\nView here: ${shareUrl}`)}`;
@@ -100,6 +87,28 @@ const ShareModal = ({
             window.open(`https://www.threads.net/intent/post?text=${encodedConciseShareText}`, '_blank', 'noopener,noreferrer');
         }},
     ];
+
+    // --- MODIFICATION: Check for Web Share API support and add the "More" option ---
+    // This check ensures the button only appears on compatible browsers (mostly mobile).
+    if (navigator.share) {
+        shareOptions.push({
+            name: 'More Options',
+            icon: <MoreHorizontal size={24} />,
+            action: async () => {
+                try {
+                    await navigator.share({
+                        title: `Artflow: ${title}`,
+                        text: `Check out "${title}" by ${byline} on Artflow`,
+                        url: shareUrl,
+                    });
+                } catch (error) {
+                    // This error can happen if the user cancels the share.
+                    // We can safely ignore it.
+                    console.log('Web Share API canceled or failed', error);
+                }
+            }
+        });
+    }
 
     return (
         <div className="modal-backdrop" onClick={onClose}>
@@ -134,7 +143,6 @@ const ShareModal = ({
                     ))}
                 </div>
 
-                {/* Dynamic success message */}
                 {copySuccess && <p className="copy-success-message">{copySuccess}</p>}
             </div>
         </div>
