@@ -1,9 +1,8 @@
 import React from 'react';
 import { Menu, MenuItem } from '@mui/material';
-import { handleDownload } from '../../utils/imageUtils'; // CORRECTED: Import the new utility
+import { handleDownload } from '../../utils/imageUtils';
 import { Database } from '../../types/supabase';
 
-// CORRECTED: Use the official type from supabase.ts
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 
 interface ArtworkActionsMenuProps {
@@ -13,18 +12,22 @@ interface ArtworkActionsMenuProps {
     onEdit: (id: string) => void;
     onDelete: (id: string, title: string | null) => void;
     onMarkAsSold: (id: string) => void;
+    onAssignCatalogue: () => void; // <-- Add the new prop
 }
 
-const ArtworkActionsMenu = ({ artwork, anchorEl, onClose, onEdit, onDelete, onMarkAsSold }: ArtworkActionsMenuProps) => {
+const ArtworkActionsMenu = ({ artwork, anchorEl, onClose, onEdit, onDelete, onMarkAsSold, onAssignCatalogue }: ArtworkActionsMenuProps) => {
     const isOpen = Boolean(anchorEl);
 
     return (
         <Menu anchorEl={anchorEl} open={isOpen} onClose={onClose}>
             <MenuItem onClick={() => { onEdit(artwork.id); onClose(); }}>Edit Details</MenuItem>
+            
+            {/* --- NEW MENU ITEM --- */}
+            <MenuItem onClick={() => { onAssignCatalogue(); onClose(); }}>Assign to Catalogue</MenuItem>
+
             {artwork.status === 'Active' && (
                 <MenuItem onClick={() => { onMarkAsSold(artwork.id); onClose(); }}>Mark as Sold</MenuItem>
             )}
-            {/* CORRECTED: Properties now exist on the correct Artwork type */}
             {artwork.watermarked_image_url && (
                 <MenuItem onClick={() => handleDownload(artwork.watermarked_image_url, `${artwork.slug}-watermarked.png`)}>
                     Download Watermarked
@@ -35,7 +38,7 @@ const ArtworkActionsMenu = ({ artwork, anchorEl, onClose, onEdit, onDelete, onMa
                     Download Visualization
                 </MenuItem>
             )}
-            <MenuItem onClick={() => { onDelete(artwork.id, artwork.title); onClose(); }} sx={{ color: 'red' }}>
+            <MenuItem onClick={() => { onDelete(artwork.id, artwork.title); onClose(); }} sx={{ color: 'var(--color-red-danger)' }}>
                 Delete Artwork
             </MenuItem>
         </Menu>
