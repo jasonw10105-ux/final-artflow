@@ -12,7 +12,7 @@ interface ArtworkActionsMenuProps {
     onEdit: (id: string) => void;
     onDelete: (id: string, title: string | null) => void;
     onMarkAsSold: (id: string) => void;
-    onAssignCatalogue: () => void; // <-- Add the new prop
+    onAssignCatalogue: () => void;
 }
 
 const ArtworkActionsMenu = ({ artwork, anchorEl, onClose, onEdit, onDelete, onMarkAsSold, onAssignCatalogue }: ArtworkActionsMenuProps) => {
@@ -21,10 +21,7 @@ const ArtworkActionsMenu = ({ artwork, anchorEl, onClose, onEdit, onDelete, onMa
     return (
         <Menu anchorEl={anchorEl} open={isOpen} onClose={onClose}>
             <MenuItem onClick={() => { onEdit(artwork.id); onClose(); }}>Edit Details</MenuItem>
-            
-            {/* --- NEW MENU ITEM --- */}
             <MenuItem onClick={() => { onAssignCatalogue(); onClose(); }}>Assign to Catalogue</MenuItem>
-
             {artwork.status === 'Active' && (
                 <MenuItem onClick={() => { onMarkAsSold(artwork.id); onClose(); }}>Mark as Sold</MenuItem>
             )}
