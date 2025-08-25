@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import ArtworkEditorForm from '@/components/dashboard/ArtworkEditorForm'; // Assuming default export
+import ArtworkEditorForm from '@/components/dashboard/ArtworkEditorForm';
 import { ArrowLeft, ArrowRight, PlusCircle, Trash2 } from 'lucide-react';
 import ArtworkUploadModal from '@/components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '@/stores/artworkUploadStore';
@@ -14,6 +14,7 @@ const fetchArtworksByIds = async (ids: string[]): Promise<Artwork[]> => {
     if (!ids || ids.length === 0) return [];
     const { data, error } = await supabase.from('artworks').select('*').in('id', ids);
     if (error) throw new Error(error.message);
+    // Ensure the returned data is in the same order as the IDs in the URL param
     const orderedData = ids.map(id => data.find(artwork => artwork.id === id)).filter(Boolean) as Artwork[];
     return orderedData;
 };
@@ -45,15 +46,21 @@ const ArtworkWizardPage = () => {
         },
         onSuccess: (removedId) => {
             const newArtworkIds = artworkIds.filter(id => id !== removedId);
-            queryClient.setQueryData(wizardQueryKey, (oldData: Artwork[] = []) => oldData.filter(art => art.id !== removedId));
+
+            queryClient.setQueryData(wizardQueryKey, (oldData: Artwork[] = []) => 
+                oldData.filter(art => art.id !== removedId)
+            );
+
             if (newArtworkIds.length === 0) {
                 alert("All artworks have been removed from the wizard.");
                 navigate('/artist/artworks');
                 return;
             }
+
             if (currentIndex >= newArtworkIds.length) {
                 setCurrentIndex(newArtworkIds.length - 1);
             }
+            
             setSearchParams({ ids: newArtworkIds.join(',') }, { replace: true });
             queryClient.invalidateQueries({ queryKey: ['artworks'] });
         },
@@ -69,16 +76,18 @@ const ArtworkWizardPage = () => {
     };
 
     const handleRemoveArtwork = (artworkId: string, title: string | null) => {
-        if (window.confirm(`Are you sure you want to permanently delete "${title || 'this artwork'}"?`)) {
+        if (window.confirm(`Are you sure you want to permanently delete "${title || 'this artwork'}"? This action cannot be undone.`)) {
             deleteMutation.mutate(artworkId);
         }
     };
 
     const handleSaveAndNext = () => {
         const savedArtworkId = currentArtwork?.id;
+        
         if (savedArtworkId) {
             queryClient.invalidateQueries({ queryKey: ['artwork-form', savedArtworkId] });
         }
+        
         if (currentIndex < artworkIds.length - 1) {
             setCurrentIndex(currentIndex + 1);
         } else {
@@ -106,15 +115,15 @@ const ArtworkWizardPage = () => {
     };
 
     if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork wizard...</div>;
-    if (isSuccess && (!artworks || artworks.length === 0)) return <div style={{padding: '2rem'}}>No artworks to edit. <Link to="/artist/artworks">Go back</Link></div>;
+    if (isSuccess && (!artworks || artworks.length === 0)) return <div style={{padding: '2rem'}}>No artworks to edit. The wizard is complete. <Link to="/artist/artworks">Go back to artworks</Link></div>;
 
     return (
         <div style={{ minHeight: '100vh', background: 'var(--background)' }}>
             {showUploadModal && <ArtworkUploadModal onUploadComplete={handleMoreUploadsComplete} />}
             <header>
-                 <Link to="/artist/artworks" className="button button-secondary"> <ArrowLeft size={16} /> Exit Wizard </Link>
+                 <Link to="/artist/artworks" className="button button-secondary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}> <ArrowLeft size={16} /> Exit Wizard </Link>
                 <h1>Artwork Details ({currentIndex + 1} / {artworks?.length})</h1>
-                <button onClick={() => setShowUploadModal(true)} className="button button-primary"> <PlusCircle size={16} /> Add more</button>
+                <button onClick={() => setShowUploadModal(true)} className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}> <PlusCircle size={16} /> Add more</button>
             </header>
             <div id="artwork_create_wizard">
                 <aside style={{ position: 'sticky', top: '2rem' }}>
