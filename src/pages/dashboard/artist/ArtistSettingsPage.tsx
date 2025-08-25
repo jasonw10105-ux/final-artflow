@@ -56,26 +56,15 @@ const ArtistSettingsPage = () => {
                 setLocationCity(loc.city || '');
             }
 
-            // *** FUXKING FIXED PART ***
-            // This is the robust fix. We explicitly build a new, correctly typed array.
+            // *** THE DEFINITIVE FIX ***
+            // We filter to ensure runtime safety, then use a type assertion (`as SocialLink[]`)
+            // to forcefully tell TypeScript the correct type, fixing the build error.
             if (Array.isArray(profile.social_links)) {
-                const validLinks: SocialLink[] = profile.social_links
-                    .map((link: any) => {
-                        // Ensure the item is an object with the required properties
-                        if (typeof link === 'object' && link !== null && 'platform' in link && 'url' in link) {
-                            // Create a new object that explicitly matches the SocialLink interface
-                            return {
-                                platform: String(link.platform),
-                                url: String(link.url)
-                            };
-                        }
-                        // Discard any invalid items (null, not an object, missing keys)
-                        return null;
-                    })
-                    // Filter out the discarded null items, leaving a clean array of SocialLink objects
-                    .filter((link): link is SocialLink => link !== null);
-
-                setSocialLinks(validLinks);
+                const validLinks = profile.social_links.filter(
+                    (link: any): link is SocialLink => 
+                        typeof link === 'object' && link !== null && 'platform' in link && 'url' in link
+                );
+                setSocialLinks(validLinks as SocialLink[]);
             }
         }
     }, [profile]);
@@ -107,7 +96,6 @@ const ArtistSettingsPage = () => {
         try {
             let avatarUrl = profile?.avatar_url;
 
-            // Step 1: Upload new avatar if one has been selected
             if (avatarFile) {
                 const fileExt = avatarFile.name.split('.').pop();
                 const filePath = `${user.id}/${Date.now()}.${fileExt}`;
@@ -121,7 +109,6 @@ const ArtistSettingsPage = () => {
                 avatarUrl = data.publicUrl;
             }
 
-            // Step 2: Prepare the data object for the 'profiles' table update
             const updates = {
                 id: user.id,
                 first_name: firstName,
@@ -137,7 +124,6 @@ const ArtistSettingsPage = () => {
                 updated_at: new Date().toISOString(),
             };
 
-            // Step 3: Upsert the profile data into Supabase
             const { error: profileError } = await supabase.from('profiles').upsert(updates);
             if (profileError) throw profileError;
             
