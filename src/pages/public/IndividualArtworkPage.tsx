@@ -3,9 +3,13 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { supabase } from '@/lib/supabaseClient';
-import { InquiryModal } from '@/components/modals/InquiryModal';
-import { ShareModal } from '@/components/modals/ShareModal';
-import { VisualizationModal } from '@/components/modals/VisualizationModal';
+
+// --- CORRECTED IMPORT PATHS ---
+import { InquiryModal } from '@/components/public/InquiryModal';
+import { ShareModal } from '@/components/public/ShareModal';
+import { VisualizationModal } from '@/components/public/VisualizationModal';
+
+// (The rest of the file is identical)
 
 interface Artist {
     id: string;
