@@ -1,89 +1,195 @@
-
-// src/pages/dashboard/artist/ArtistSettingsPage.tsx
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
+import Button from '@/components/ui/Button';
+import ImageUpload from '@/components/ui/ImageUpload';
+import { LinkIcon, Trash2 } from 'lucide-react';
+
+// Define the shape of a social link
+interface SocialLink {
+    platform: string;
+    url: string;
+}
 
 const ArtistSettingsPage = () => {
-    const { profile, refetchProfile } = useAuth();
-    const queryClient = useQueryClient();
+    const { user, profile, loading: authLoading } = useAuth();
 
-    const [fullName, setFullName] = useState('');
-    const [bio, setBio] = useState('');
-    const [locationData, setLocationData] = useState({ country: '', city: '' });
-    const [socialLinks, setSocialLinks] = useState<{ platform: string; url: string; }[]>([]);
+    // Form state
+    const [loading, setLoading] = useState(false);
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [shortBio, setShortBio] = useState('');
+    const [artistStatement, setArtistStatement] = useState('');
+    const [contactNumber, setContactNumber] = useState('');
+    const [locationCountry, setLocationCountry] = useState('');
+    const [locationCity, setLocationCity] = useState('');
+    const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+    
+    // Avatar state
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
+    // Effect to populate the form when the profile data is available
     useEffect(() => {
         if (profile) {
-            setFullName(profile.full_name || '');
-            setBio(profile.bio || '');
-            if (profile.location && typeof profile.location === 'object' && profile.location !== null) {
-                setLocationData({
-                    country: (profile.location as any)?.country || '',
-                    city: (profile.location as any)?.city || '',
-                });
-            }
-            if (profile.social_links && Array.isArray(profile.social_links)) {
-                setSocialLinks(profile.social_links as any[]);
-            }
+            setFirstName(profile.first_name || '');
+            setLastName(profile.last_name || '');
+            setShortBio(profile.short_bio || '');
+            setArtistStatement(profile.artist_statement || '');
+            setContactNumber(profile.contact_number || '');
+            setLocationCountry(profile.location?.country || '');
+            setLocationCity(profile.location?.city || '');
+            setSocialLinks(profile.social_links || []);
+            setAvatarPreview(profile.avatar_url || null);
         }
     }, [profile]);
 
-    const mutation = useMutation({
-        mutationFn: async (updates: any) => {
-            if (!profile) throw new Error("No profile found to update.");
-            const { error } = await supabase.from('profiles').update(updates).eq('id', profile.id);
-            if (error) throw error;
-        },
-        onSuccess: async () => {
-            await refetchProfile();
-            queryClient.invalidateQueries({ queryKey: ['profile', profile?.id] });
-            alert('Profile updated successfully!');
-        },
-        onError: (error) => {
-            alert(`Error updating profile: ${error.message}`);
-        }
-    });
-
-    const handleSave = (e: React.FormEvent) => {
-        e.preventDefault();
-        mutation.mutate({
-            full_name: fullName,
-            bio,
-            location: locationData,
-            social_links: socialLinks,
-        });
+    // Handlers for social links
+    const handleAddSocialLink = () => {
+        setSocialLinks([...socialLinks, { platform: 'Website', url: '' }]);
     };
-    
-    // Placeholder for actual form JSX
+    const handleRemoveSocialLink = (index: number) => {
+        setSocialLinks(socialLinks.filter((_, i) => i !== index));
+    };
+    const handleSocialLinkChange = (index: number, field: 'platform' | 'url', value: string) => {
+        const newLinks = [...socialLinks];
+        newLinks[index][field] = value;
+        setSocialLinks(newLinks);
+    };
+
+    // Form submission handler
+    const handleUpdateProfile = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user) return;
+
+        setLoading(true);
+        const toastId = toast.loading('Saving changes...');
+
+        try {
+            let avatarUrl = profile?.avatar_url;
+
+            // Handle avatar upload if a new file is selected
+            if (avatarFile) {
+                const fileExt = avatarFile.name.split('.').pop();
+                const filePath = `${user.id}/${Math.random()}.${fileExt}`;
+                
+                const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, {
+                    upsert: true,
+                });
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+                avatarUrl = data.publicUrl;
+            }
+
+            // Prepare the data for upserting
+            const updates = {
+                id: user.id,
+                first_name: firstName,
+                last_name: lastName,
+                full_name: `${firstName} ${lastName}`.trim(),
+                short_bio: shortBio,
+                artist_statement: artistStatement,
+                contact_number: contactNumber,
+                location: { country: locationCountry, city: locationCity },
+                social_links: socialLinks.filter(link => link.url), // Remove empty links
+                avatar_url: avatarUrl,
+                updated_at: new Date().toISOString(),
+            };
+
+            const { error: profileError } = await supabase.from('profiles').upsert(updates);
+            if (profileError) throw profileError;
+            
+            toast.success('Profile updated successfully!', { id: toastId });
+        } catch (error: any) {
+            toast.error(error.message, { id: toastId });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (authLoading) {
+        return <div>Loading your profile...</div>;
+    }
+
     return (
-        <div>
+        <div className="settings-page">
             <h1>Artist Settings</h1>
-            <form onSubmit={handleSave}>
-                <div>
-                    <label htmlFor="fullName">Full Name</label>
-                    <input
-                        id="fullName"
-                        className="input"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                    />
+            <p className="page-subtitle">Manage your public profile information, contact details, and account settings.</p>
+
+            <form onSubmit={handleUpdateProfile} className="settings-form">
+                <div className="form-section">
+                    <h3>Public Profile</h3>
+                    <p>This information will be displayed on your public artist portfolio.</p>
+                    
+                    <ImageUpload onFileSelect={setAvatarFile} initialPreview={avatarPreview || undefined} />
+
+                    <div className="form-grid-2-col">
+                        <div className="form-group">
+                            <label className="label" htmlFor="firstName">First Name</label>
+                            <input id="firstName" className="input" type="text" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label className="label" htmlFor="lastName">Last Name</label>
+                            <input id="lastName" className="input" type="text" value={lastName} onChange={e => setLastName(e.target.value)} />
+                        </div>
+                    </div>
+                    
+                    <div className="form-group">
+                        <label className="label" htmlFor="shortBio">Short Bio / Tagline</label>
+                        <input id="shortBio" className="input" type="text" value={shortBio} onChange={e => setShortBio(e.target.value)} placeholder="e.g., Contemporary Abstract Painter" />
+                    </div>
+
+                    <div className="form-group">
+                        <label className="label" htmlFor="artistStatement">Artist Statement</label>
+                        <textarea id="artistStatement" className="textarea" value={artistStatement} onChange={e => setArtistStatement(e.target.value)} placeholder="Tell collectors about your work, process, and inspiration..."></textarea>
+                    </div>
                 </div>
-                <div>
-                    <label htmlFor="bio">Bio</label>
-                    <textarea
-                        id="bio"
-                        className="input"
-                        value={bio}
-                        onChange={(e) => setBio(e.target.value)}
-                    />
+
+                <div className="form-section">
+                    <h3>Contact & Location</h3>
+                    <p>This information is private and will only be used for communication and shipping.</p>
+                     <div className="form-grid-2-col">
+                        <div className="form-group">
+                            <label className="label" htmlFor="contactNumber">Phone Number</label>
+                            <input id="contactNumber" className="input" type="tel" value={contactNumber} onChange={e => setContactNumber(e.target.value)} />
+                        </div>
+                         <div className="form-group">
+                            <label className="label" htmlFor="locationCountry">Country</label>
+                            <input id="locationCountry" className="input" type="text" value={locationCountry} onChange={e => setLocationCountry(e.target.value)} />
+                        </div>
+                    </div>
+                     <div className="form-group">
+                        <label className="label" htmlFor="locationCity">City</label>
+                        <input id="locationCity" className="input" type="text" value={locationCity} onChange={e => setLocationCity(e.target.value)} />
+                    </div>
                 </div>
-                {/* Add inputs for locationData and socialLinks here */}
-                <button type="submit" className="button button-primary" disabled={mutation.isPending}>
-                    {mutation.isPending ? 'Saving...' : 'Save Changes'}
-                </button>
+                
+                 <div className="form-section">
+                    <h3>Social Links</h3>
+                    <p>Link to your website, social media, and other online presences.</p>
+                    {socialLinks.map((link, index) => (
+                        <div key={index} className="social-link-group">
+                            <select value={link.platform} onChange={e => handleSocialLinkChange(index, 'platform', e.target.value)} className="input">
+                                <option>Website</option>
+                                <option>Instagram</option>
+                                <option>Facebook</option>
+                                <option>Twitter</option>
+                                <option>Other</option>
+                            </select>
+                            <input type="url" value={link.url} onChange={e => handleSocialLinkChange(index, 'url', e.target.value)} className="input" placeholder="https://..." />
+                            <button type="button" onClick={() => handleRemoveSocialLink(index)} className="button-icon-danger">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    ))}
+                    <button type="button" onClick={handleAddSocialLink} className="button secondary">Add Social Link</button>
+                </div>
+
+                <div className="form-actions">
+                    <Button type="submit" className="primary" isLoading={loading}>Save Changes</Button>
+                </div>
             </form>
         </div>
     );
