@@ -3,16 +3,15 @@ import { supabase } from '@/lib/supabaseClient';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Trash2, CheckCircle } from 'lucide-react';
-import ArtworkEditorForm from '@/components/dashboard/ArtworkEditorForm'; // Assuming default export
+import ArtworkEditorForm from '@/components/dashboard/ArtworkEditorForm';
+import toast from 'react-hot-toast'; // Import the toast library
 
 const ArtworkEditorPage = () => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { artworkId } = useParams<{ artworkId: string }>();
 
-    // This check is important for type safety
     if (!artworkId) {
-        // You can render a message or redirect
         return <p>Artwork ID is missing. <Link to="/artist/artworks">Go back</Link></p>;
     }
 
@@ -33,24 +32,47 @@ const ArtworkEditorPage = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['artworks'] });
-            alert('Artwork deleted successfully.');
+            toast.success('Artwork deleted successfully.');
             navigate('/artist/artworks');
         },
-        onError: (error: any) => alert(`Error deleting artwork: ${error.message}`),
+        onError: (error: any) => toast.error(`Error deleting artwork: ${error.message}`),
     });
 
+    // --- UPDATED: soldMutation now handles the dynamic toast notification ---
     const soldMutation = useMutation({
         mutationFn: async () => {
-            const { error } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
-            if (error) throw error;
+            // 1. First, find out which catalogues the artwork is in.
+            const { data: catalogueList, error: rpcError } = await supabase.rpc('get_catalogues_for_artwork', {
+                p_artwork_id: artworkId
+            });
+            if (rpcError) throw new Error(`Could not check catalogues: ${rpcError.message}`);
+
+            // 2. Then, update the artwork's status to 'Sold'.
+            const { error: updateError } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
+            if (updateError) throw updateError;
+            
+            // 3. Return the list of catalogues for the onSuccess callback.
+            return catalogueList || [];
         },
-        onSuccess: () => {
+        onSuccess: (catalogueList) => {
+            // Invalidate all relevant queries to refetch fresh data
             queryClient.invalidateQueries({ queryKey: queryKey });
             queryClient.invalidateQueries({ queryKey: ['artworks'] });
-            queryClient.invalidateQueries({ queryKey: ['artwork-form', artworkId]});
-            alert('Artwork has been marked as sold.');
+            queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId]});
+            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts'] });
+
+            // --- Dynamic Toast Logic ---
+            const count = catalogueList.length;
+            let removalMessage = '';
+            if (count === 1) {
+                removalMessage = ` It has also been removed from the "${catalogueList[0].title}" catalogue.`;
+            } else if (count > 1) {
+                removalMessage = ` It has also been removed from ${count} catalogues.`;
+            }
+            
+            toast.success(`Artwork marked as sold.${removalMessage}`);
         },
-        onError: (error: any) => alert(`Error updating status: ${error.message}`),
+        onError: (error: any) => toast.error(`Error updating status: ${error.message}`),
     });
     
     const handleDelete = () => {
@@ -66,7 +88,7 @@ const ArtworkEditorPage = () => {
     };
 
     const handleSaveSuccess = () => {
-        alert('Artwork saved successfully! Images may be regenerating in the background.');
+        toast.success('Artwork saved successfully! Images may be regenerating in the background.');
         navigate('/artist/artworks');
     };
 
@@ -88,7 +110,6 @@ const ArtworkEditorPage = () => {
                 </aside>
                 
                 <main>
-                    {/* The form is now self-contained. We just give it the ID it needs to work with. */}
                     <ArtworkEditorForm
                         artworkId={artworkId}
                         formId={FORM_ID}
@@ -100,13 +121,11 @@ const ArtworkEditorPage = () => {
                         </button>
 
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            {/* Corrected status check from 'Available' to 'Active' to match your schema/previous components */}
-                            {artworkData?.status === 'Active' && (
+                            {artworkData?.status === 'Available' && (
                                 <button type="button" onClick={handleMarkAsSold} className="button button-secondary" disabled={soldMutation.isPending}>
                                     {soldMutation.isPending ? 'Updating...' : <><CheckCircle size={14} /> Mark as Sold</>}
                                 </button>
                             )}
-                            {/* This button triggers the 'submit' event on the form with the matching ID */}
                             <button type="submit" form={FORM_ID} className="button button-primary">
                                 Save Changes
                             </button>
