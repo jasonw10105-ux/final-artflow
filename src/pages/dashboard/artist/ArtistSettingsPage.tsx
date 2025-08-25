@@ -38,16 +38,20 @@ const ArtistSettingsPage = () => {
             setContactNumber(profile.contact_number || '');
             setAvatarPreview(profile.avatar_url || null);
 
-            // -- TYPE GUARD FIX for location --
-            if (profile.location && typeof profile.location === 'object') {
+            // FIX: Type guard to safely access location properties
+            if (profile.location && typeof profile.location === 'object' && !Array.isArray(profile.location)) {
                 const loc = profile.location as { country?: string; city?: string };
                 setLocationCountry(loc.country || '');
                 setLocationCity(loc.city || '');
             }
 
-            // -- TYPE GUARD FIX for social_links --
+            // FIX: Type guard to safely set social links
             if (Array.isArray(profile.social_links)) {
-                setSocialLinks(profile.social_links);
+                // Ensure all items are valid SocialLink objects before setting
+                const validLinks = profile.social_links.filter(
+                    (link: any) => typeof link === 'object' && link !== null && 'platform' in link && 'url' in link
+                );
+                setSocialLinks(validLinks);
             }
         }
     }, [profile]);
@@ -105,8 +109,6 @@ const ArtistSettingsPage = () => {
             if (profileError) throw profileError;
             
             toast.success('Profile updated successfully!', { id: toastId });
-            // Optionally force a reload to ensure profile context is updated everywhere
-            // window.location.reload();
         } catch (error: any) {
             toast.error(error.message, { id: toastId });
         } finally {
