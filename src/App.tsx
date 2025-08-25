@@ -1,12 +1,11 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
-import { Toaster } from 'react-hot-toast'; // Import the Toaster component
+import { Toaster } from 'react-hot-toast';
 
 // --- Layout Imports ---
 import MarketingLayout from './components/layout/MarketingLayout';
 import DashboardLayout from './components/layout/DashboardLayout';
-import DynamicPublicPageLayout from './components/layout/DynamicPublicPageLayout';
 
 // --- Page Imports ---
 import WaitlistPage from './pages/WaitlistPage';
@@ -42,7 +41,6 @@ import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettings
 
 const AuthLoading = () => (
     <div className="loading-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        {/* Replace with a proper spinner component if you have one */}
         <p>Loading Application...</p>
     </div>
 );
@@ -53,66 +51,60 @@ const DashboardRedirector = () => {
     if (profile && !profile.profile_completed) return <Navigate to="/complete-profile" replace />;
     if (profile?.role === 'artist' || profile?.role === 'both') return <Navigate to="/artist/dashboard" replace />;
     if (profile?.role === 'collector') return <Navigate to="/collector/dashboard" replace />;
-    return <Navigate to="/login" replace />; // Fallback if no user or role after loading
+    return <Navigate to="/login" replace />;
 };
 
 const ProtectedRoute = () => {
     const { user, profile, loading } = useAuth();
     if (loading) return <AuthLoading />;
-
-    // 1. If no user, redirect to login
     if (!user) return <Navigate to="/login" replace />;
-
-    // --- REFINED LOGIC ---
-    // 2. If user has an incomplete profile, they MUST complete it.
-    // The only protected page they can visit is /complete-profile itself.
     if (!profile?.profile_completed) {
-        // If they are not already on the complete profile page, force them there.
         if (window.location.pathname !== '/complete-profile') {
             return <Navigate to="/complete-profile" replace />;
         }
     }
-    
-    // 3. If the user is authenticated and has a complete profile, render the requested child route.
     return <Outlet />;
 };
 
 const AppRoutes = () => {
   return (
       <Routes>
-        {/* --- Public Standalone Routes --- */}
+        {/* --- Public Standalone & Auth Routes --- */}
         <Route path="/" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         
-        {/* --- Public Routes with Layouts --- */}
+        {/* --- Public Routes with a Consistent Layout --- */}
         <Route element={<MarketingLayout />}>
             <Route path="/home" element={<MarketingPage />} />
             <Route path="/artists" element={<BrowseArtistsPage />} />
             <Route path="/artworks" element={<BrowseArtworksPage />} />
             <Route path="/catalogues" element={<BrowseCataloguesPage />} />
-            <Route path="/:profileSlug" element={<ArtistPortfolioPage />} />
-        </Route>
-        <Route element={<DynamicPublicPageLayout />}>
-            <Route path="/:artistSlug/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
+            
+            {/* --- IMPROVEMENT: More specific route to avoid "catch-all" issues --- */}
+            <Route path="/u/:profileSlug" element={<ArtistPortfolioPage />} />
+            
+            {/* --- FIX: Corrected artwork route to be top-level --- */}
+            <Route path="/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
+            
+            {/* --- IMPROVEMENT: Consolidated catalogue route into the main public layout --- */}
             <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
         </Route>
 
         {/* --- Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
-            {/* The /complete-profile page is now protected, ensuring only logged-in users can access it */}
             <Route path="/complete-profile" element={<CompleteProfilePage />} />
             <Route path="/dashboard" element={<DashboardRedirector />} />
             
-            {/* Standalone Wizard/Editor Routes */}
+            {/* Standalone Wizard/Editor Routes (no dashboard layout) */}
             <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
             <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
             <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
             <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
             
-            {/* Routes with Dashboard Layout */}
+            {/* Main Dashboard Routes with Layout */}
             <Route element={<DashboardLayout />}>
                 <Route path="/artist/dashboard" element={<ArtistDashboardPage />} />
                 <Route path="/artist/artworks" element={<ArtworkListPage />} />
@@ -130,6 +122,7 @@ const AppRoutes = () => {
             </Route>
         </Route>
 
+        {/* --- Catch-all 404 Route --- */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
   );
@@ -139,7 +132,6 @@ const App = () => {
   return (
     <Router>
       <AuthProvider>
-        {/* The Toaster component provides notifications for the entire app */}
         <Toaster 
           position="bottom-right"
           toastOptions={{
