@@ -1,5 +1,3 @@
-// src/components/dashboard/ArtworkEditorForm.tsx
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
@@ -8,6 +6,16 @@ import { Database } from '@/types/database.types';
 import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import InputLabel from '@mui/material/InputLabel';
+import FormControl from '@mui/material/FormControl';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
+import Grid from '@mui/material/Grid';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
 
 type Artwork = Database['public']['Tables']['artworks']['Row'] & {
     artist: { full_name: string | null } | null;
@@ -80,7 +88,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
 
     const queryKey = ['artwork-editor-data', artworkId];
     
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, isError, error } = useQuery({
         queryKey,
         queryFn: () => fetchArtworkAndCatalogues(artworkId, user!.id),
         enabled: !!user,
@@ -133,7 +141,6 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                 const forceVisualization = haveDimensionsChanged(data?.artworkData?.dimensions, savedData.dimensions);
                 const originalArtistName = data?.artworkData?.artist?.full_name;
                 const currentArtistName = profile?.full_name;
-                // --- FIX: Ensure the result is a strict boolean to fix TS2322 ---
                 const hasArtistNameChanged = !!(originalArtistName && currentArtistName && originalArtistName !== currentArtistName);
                 if (forceVisualization || hasArtistNameChanged) {
                     triggerImageGeneration(artworkId, { forceVisualization, forceWatermark: hasArtistNameChanged });
@@ -141,7 +148,9 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
             }
             onSaveSuccess();
         },
-        onError: (error: any) => alert(`Error saving artwork: ${error.message}`),
+        onError: (e: Error) => {
+            console.error(`Error saving artwork: ${e.message}`);
+        },
     });
     
     const { parentMedium, childMedium } = useMemo(() => {
@@ -157,7 +166,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         let newChild = childMedium;
         if (type === 'parent') { newParent = newValue || ''; newChild = ''; } 
         else { newChild = newValue || ''; }
-        let combinedMedium = newParent ? (newChild ? `${newParent}: ${newChild}` : newParent) : '';
+        const combinedMedium = newParent ? (newChild ? `${newParent}: ${newChild}` : newParent) : '';
         setArtwork(prev => ({ ...prev, medium: combinedMedium }));
     };
 
@@ -166,32 +175,30 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         return parentMedium && mediaTaxonomy[parentMedium] ? mediaTaxonomy[parentMedium] : [];
     }, [parentMedium]);
 
-    const handleJsonChange = (parent: keyof Omit<Artwork, 'artist'|'id'|'user_id'|'created_at'|'updated_at'|'slug'>, field: string, value: any) => {
-        const oldParentState = (artwork as Partial<Artwork>)[parent] as object || {};
-        if (parent === 'edition_info' && field === 'is_edition') {
+    const handleJsonChange = (parentKey: keyof Artwork, field: string, value: any) => {
+        const oldParentState = (artwork as any)[parentKey] || {};
+        const parsedValue = typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value, 10) : value;
+
+        if (parentKey === 'edition_info' && field === 'is_edition') {
             const isEdition = Boolean(value);
             if (!isEdition) {
-                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info as object || {}), is_edition: false, numeric_size: undefined, ap_size: undefined, sold_editions: [] } }));
+                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: false, numeric_size: undefined, ap_size: undefined, sold_editions: [] } }));
             } else {
-                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info as object || {}), is_edition: true } }));
+                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: true } }));
             }
         } else {
-            setArtwork(prev => ({ ...prev, [parent]: { ...oldParentState, [field]: value } }));
+            setArtwork(prev => ({ ...prev, [parentKey]: { ...oldParentState, [field]: parsedValue } }));
         }
     };
     
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
         const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
-        if (name === 'is_price_negotiable' && !checked) {
-            setArtwork(prev => ({ ...prev, is_price_negotiable: false, min_price: null, max_price: null }));
-        } else {
-            setArtwork(prev => ({ ...prev, [name]: checked !== undefined ? checked : value }));
-        }
+        setArtwork(prev => ({ ...prev, [name]: checked !== undefined ? checked : value }));
         if (name === 'title' && onTitleChange) onTitleChange(value);
     };
 
-    const { saleMutation, handleEditionSaleChange, allEditions } = useEditionManagement(artwork, artworkId);
+    const { saleMutation, handleEditionSaleChange, allEditions, localSoldEditions } = useEditionManagement(artwork, artworkId);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -219,26 +226,24 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         
         updateMutation.mutate({ formData: payload, finalCatalogueIds });
     };
-
-    if (isLoading) return <div style={{padding: '2rem'}}>Loading artwork details...</div>;
-
-    const userSelectableCatalogues = allCatalogues.filter(cat => !cat.is_system_catalogue);
+    
     const pricingModel: PricingModel = useMemo(() => {
         if (artwork.is_price_negotiable) return 'negotiable';
         if (artwork.price != null) return 'fixed';
         return 'on_request';
     }, [artwork.is_price_negotiable, artwork.price]);
 
-    const handlePricingModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handlePricingModelChange = (e: React.ChangeEvent<{ value: unknown }>) => {
         const newModel = e.target.value as PricingModel;
         setArtwork(prev => {
-            const newArtwork = { ...prev };
+            const newArtwork: Partial<Artwork> = { ...prev };
             if (newModel === 'fixed') {
                 newArtwork.is_price_negotiable = false;
                 newArtwork.min_price = null;
                 newArtwork.max_price = null;
             } else if (newModel === 'negotiable') {
                 newArtwork.is_price_negotiable = true;
+                newArtwork.price = null;
             } else if (newModel === 'on_request') {
                 newArtwork.is_price_negotiable = false;
                 newArtwork.price = null;
@@ -249,16 +254,176 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         });
     };
 
-    // --- The rest of the component's JSX remains the same ---
+    if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
+    if (isError) return <Typography color="error">Error loading artwork: {error.message}</Typography>;
+
+    const userSelectableCatalogues = allCatalogues.filter(cat => !cat.is_system_catalogue);
+
     return (
-        <form id={formId} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* ... JSX code ... */}
+        <form id={formId} onSubmit={handleSubmit}>
+            <Grid container spacing={4}>
+                <Grid item xs={12}>
+                    <TextField fullWidth label="Artwork Title" name="title" value={artwork.title || ''} onChange={handleFormChange} required />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                        <InputLabel>Status</InputLabel>
+                        <Select name="status" label="Status" value={artwork.status || 'Available'} onChange={(e) => setArtwork(prev => ({...prev, status: e.target.value as Artwork['status']}))}>
+                            <MenuItem value="Available">Available</MenuItem>
+                            <MenuItem value="Sold">Sold</MenuItem>
+                            <MenuItem value="On Hold">On Hold</MenuItem>
+                            <MenuItem value="Private">Private</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                    <Autocomplete
+                        multiple
+                        options={userSelectableCatalogues}
+                        getOptionLabel={(option) => option.name || ''}
+                        value={selectedCatalogues.filter(c => !c.is_system_catalogue)}
+                        onChange={(_, newValue) => setSelectedCatalogues(newValue)}
+                        renderTags={(value, getTagProps) => value.map((option, index) => (<Chip label={option.name} {...getTagProps({ index })} />))}
+                        renderInput={(params) => (<TextField {...params} label="Catalogues" />)}
+                    />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                     <Autocomplete
+                        options={primaryMediumOptions}
+                        value={parentMedium}
+                        onChange={(_, newValue) => handleMediumChange('parent', newValue)}
+                        renderInput={(params) => <TextField {...params} label="Primary Medium" />}
+                     />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                    <Autocomplete
+                        options={secondaryMediumOptions}
+                        value={childMedium}
+                        onChange={(_, newValue) => handleMediumChange('child', newValue)}
+                        disabled={!parentMedium}
+                        renderInput={(params) => <TextField {...params} label="Secondary Medium" />}
+                    />
+                </Grid>
+
+                <Grid item xs={12}> <Typography variant="h6" mt={2}>Dimensions</Typography> </Grid>
+                <Grid item xs={12} sm={4}>
+                    <TextField fullWidth label="Width" type="number" value={(artwork.dimensions as any)?.width || ''} onChange={(e) => handleJsonChange('dimensions', 'width', e.target.value)} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                    <TextField fullWidth label="Height" type="number" value={(artwork.dimensions as any)?.height || ''} onChange={(e) => handleJsonChange('dimensions', 'height', e.target.value)} />
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                    <FormControl fullWidth>
+                        <InputLabel>Unit</InputLabel>
+                        <Select label="Unit" value={(artwork.dimensions as any)?.unit || 'in'} onChange={(e) => handleJsonChange('dimensions', 'unit', e.target.value)}>
+                            <MenuItem value="in">in</MenuItem>
+                            <MenuItem value="cm">cm</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Grid>
+
+                <Grid item xs={12}> <Typography variant="h6" mt={2}>Pricing</Typography> </Grid>
+                <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                        <InputLabel>Pricing Model</InputLabel>
+                        <Select label="Pricing Model" value={pricingModel} onChange={handlePricingModelChange}>
+                            <MenuItem value="fixed">Fixed Price</MenuItem>
+                            <MenuItem value="negotiable">Negotiable Range</MenuItem>
+                            <MenuItem value="on_request">Price on Request</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Grid>
+
+                {pricingModel === 'fixed' && (
+                    <Grid item xs={12} sm={6}>
+                        <TextField fullWidth label="Price" type="number" name="price" value={artwork.price || ''} onChange={handleFormChange} />
+                    </Grid>
+                )}
+                {pricingModel === 'negotiable' && (
+                    <>
+                        <Grid item xs={12} sm={3}>
+                            <TextField fullWidth label="Minimum Price" type="number" name="min_price" value={artwork.min_price || ''} onChange={handleFormChange} />
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                            <TextField fullWidth label="Maximum Price" type="number" name="max_price" value={artwork.max_price || ''} onChange={handleFormChange} />
+                        </Grid>
+                    </>
+                )}
+
+                <Grid item xs={12}> <Typography variant="h6" mt={2}>Edition Details</Typography> </Grid>
+                <Grid item xs={12}>
+                    <FormControlLabel control={<Checkbox checked={artwork.edition_info?.is_edition || false} onChange={(e) => handleJsonChange('edition_info', 'is_edition', e.target.checked)}/>} label="This artwork is part of an edition" />
+                </Grid>
+
+                {artwork.edition_info?.is_edition && (
+                    <>
+                        <Grid item xs={12} sm={6}>
+                            <TextField fullWidth label="Numeric Edition Size" type="number" value={artwork.edition_info.numeric_size || ''} onChange={(e) => handleJsonChange('edition_info', 'numeric_size', e.target.value)} />
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                            <TextField fullWidth label="Artist's Proof (AP) Size" type="number" value={artwork.edition_info.ap_size || ''} onChange={(e) => handleJsonChange('edition_info', 'ap_size', e.target.value)} />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <Typography variant="subtitle1" mt={1}>Manage Edition Sales</Typography>
+                            <Box sx={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #ccc', borderRadius: '4px', p: 2, mt: 1 }}>
+                                {allEditions.length > 0 ? allEditions.map(identifier => (
+                                    <FormControlLabel key={identifier} control={
+                                        <Checkbox
+                                            checked={localSoldEditions.has(identifier)}
+                                            onChange={(e) => handleEditionSaleChange(identifier, e.target.checked)}
+                                        />}
+                                        label={identifier}
+                                    />
+                                )) : <Typography>No editions defined. Enter sizes above.</Typography>}
+                            </Box>
+                        </Grid>
+                    </>
+                )}
+            </Grid>
         </form>
     );
 };
 
 const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
-    // ... This hook remains the same ...
+    const queryClient = useQueryClient();
+    const [localSoldEditions, setLocalSoldEditions] = useState(new Set(artwork.edition_info?.sold_editions || []));
+
+    useEffect(() => {
+        setLocalSoldEditions(new Set(artwork.edition_info?.sold_editions || []));
+    }, [artwork.edition_info?.sold_editions]);
+
+    const saleMutation = useMutation({
+        mutationFn: updateSaleStatus,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId] });
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+        },
+        onError: (error: Error) => {
+            console.error(`Error updating sale status: ${error.message}`);
+        },
+    });
+
+    const allEditions = useMemo(() => {
+        const editions: string[] = [];
+        const numericSize = artwork.edition_info?.numeric_size || 0;
+        const apSize = artwork.edition_info?.ap_size || 0;
+        for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`);
+        for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`);
+        return editions;
+    }, [artwork.edition_info?.numeric_size, artwork.edition_info?.ap_size]);
+
+    const handleEditionSaleChange = (identifier: string, isChecked: boolean) => {
+        const newSet = new Set(localSoldEditions);
+        if (isChecked) newSet.add(identifier);
+        else newSet.delete(identifier);
+        setLocalSoldEditions(newSet);
+        saleMutation.mutate({ artworkId, identifier, isSold: isChecked });
+    };
+
+    return { saleMutation, handleEditionSaleChange, allEditions, localSoldEditions };
 };
 
 export default ArtworkEditorForm;
