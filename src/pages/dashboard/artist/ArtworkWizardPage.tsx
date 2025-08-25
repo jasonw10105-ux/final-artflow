@@ -44,7 +44,7 @@ const ArtworkWizardPage = () => {
             if (error) throw new Error(error.message);
             return artworkIdToRemove;
         },
-        onSuccess: (removedId) => {
+        onSuccess: (removedId: string) => {
             const newArtworkIds = artworkIds.filter(id => id !== removedId);
 
             queryClient.setQueryData(wizardQueryKey, (oldData: Artwork[] = []) => 
@@ -86,6 +86,7 @@ const ArtworkWizardPage = () => {
         
         if (savedArtworkId) {
             queryClient.invalidateQueries({ queryKey: ['artwork-form', savedArtworkId] });
+            queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', savedArtworkId] });
         }
         
         if (currentIndex < artworkIds.length - 1) {
@@ -133,7 +134,8 @@ const ArtworkWizardPage = () => {
                                 <div onClick={() => setCurrentIndex(index)} style={{display: 'flex', flexGrow: 1, alignItems: 'center', gap: '0.5rem', cursor: 'pointer'}}>
                                     <img src={art.image_url || ''} alt={art.title || 'Untitled'} style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />
                                     <p style={{fontWeight: index === currentIndex ? 'bold' : 'normal', flexGrow: 1}}>{art.title || "Untitled"}</p>
-                                    {art.status === 'Active' && <div style={{width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-green-success)'}} title="Completed"></div>}
+                                    {/* CORRECTED: Status check now uses 'Available' to align with types */}
+                                    {art.status === 'Available' && <div style={{width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-green-success)'}} title="Completed"></div>}
                                 </div>
                                 <button onClick={() => handleRemoveArtwork(art.id, art.title)} className="button-secondary" style={{padding: '0.5rem'}} title="Delete Artwork">
                                     <Trash2 size={16} color="var(--color-red-danger)" />
