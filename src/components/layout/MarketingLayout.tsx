@@ -1,21 +1,19 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import Header from './Header'; // Assumes Header.tsx is in the same folder
+// CORRECTED: Path based on your file structure screenshot
+import { useAuth } from '@/contexts/AuthProvider';
+import Header from './Header';
 
 const MarketingLayout = () => {
-    // This component provides the shared layout for public-facing pages.
-    // The Header component itself will use the useAuth hook to get the session state.
-    // This keeps the layout component simple and focused on structure.
+    const { session } = useAuth();
 
     return (
         <div>
-            <Header />
+            <Header session={session} />
             <main>
                 <Outlet />
             </main>
-            {/* You could add a shared <Footer /> component here as well */}
         </div>
     );
 };
-
 export default MarketingLayout;
