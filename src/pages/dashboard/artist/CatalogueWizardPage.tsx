@@ -9,10 +9,11 @@ import { Database } from '@/types/database.types';
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 type Catalogue = Database['public']['Tables']['catalogues']['Row'];
 
-const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price'>[]> => {
+// API function to fetch all of a user's artworks
+const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price' | 'currency'>[]> => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('id, title, image_url, dimensions, price')
+        .select('id, title, image_url, dimensions, price, currency')
         .eq('user_id', userId)
         .in('status', ['Active', 'Sold'])
         .order('created_at', { ascending: false });
@@ -20,12 +21,25 @@ const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' 
     return data || [];
 };
 
+// API function updated for the new many-to-many relationship
 const fetchExistingCatalogue = async (catalogueId: string) => {
     const { data: catalogue, error: catError } = await supabase.from('catalogues').select('*, is_system_catalogue').eq('id', catalogueId).single();
     if (catError) throw new Error("Could not fetch catalogue details.");
-    const { data: artworksInCatalogue, error: artError } = await supabase.from('artworks').select('id, title, image_url, dimensions, price').eq('catalogue_id', catalogueId);
-    if (artError) throw new Error("Could not fetch artworks in catalogue.");
-    return { catalogue, artworksInCatalogue: artworksInCatalogue || [] };
+
+    // Fetch artwork IDs from the junction table
+    const { data: junctions, error: juncError } = await supabase.from('artwork_catalogue_junction').select('artwork_id').eq('catalogue_id', catalogueId);
+    if (juncError) throw new Error("Could not fetch artwork assignments.");
+    const artworkIds = junctions.map(j => j.artwork_id);
+
+    // Fetch details for the assigned artworks
+    let artworksInCatalogue: Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price' | 'currency'>[] = [];
+    if (artworkIds.length > 0) {
+        const { data, error: artError } = await supabase.from('artworks').select('id, title, image_url, dimensions, price, currency').in('id', artworkIds);
+        if (artError) throw new Error("Could not fetch artworks in catalogue.");
+        artworksInCatalogue = data || [];
+    }
+
+    return { catalogue, artworksInCatalogue };
 };
 
 const CatalogueWizardPage = () => {
@@ -38,7 +52,6 @@ const CatalogueWizardPage = () => {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [selectedArtworks, setSelectedArtworks] = useState<any[]>([]);
-    const [originalArtworkIds, setOriginalArtworkIds] = useState<string[]>([]);
     const [coverArtworkId, setCoverArtworkId] = useState<string | null>(null);
     const [isSystem, setIsSystem] = useState(false);
 
@@ -60,10 +73,9 @@ const CatalogueWizardPage = () => {
             setTitle(catalogue.title);
             setDescription(catalogue.description || '');
             setSelectedArtworks(artworksInCatalogue);
-            setOriginalArtworkIds(artworksInCatalogue.map(art => art.id));
             setIsSystem(catalogue.is_system_catalogue);
             const coverArt = artworksInCatalogue.find(art => art.image_url === catalogue.cover_image_url);
-            setCoverArtworkId(coverArt?.id || null);
+            setCoverArtworkId(coverArt?.id || (artworksInCatalogue.length > 0 ? artworksInCatalogue[0].id : null));
         }
     }, [isEditing, existingCatalogueData]);
 
@@ -76,24 +88,24 @@ const CatalogueWizardPage = () => {
     const mutation = useMutation({
         mutationFn: async () => {
             if (!user) throw new Error("User not found.");
-            if (!isSystem && !title) throw new Error("Title is required for user-created catalogues.");
+            if (!isSystem && !title.trim()) throw new Error("Title is required for user-created catalogues.");
         
             let finalCoverImageUrl = null;
             if (coverArtworkId) {
-                const coverArt = allUserArtworks?.find(art => art.id === coverArtworkId);
+                const coverArt = [...selectedArtworks, ...availableArtworks].find(art => art.id === coverArtworkId);
                 finalCoverImageUrl = coverArt?.image_url || null;
             } else if (selectedArtworks.length > 0) {
                 finalCoverImageUrl = selectedArtworks[0].image_url;
             }
 
             let slug = existingCatalogueData?.catalogue?.slug;
-            if (!isEditing) {
+            if (!isEditing && !isSystem) {
                 const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: title, table_name: 'catalogues' });
                 slug = slugData;
             }
             
-            const catalogueData = isSystem
-                ? { cover_image_url: finalCoverImageUrl } // Only allow cover image updates for system catalogues
+            const catalogueData = isSystem 
+                ? { cover_image_url: finalCoverImageUrl }
                 : { title, description, is_published: true, user_id: user.id, slug, cover_image_url: finalCoverImageUrl };
             
             const { data: savedCatalogue, error } = isEditing 
@@ -103,19 +115,20 @@ const CatalogueWizardPage = () => {
             if (error) throw error;
             const currentCatalogueId = savedCatalogue.id;
             
-            const selectedArtworkIds = selectedArtworks.map(art => art.id);
-            const artworkIdsToUnlink = originalArtworkIds.filter(id => !selectedArtworkIds.includes(id));
-
-            if (artworkIdsToUnlink.length > 0) {
-                await supabase.from('artworks').update({ catalogue_id: null }).in('id', artworkIdsToUnlink);
-            }
-            if (selectedArtworkIds.length > 0) {
-                await supabase.from('artworks').update({ catalogue_id: currentCatalogueId }).in('id', selectedArtworkIds);
+            // Sync the junction table
+            const newArtworkIds = selectedArtworks.map(art => art.id);
+            // Delete all existing junctions for this catalogue
+            await supabase.from('artwork_catalogue_junction').delete().eq('catalogue_id', currentCatalogueId);
+            // Insert new junctions if there are any selected artworks
+            if (newArtworkIds.length > 0) {
+                const newJunctions = newArtworkIds.map(artId => ({ catalogue_id: currentCatalogueId, artwork_id: artId }));
+                const { error: insertError } = await supabase.from('artwork_catalogue_junction').insert(newJunctions);
+                if (insertError) throw insertError;
             }
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts', user?.id] });
-            alert(`Catalogue ${isEditing ? 'updated' : 'published'}!`);
+            alert(`Catalogue ${isEditing ? 'updated' : 'created'} successfully!`);
             navigate('/artist/catalogues');
         },
         onError: (error: any) => alert(`Error: ${error.message}`)
@@ -124,6 +137,7 @@ const CatalogueWizardPage = () => {
     const deleteMutation = useMutation({
         mutationFn: async () => {
             if (!catalogueId || isSystem) throw new Error("System catalogues cannot be deleted.");
+            // RLS policies will prevent deletion, but this client-side check is good UX.
             const { error } = await supabase.from('catalogues').delete().eq('id', catalogueId);
             if (error) throw error;
         },
@@ -141,7 +155,7 @@ const CatalogueWizardPage = () => {
         setSelectedArtworks(prev => prev.filter(art => art.id !== artworkId));
     };
     const handleDelete = () => {
-        if (window.confirm("Are you sure you want to permanently delete this catalogue?")) {
+        if (window.confirm("Are you sure you want to permanently delete this catalogue? This cannot be undone.")) {
             deleteMutation.mutate();
         }
     };
@@ -154,7 +168,7 @@ const CatalogueWizardPage = () => {
                 <ArrowLeft size={16} /> Back to Catalogues
             </Link>
             <h1>{isEditing ? `Editing "${existingCatalogueData?.catalogue.title}"` : 'Create New Catalogue'}</h1>
-            {isSystem && <p style={{ color: 'var(--muted-foreground)', marginTop: '-0.5rem' }}>You can manage the artworks and cover image for this system catalogue.</p>}
+            {isSystem && <p style={{ color: 'var(--muted-foreground)', marginTop: '-0.5rem' }}>You can manage the artworks and cover image for this system catalogue, but its title and description are fixed.</p>}
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem', marginTop: '2rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -187,7 +201,7 @@ const CatalogueWizardPage = () => {
                                         <img src={art.image_url ?? ''} alt={art.title ?? ''} style={{width: 40, height: 40, borderRadius: 4, objectFit: 'cover'}}/>
                                         <div style={{flexGrow: 1}}>
                                             <span>{art.title}</span>
-                                            <p style={{fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0, padding: 0}}>{art.dimensions ? `${(art.dimensions as any).height}x${(art.dimensions as any).width} ${(art.dimensions as any).unit || ''}` : ''} - ${art.price || 'N/A'}</p>
+                                            <p style={{fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0, padding: 0}}>{art.dimensions ? `${(art.dimensions as any).height}x${(art.dimensions as any).width} ${(art.dimensions as any).unit || ''}` : ''} - {art.price ? formatPrice(art.price, art.currency) : 'N/A'}</p>
                                         </div>
                                         <button onClick={() => addArtwork(art)}><PlusCircle size={16} /></button>
                                     </div>
