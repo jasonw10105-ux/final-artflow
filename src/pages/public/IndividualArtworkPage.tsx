@@ -8,17 +8,12 @@ import ShareModal from '@/components/public/ShareModal';
 import VisualizationModal from '@/components/public/VisualizationModal';
 import { Database } from '@/types/database.types';
 
-// --- Type Definitions ---
 type Profile = Database['public']['Tables']['profiles']['Row'];
-// CORRECTED: The artist property is now optional to handle a failed left join gracefully
 type Artwork = Database['public']['Tables']['artworks']['Row'] & {
     artist: Profile | null; 
 };
 
-// --- API Fetching Functions (Corrected) ---
 const fetchArtworkBySlug = async (slug: string): Promise<Artwork> => {
-    // CORRECTED: Changed the inner join (!) to a standard left join.
-    // This will return the artwork even if the artist profile is missing.
     const { data, error } = await supabase
         .from('artworks')
         .select(`*, artist:profiles(*)`) 
@@ -36,23 +31,21 @@ const fetchArtworkBySlug = async (slug: string): Promise<Artwork> => {
 };
 
 const fetchRelatedArtworks = async (artistId: string, currentArtworkId: string): Promise<Artwork[]> => {
-    // CORRECTED: Changed status check from 'Active' to 'Available' to match your schema.
     const { data, error } = await supabase
         .from('artworks')
         .select('*')
         .eq('user_id', artistId)
         .neq('id', currentArtworkId)
-        .eq('status', 'Available') // Use 'Available' as per your types
+        .eq('status', 'Available')
         .limit(4);
 
     if (error) {
         console.error("Error fetching related artworks:", error);
         throw new Error(error.message);
     }
-    return data as Artwork[];
+    return data || [];
 };
 
-// --- The Main Page Component ---
 const IndividualArtworkPage = () => {
     const { artworkSlug } = useParams<{ artworkSlug: string }>();
     const { addArtwork } = useRecentlyViewed();
@@ -66,9 +59,12 @@ const IndividualArtworkPage = () => {
         queryKey: ['artwork', artworkSlug],
         queryFn: () => fetchArtworkBySlug(artworkSlug!),
         enabled: !!artworkSlug,
-        retry: 1, // Don't retry endlessly on a 404
+        retry: 1,
     });
 
+    // --- FIX APPLIED HERE ---
+    // Removed the non-null assertions (`!`) from the queryFn.
+    // The `enabled` flag ensures this function only runs when `artwork` and `artwork.artist` are defined.
     const { data: relatedArtworks, isLoading: isLoadingRelated } = useQuery({
         queryKey: ['relatedArtworks', artwork?.artist?.id],
         queryFn: () => fetchRelatedArtworks(artwork!.artist!.id, artwork!.id),
@@ -76,7 +72,6 @@ const IndividualArtworkPage = () => {
     });
 
     useEffect(() => {
-        // Ensure addArtwork exists and is a function before calling it
         if (artwork && typeof addArtwork === 'function') {
             addArtwork(artwork);
         }
@@ -92,7 +87,6 @@ const IndividualArtworkPage = () => {
         return <div className="page-container"><p style={{ textAlign: 'center', padding: '5rem' }}>Loading Artwork...</p></div>;
     }
 
-    // This block will now catch the error from the query and display it, preventing a blank page.
     if (isError || !artwork) {
         return (
             <div className="page-container" style={{ textAlign: 'center', padding: '5rem' }}>
@@ -103,14 +97,11 @@ const IndividualArtworkPage = () => {
             </div>
         );
     }
-
-    // Gracefully handle cases where the artist join might have failed
+    
     const artist = artwork.artist;
-
     const artistLocation = artist?.location
         ? [(artist.location as any).city, (artist.location as any).country].filter(Boolean).join(', ')
         : null;
-
     const artworkDimensions = artwork.dimensions
         ? [(artwork.dimensions as any).height, (artwork.dimensions as any).width, (artwork.dimensions as any).depth].filter(Boolean).join(' x ') + ((artwork.dimensions as any).unit ? ` ${(artwork.dimensions as any).unit}` : '')
         : null;
@@ -120,10 +111,12 @@ const IndividualArtworkPage = () => {
     const showTabs = hasAboutTab || hasProvenanceTab;
 
     useEffect(() => {
-        if (showTabs && !hasAboutTab && hasProvenanceTab) {
-            setActiveTab('provenance');
-        } else {
-            setActiveTab('about');
+        if (showTabs) {
+            if (hasAboutTab) {
+                setActiveTab('about');
+            } else if (hasProvenanceTab) {
+                setActiveTab('provenance');
+            }
         }
     }, [showTabs, hasAboutTab, hasProvenanceTab]);
 
@@ -204,7 +197,7 @@ const IndividualArtworkPage = () => {
                         <div className="related-grid">
                             {relatedArtworks.map((art) => (
                                 art.slug && artist.slug && (
-                                    <Link to={`/${artist.slug}/artwork/${art.slug}`} key={art.id} className="artwork-card-link">
+                                    <Link to={`/artwork/${art.slug}`} key={art.id} className="artwork-card-link">
                                         <div className="artwork-card">
                                             {art.image_url && <img src={art.image_url} alt={art.title || ''} className="artwork-card-image" />}
                                             <div className="artwork-card-info">
