@@ -4,16 +4,16 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { PlusCircle, ImageOff, CheckCircle, Archive, Lock } from 'lucide-react';
-import { Database } from '@/types/database.types'; // Assuming this is your generated types path
+import { Database } from '@/types/database.types';
 
-// Define a more specific type for the data returned by our RPC
+// Type for the data returned by our RPC
 type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
     total_count: number;
     available_count: number;
     sold_count: number;
 };
 
-// This function calls the custom database function (RPC) to get all necessary data at once
+// This function calls the custom database function (RPC)
 const fetchCataloguesWithStatusCounts = async (userId: string): Promise<CatalogueWithCounts[]> => {
     const { data, error } = await supabase.rpc('get_catalogues_with_status_counts', {
         auth_user_id: userId
@@ -28,8 +28,6 @@ const fetchCataloguesWithStatusCounts = async (userId: string): Promise<Catalogu
 
 const CatalogueListPage = () => {
     const { user, profile } = useAuth();
-    
-    // State for search, sort, and filter functionality
     const [searchQuery, setSearchQuery] = useState('');
     const [sortOption, setSortOption] = useState('created_at-desc');
     const [filterStatus, setFilterStatus] = useState('all');
@@ -40,11 +38,9 @@ const CatalogueListPage = () => {
         enabled: !!user,
     });
     
-    // Memoized logic to process catalogues based on user controls
     const processedCatalogues = useMemo(() => {
         if (!catalogues) return [];
 
-        // System catalogue always comes first
         const systemCatalogue = catalogues.find(cat => cat.is_system_catalogue);
         const userCatalogues = catalogues.filter(cat => !cat.is_system_catalogue);
 
@@ -68,14 +64,12 @@ const CatalogueListPage = () => {
             } else if (typeof valA === 'string' && typeof valB === 'string') {
                 comparison = valA.localeCompare(valB);
             } else {
-                // Assuming date strings
                 comparison = new Date(valA as string).getTime() - new Date(valB as string).getTime();
             }
 
             return direction === 'asc' ? comparison : -comparison;
         });
 
-        // Add the system catalogue back to the top of the list
         return systemCatalogue ? [systemCatalogue, ...sorted] : sorted;
 
     }, [catalogues, searchQuery, sortOption, filterStatus]);
