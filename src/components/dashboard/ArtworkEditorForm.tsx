@@ -420,5 +420,4 @@ const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
 
     return { saleMutation, handleEditionSaleChange, allEditions };
 };
-
 export default ArtworkEditorForm;
