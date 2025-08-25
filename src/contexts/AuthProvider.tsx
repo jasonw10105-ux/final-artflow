@@ -1,5 +1,3 @@
-// src/contexts/AuthProvider.tsx
-
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Session, User, AuthError } from '@supabase/supabase-js';
@@ -13,7 +11,7 @@ export interface AuthContextType {
     session: Session | null;
     loading: boolean;
     refetchProfile: () => Promise<void>;
-    signOut: () => Promise<{ error: AuthError | null }>; // <-- ADDED THIS FUNCTION
+    signOut: () => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,8 +22,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const fetchProfile = async (user: User | null) => {
-        if (!user) {
+    const fetchProfile = async (userToFetch: User | null) => {
+        if (!userToFetch) {
             setProfile(null);
             return;
         }
@@ -33,7 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const { data: userProfile, error } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('id', user.id)
+                .eq('id', userToFetch.id)
                 .single();
             
             if (error) {
@@ -48,37 +46,52 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     };
 
+    // This function can be called from anywhere to manually refetch the profile
     const refetchProfile = async () => {
+        // Use the 'user' from state, as it's the most current source of truth
         await fetchProfile(user);
     };
 
-    // Define the signOut function
+    // The signOut function to be exposed by the context
     const signOut = () => supabase.auth.signOut();
 
     useEffect(() => {
         const getInitialSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            setSession(session);
-            setUser(session?.user ?? null);
-            await fetchProfile(session?.user ?? null);
+            const { data: { session: initialSession } } = await supabase.auth.getSession();
+            setSession(initialSession);
+            const currentUser = initialSession?.user ?? null;
+            setUser(currentUser);
+            await fetchProfile(currentUser);
             setLoading(false);
         };
 
         getInitialSession();
 
-        const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            // No need to fetch profile here as getInitialSession handles it,
-            // and subsequent logins/logouts will trigger a page reload which restarts the context.
-        });
+        const { data: authListener } = supabase.auth.onAuthStateChange(
+            async (_event, newSession) => {
+                setSession(newSession);
+                const currentUser = newSession?.user ?? null;
+                setUser(currentUser);
+                
+                // --- IMPROVEMENT ---
+                // When the auth state changes (e.g., user logs in or out),
+                // we should always try to fetch the profile or clear it.
+                // This makes the context reactive and up-to-date without a page refresh.
+                if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') {
+                    await fetchProfile(currentUser);
+                }
+                if (_event === 'SIGNED_OUT') {
+                    setProfile(null);
+                }
+            }
+        );
 
         return () => {
             authListener?.subscription?.unsubscribe();
         };
     }, []);
 
-    const value = { user, profile, session, loading, refetchProfile, signOut }; // <-- ADDED signOut HERE
+    const value = { user, profile, session, loading, refetchProfile, signOut };
 
     return (
         <AuthContext.Provider value={value}>
