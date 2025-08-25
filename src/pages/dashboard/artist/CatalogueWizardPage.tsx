@@ -1,12 +1,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { supabase } from '../../../lib/supabaseClient';
-import { useAuth } from '../../../contexts/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthProvider';
 import { ArrowLeft, CheckCircle, PlusCircle, Trash2 } from 'lucide-react';
+import { Database } from '@/types/database.types';
 
-const fetchAllUserArtworks = async (userId: string) => {
-    const { data, error } = await supabase.from('artworks').select('id, title, image_url, dimensions, price').eq('user_id', userId).in('status', ['Active', 'Sold']).order('created_at', { ascending: false });
+type Artwork = Database['public']['Tables']['artworks']['Row'];
+type Catalogue = Database['public']['Tables']['catalogues']['Row'];
+
+const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price'>[]> => {
+    const { data, error } = await supabase
+        .from('artworks')
+        .select('id, title, image_url, dimensions, price')
+        .eq('user_id', userId)
+        .in('status', ['Active', 'Sold'])
+        .order('created_at', { ascending: false });
     if (error) throw new Error("Could not fetch user's artworks.");
     return data || [];
 };
@@ -52,7 +61,7 @@ const CatalogueWizardPage = () => {
             setDescription(catalogue.description || '');
             setSelectedArtworks(artworksInCatalogue);
             setOriginalArtworkIds(artworksInCatalogue.map(art => art.id));
-            setIsSystem(catalogue.is_system_catalogue); // Set the system flag
+            setIsSystem(catalogue.is_system_catalogue);
             const coverArt = artworksInCatalogue.find(art => art.image_url === catalogue.cover_image_url);
             setCoverArtworkId(coverArt?.id || null);
         }
@@ -66,11 +75,13 @@ const CatalogueWizardPage = () => {
 
     const mutation = useMutation({
         mutationFn: async () => {
-            if (!user || !title) throw new Error("Title is required.");
+            if (!user) throw new Error("User not found.");
+            if (!isSystem && !title) throw new Error("Title is required for user-created catalogues.");
         
             let finalCoverImageUrl = null;
             if (coverArtworkId) {
-                finalCoverImageUrl = selectedArtworks.find(art => art.id === coverArtworkId)?.image_url || null;
+                const coverArt = allUserArtworks?.find(art => art.id === coverArtworkId);
+                finalCoverImageUrl = coverArt?.image_url || null;
             } else if (selectedArtworks.length > 0) {
                 finalCoverImageUrl = selectedArtworks[0].image_url;
             }
@@ -80,10 +91,9 @@ const CatalogueWizardPage = () => {
                 const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: title, table_name: 'catalogues' });
                 slug = slugData;
             }
-
-            // Prevent editing of core details for system catalogues
-            const catalogueData = isSystem 
-                ? { cover_image_url: finalCoverImageUrl } 
+            
+            const catalogueData = isSystem
+                ? { cover_image_url: finalCoverImageUrl } // Only allow cover image updates for system catalogues
                 : { title, description, is_published: true, user_id: user.id, slug, cover_image_url: finalCoverImageUrl };
             
             const { data: savedCatalogue, error } = isEditing 
@@ -104,7 +114,7 @@ const CatalogueWizardPage = () => {
             }
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts'] });
+            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts', user?.id] });
             alert(`Catalogue ${isEditing ? 'updated' : 'published'}!`);
             navigate('/artist/catalogues');
         },
@@ -118,7 +128,7 @@ const CatalogueWizardPage = () => {
             if (error) throw error;
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts'] });
+            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts', user?.id] });
             alert("Catalogue deleted successfully.");
             navigate('/artist/catalogues');
         },
@@ -144,6 +154,7 @@ const CatalogueWizardPage = () => {
                 <ArrowLeft size={16} /> Back to Catalogues
             </Link>
             <h1>{isEditing ? `Editing "${existingCatalogueData?.catalogue.title}"` : 'Create New Catalogue'}</h1>
+            {isSystem && <p style={{ color: 'var(--muted-foreground)', marginTop: '-0.5rem' }}>You can manage the artworks and cover image for this system catalogue.</p>}
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem', marginTop: '2rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -176,7 +187,7 @@ const CatalogueWizardPage = () => {
                                         <img src={art.image_url ?? ''} alt={art.title ?? ''} style={{width: 40, height: 40, borderRadius: 4, objectFit: 'cover'}}/>
                                         <div style={{flexGrow: 1}}>
                                             <span>{art.title}</span>
-                                            <p style={{fontSize: '0.75rem', color: 'var(--muted-foreground)'}}>{art.dimensions ? `${art.dimensions.height}x${art.dimensions.width} ${art.dimensions.unit || ''}` : ''} - ${art.price || 'N/A'}</p>
+                                            <p style={{fontSize: '0.75rem', color: 'var(--muted-foreground)', margin: 0, padding: 0}}>{art.dimensions ? `${(art.dimensions as any).height}x${(art.dimensions as any).width} ${(art.dimensions as any).unit || ''}` : ''} - ${art.price || 'N/A'}</p>
                                         </div>
                                         <button onClick={() => addArtwork(art)}><PlusCircle size={16} /></button>
                                     </div>
@@ -193,7 +204,7 @@ const CatalogueWizardPage = () => {
                                         <button onClick={() => setCoverArtworkId(art.id)} className="button-secondary button-sm" disabled={coverArtworkId === art.id}>
                                             {coverArtworkId === art.id ? <CheckCircle size={14}/> : 'Set Cover'}
                                         </button>
-                                        <button onClick={() => removeArtwork(art.id)}><Trash2 size={16} color="red"/></button>
+                                        <button onClick={() => removeArtwork(art.id)}><Trash2 size={16} color="var(--color-red-danger)"/></button>
                                     </div>
                                 ))}
                             </div>
@@ -205,10 +216,9 @@ const CatalogueWizardPage = () => {
                 .item-list-box { border: 1px solid var(--border); border-radius: var(--radius); height: 400px; overflow-y: auto; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
                 .item-list-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem; border-radius: var(--radius); background: var(--card); }
                 .item-list-row span { font-size: 0.875rem; }
-                .item-list-row p { margin: 0; padding: 0; }
                 .item-list-row button { background: none; border: none; cursor: pointer; color: var(--muted-foreground); padding: 0.25rem; }
                 .item-list-row.selected { border: 1px solid var(--primary); }
-                .item-list-row.is-cover { border-color: green; background: var(--accent); }
+                .item-list-row.is-cover { border-color: var(--color-green-success); background-color: color-mix(in srgb, var(--color-green-success) 10%, transparent); }
                 .item-list-row button.button-sm { font-size: 0.75rem; padding: 0.25rem 0.5rem; line-height: 1; height: auto; }
             `}</style>
         </div>
