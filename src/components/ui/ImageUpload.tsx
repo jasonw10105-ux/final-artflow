@@ -4,15 +4,16 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { UploadCloud, X } from 'lucide-react';
 
+// FIX: Add initialPreview to the component's props interface
 interface ImageUploadProps {
   onFileSelect: (file: File | null) => void;
-  initialPreview?: string; // <-- ADDED THIS PROP
+  initialPreview?: string;
 }
 
 const ImageUpload = ({ onFileSelect, initialPreview }: ImageUploadProps) => {
   const [preview, setPreview] = useState<string | null>(initialPreview || null);
 
-  // -- ADDED useEffect to update preview if the initial prop changes --
+  // FIX: Add useEffect to handle changes to the initialPreview prop
   useEffect(() => {
     setPreview(initialPreview || null);
   }, [initialPreview]);
@@ -21,7 +22,8 @@ const ImageUpload = ({ onFileSelect, initialPreview }: ImageUploadProps) => {
     const file = acceptedFiles[0];
     if (file) {
       onFileSelect(file);
-      setPreview(URL.createObjectURL(file));
+      const newPreviewUrl = URL.createObjectURL(file);
+      setPreview(newPreviewUrl);
     }
   }, [onFileSelect]);
 
