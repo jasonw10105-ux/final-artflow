@@ -1,17 +1,19 @@
-// src/components/layout/MarketingLayout.tsx
-
 import React from 'react';
 import { Outlet } from 'react-router-dom';
-import Header from './Header'; // This import will now succeed
+import { useAuth } from '../contexts/AuthProvider';
+// ... other layout components like Header, Footer
 
 const MarketingLayout = () => {
+    const { session } = useAuth(); // Correctly gets session from context
+
     return (
         <div>
-            <Header />
-            <main style={{ padding: '2rem' }}>
+            {/* Pass session to your header if needed */}
+            {/* <Header session={session} /> */}
+            <main>
                 <Outlet />
             </main>
-            {/* You can add a consistent footer here if you wish */}
+            {/* <Footer /> */}
         </div>
     );
 };
