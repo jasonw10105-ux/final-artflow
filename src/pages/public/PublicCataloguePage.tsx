@@ -2,19 +2,55 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import { useAuth } from '../../contexts/AuthProvider'; // <-- Import AuthProvider
-import { ArrowLeft, Share2, Edit3, Eye, Lock } from 'lucide-react'; // <-- Import new icons
+import { useAuth } from '../../contexts/AuthProvider';
+import { ArrowLeft, Share2, Edit3, Eye, Lock } from 'lucide-react';
 import InquiryModal from '../../components/public/InquiryModal';
 import ShareModal from '../../components/public/ShareModal';
 import '../../index.css';
 
-// (fetchPublicCatalogue function remains the same)
+// --- CORRECTED DATA FETCHING FUNCTION ---
 const fetchPublicCatalogue = async (artistSlug: string, catalogueSlug: string) => {
-    const { data: catalogue, error: catalogueError } = await supabase.from('catalogues').select('*, artist:profiles!inner(full_name, slug, id)').eq('slug', catalogueSlug).eq('artist.slug', artistSlug).single();
-    if (catalogueError) { throw new Error('Catalogue not found.'); }
-    const { data: artworks, error: artworksError } = await supabase.from('artworks').select('id, title, slug, image_url, price').eq('catalogue_id', catalogue.id).eq('status', 'Active').order('created_at', { ascending: false });
-    if (artworksError) { throw new Error('Could not fetch artworks for this catalogue.'); }
-    return { catalogue, artworks };
+    // Step 1: Fetch the catalogue and its artist. This part remains the same.
+    const { data: catalogue, error: catalogueError } = await supabase
+        .from('catalogues')
+        .select('*, artist:profiles!inner(full_name, slug, id)')
+        .eq('slug', catalogueSlug)
+        .eq('artist.slug', artistSlug)
+        .single();
+
+    if (catalogueError || !catalogue) {
+        throw new Error('Catalogue not found.');
+    }
+
+    // Step 2: Get artwork IDs from the junction table for this catalogue.
+    const { data: junctionEntries, error: junctionError } = await supabase
+        .from('artwork_catalogue_junction')
+        .select('artwork_id')
+        .eq('catalogue_id', catalogue.id);
+
+    if (junctionError) {
+        throw new Error('Could not fetch artwork relationships.');
+    }
+    
+    // If no artworks are linked to this catalogue, return early.
+    const artworkIds = junctionEntries.map(entry => entry.artwork_id);
+    if (artworkIds.length === 0) {
+        return { catalogue, artworks: [] };
+    }
+
+    // Step 3: Fetch the details for the artworks found, ensuring they are 'Available'.
+    const { data: artworks, error: artworksError } = await supabase
+        .from('artworks')
+        .select('id, title, slug, image_url, price, currency')
+        .in('id', artworkIds)
+        .eq('status', 'Available') // <-- FIX: Changed status from 'Active' to 'Available'
+        .order('created_at', { ascending: false });
+
+    if (artworksError) {
+        throw new Error('Could not fetch artworks for this catalogue.');
+    }
+
+    return { catalogue, artworks: artworks || [] };
 };
 
 type ArtworkForModal = { id: string; title: string | null; image_url: string | null; };
@@ -22,7 +58,7 @@ type ArtworkForModal = { id: string; title: string | null; image_url: string | n
 const PublicCataloguePage = () => {
     const { artistSlug, catalogueSlug } = useParams<{ artistSlug: string; catalogueSlug: string; }>();
     const navigate = useNavigate();
-    const { profile } = useAuth(); // <-- Get logged-in user's profile
+    const { profile } = useAuth();
     const [inquiryArtwork, setInquiryArtwork] = useState<ArtworkForModal | null>(null);
     const [showShareModal, setShowShareModal] = useState(false);
 
@@ -43,7 +79,7 @@ const PublicCataloguePage = () => {
     );
 
     const { catalogue, artworks } = data;
-    const isOwner = profile?.id === catalogue.artist.id; // <-- Check if the viewer is the owner
+    const isOwner = profile?.id === catalogue.artist.id;
     const isSharable = catalogue.access_type === 'public';
     const shareImageUrls = [catalogue.cover_image_url, ...artworks.map(art => art.image_url)].filter(Boolean) as string[];
 
@@ -94,11 +130,13 @@ const PublicCataloguePage = () => {
                 <div className="catalogue-grid">
                     {artworks.map(art => (
                         <div key={art.id} className="catalogue-artwork-card">
-                            <Link to={`/${catalogue.artist.slug}/artwork/${art.slug}`} className="artwork-card-link">
+                            <Link to={`/artwork/${art.slug}`} className="artwork-card-link">
                                 <img src={art.image_url || 'https://placehold.co/600x450?text=No+Image'} alt={art.title || 'Artwork'} className="artwork-card-image" />
                                 <div className="artwork-card-info">
                                     <h4>{art.title || "Untitled"}</h4>
-                                    <p>${new Intl.NumberFormat('en-US').format(art.price || 0)}</p>
+                                    <p>
+                                        {art.price ? new Intl.NumberFormat('en-US', { style: 'currency', currency: art.currency || 'USD' }).format(art.price) : 'Price on Request'}
+                                    </p>
                                 </div>
                             </Link>
                              <div className="artwork-card-actions">
@@ -110,7 +148,7 @@ const PublicCataloguePage = () => {
             ) : ( <p className="empty-list-placeholder">There are no available artworks in this catalogue at the moment.</p> )}
             
             {inquiryArtwork && <InquiryModal artworkId={inquiryArtwork.id} onClose={() => setInquiryArtwork(null)} previewImageUrl={inquiryArtwork.image_url || undefined} previewTitle={inquiryArtwork.title || undefined} />}
-            {showShareModal && isSharable && <ShareModal onClose={() => setShowShareModal(false)} title={catalogue.title} byline={catalogue.artist.full_name} shareUrl={window.location.href} previewImageUrls={shareImageUrls} isCatalogue={true} />}
+            {showShareModal && isSharable && <ShareModal onClose={() => setShowShareModal(false)} title={catalogue.title} byline={catalogue.artist.full_name || 'Unknown Artist'} shareUrl={window.location.href} previewImageUrls={shareImageUrls} isCatalogue={true} />}
         </div>
     );
 };
