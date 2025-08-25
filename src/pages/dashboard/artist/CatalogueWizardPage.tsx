@@ -9,7 +9,7 @@ import { Database } from '@/types/database.types';
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 type Catalogue = Database['public']['Tables']['catalogues']['Row'];
 
-// Helper function to format price, resolving the build error
+// CORRECTED: Helper function is now defined, fixing the build error
 const formatPrice = (price: number | null, currency: string | null) => {
     if (price === null || price === undefined) return 'N/A';
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(price);
@@ -20,7 +20,7 @@ const fetchAllUserArtworks = async (userId: string): Promise<Pick<Artwork, 'id' 
         .from('artworks')
         .select('id, title, image_url, dimensions, price, currency')
         .eq('user_id', userId)
-        .in('status', ['Active', 'Sold'])
+        .in('status', ['Available', 'Sold']) // Using 'Available' to match your schema
         .order('created_at', { ascending: false });
     if (error) throw new Error("Could not fetch user's artworks.");
     return data || [];
@@ -30,10 +30,12 @@ const fetchExistingCatalogue = async (catalogueId: string) => {
     const { data: catalogue, error: catError } = await supabase.from('catalogues').select('*, is_system_catalogue').eq('id', catalogueId).single();
     if (catError) throw new Error("Could not fetch catalogue details.");
 
+    // Fetch artwork IDs from the junction table
     const { data: junctions, error: juncError } = await supabase.from('artwork_catalogue_junction').select('artwork_id').eq('catalogue_id', catalogueId);
     if (juncError) throw new Error("Could not fetch artwork assignments.");
     const artworkIds = junctions.map(j => j.artwork_id);
 
+    // Fetch details for the assigned artworks
     let artworksInCatalogue: Pick<Artwork, 'id' | 'title' | 'image_url' | 'dimensions' | 'price' | 'currency'>[] = [];
     if (artworkIds.length > 0) {
         const { data, error: artError } = await supabase.from('artworks').select('id, title, image_url, dimensions, price, currency').in('id', artworkIds);
@@ -117,6 +119,7 @@ const CatalogueWizardPage = () => {
             if (error) throw error;
             const currentCatalogueId = savedCatalogue.id;
             
+            // Sync the junction table
             const newArtworkIds = selectedArtworks.map(art => art.id);
             await supabase.from('artwork_catalogue_junction').delete().eq('catalogue_id', currentCatalogueId);
             if (newArtworkIds.length > 0) {
