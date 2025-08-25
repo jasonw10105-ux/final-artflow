@@ -7,7 +7,6 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Trash2, CheckCircle } from 'lucide-react';
 import ArtworkEditorForm from '@/components/dashboard/ArtworkEditorForm';
 import { Database } from '@/types/database.types';
-
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 type ArtworkUpdate = Partial<Omit<Artwork, 'id' | 'user_id' | 'created_at'>>;
 
