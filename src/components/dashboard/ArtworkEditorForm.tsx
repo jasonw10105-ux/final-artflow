@@ -6,7 +6,7 @@ import { Database } from '@/types/database.types';
 import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
-import Select from '@mui/material/Select';
+import Select, { SelectChangeEvent } from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import InputLabel from '@mui/material/InputLabel';
 import FormControl from '@mui/material/FormControl';
@@ -22,6 +22,13 @@ type Artwork = Database['public']['Tables']['artworks']['Row'] & {
 };
 type Catalogue = Database['public']['Tables']['catalogues']['Row'];
 type PricingModel = 'fixed' | 'negotiable' | 'on_request';
+
+interface EditionInfo {
+    is_edition?: boolean;
+    numeric_size?: number;
+    ap_size?: number;
+    sold_editions?: string[];
+}
 
 interface ArtworkEditorFormProps {
   artworkId: string;
@@ -44,6 +51,7 @@ const mediaTaxonomy: Record<string, string[]> = {
     'Street / Public / Environmental': ['Street art (graffiti, stencil, murals)', 'Public art (monumental sculpture)'],
     'Mixed / Hybrid & Non-traditional / Experimental': ['Collage (paper/photo/digital)', 'Assemblage (found materials)']
 };
+
 const fetchArtworkAndCatalogues = async (artworkId: string, userId: string): Promise<{ artworkData: Artwork, allUserCatalogues: Catalogue[], assignedCatalogues: Catalogue[] }> => {
     const { data: artworkData, error: artworkError } = await supabase.from('artworks').select('*, artist:profiles!user_id(full_name)').eq('id', artworkId).single();
     if (artworkError) throw new Error(`Artwork not found: ${artworkError.message}`);
@@ -180,10 +188,11 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
 
         if (parentKey === 'edition_info' && field === 'is_edition') {
             const isEdition = Boolean(value);
+            const currentEditionInfo = (artwork.edition_info || {}) as EditionInfo;
             if (!isEdition) {
-                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: false, numeric_size: undefined, ap_size: undefined, sold_editions: [] } }));
+                setArtwork(prev => ({ ...prev, edition_info: { ...currentEditionInfo, is_edition: false, numeric_size: undefined, ap_size: undefined, sold_editions: [] } }));
             } else {
-                setArtwork(prev => ({ ...prev, edition_info: { ...(prev.edition_info || {}), is_edition: true } }));
+                setArtwork(prev => ({ ...prev, edition_info: { ...currentEditionInfo, is_edition: true } }));
             }
         } else {
             setArtwork(prev => ({ ...prev, [parentKey]: { ...oldParentState, [field]: parsedValue } }));
@@ -232,8 +241,8 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
         return 'on_request';
     }, [artwork.is_price_negotiable, artwork.price]);
 
-    const handlePricingModelChange = (e: React.ChangeEvent<{ value: unknown }>) => {
-        const newModel = e.target.value as PricingModel;
+    const handlePricingModelChange = (event: SelectChangeEvent<PricingModel>) => {
+        const newModel = event.target.value as PricingModel;
         setArtwork(prev => {
             const newArtwork: Partial<Artwork> = { ...prev };
             if (newModel === 'fixed') {
@@ -257,6 +266,7 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
     if (isError) return <Typography color="error">Error loading artwork: {error.message}</Typography>;
 
     const userSelectableCatalogues = allCatalogues.filter(cat => !cat.is_system_catalogue);
+    const currentEditionInfo = artwork.edition_info as EditionInfo | null;
 
     return (
         <form id={formId} onSubmit={handleSubmit}>
@@ -281,10 +291,10 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
                     <Autocomplete
                         multiple
                         options={userSelectableCatalogues}
-                        getOptionLabel={(option) => option.name || ''}
+                        getOptionLabel={(option) => option.title || ''}
                         value={selectedCatalogues.filter(c => !c.is_system_catalogue)}
                         onChange={(_, newValue) => setSelectedCatalogues(newValue)}
-                        renderTags={(value, getTagProps) => value.map((option, index) => (<Chip label={option.name} {...getTagProps({ index })} />))}
+                        renderTags={(value, getTagProps) => value.map((option, index) => (<Chip label={option.title} {...getTagProps({ index })} />))}
                         renderInput={(params) => (<TextField {...params} label="Catalogues" />)}
                     />
                 </Grid>
@@ -354,16 +364,16 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
 
                 <Grid item xs={12}> <Typography variant="h6" mt={2}>Edition Details</Typography> </Grid>
                 <Grid item xs={12}>
-                    <FormControlLabel control={<Checkbox checked={artwork.edition_info?.is_edition || false} onChange={(e) => handleJsonChange('edition_info', 'is_edition', e.target.checked)}/>} label="This artwork is part of an edition" />
+                    <FormControlLabel control={<Checkbox checked={currentEditionInfo?.is_edition || false} onChange={(e) => handleJsonChange('edition_info', 'is_edition', e.target.checked)}/>} label="This artwork is part of an edition" />
                 </Grid>
 
-                {artwork.edition_info?.is_edition && (
+                {currentEditionInfo?.is_edition && (
                     <>
                         <Grid item xs={12} sm={6}>
-                            <TextField fullWidth label="Numeric Edition Size" type="number" value={artwork.edition_info.numeric_size || ''} onChange={(e) => handleJsonChange('edition_info', 'numeric_size', e.target.value)} />
+                            <TextField fullWidth label="Numeric Edition Size" type="number" value={currentEditionInfo.numeric_size || ''} onChange={(e) => handleJsonChange('edition_info', 'numeric_size', e.target.value)} />
                         </Grid>
                         <Grid item xs={12} sm={6}>
-                            <TextField fullWidth label="Artist's Proof (AP) Size" type="number" value={artwork.edition_info.ap_size || ''} onChange={(e) => handleJsonChange('edition_info', 'ap_size', e.target.value)} />
+                            <TextField fullWidth label="Artist's Proof (AP) Size" type="number" value={currentEditionInfo.ap_size || ''} onChange={(e) => handleJsonChange('edition_info', 'ap_size', e.target.value)} />
                         </Grid>
                         <Grid item xs={12}>
                             <Typography variant="subtitle1" mt={1}>Manage Edition Sales</Typography>
@@ -388,11 +398,13 @@ const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: 
 
 const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
     const queryClient = useQueryClient();
-    const [localSoldEditions, setLocalSoldEditions] = useState(new Set(artwork.edition_info?.sold_editions || []));
+    const currentEditionInfo = artwork.edition_info as EditionInfo | null;
+    const [localSoldEditions, setLocalSoldEditions] = useState(new Set(currentEditionInfo?.sold_editions || []));
 
     useEffect(() => {
-        setLocalSoldEditions(new Set(artwork.edition_info?.sold_editions || []));
-    }, [artwork.edition_info?.sold_editions]);
+        const soldEditions = (artwork.edition_info as EditionInfo | null)?.sold_editions || [];
+        setLocalSoldEditions(new Set(soldEditions));
+    }, [artwork.edition_info]);
 
     const saleMutation = useMutation({
         mutationFn: updateSaleStatus,
@@ -407,12 +419,13 @@ const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
 
     const allEditions = useMemo(() => {
         const editions: string[] = [];
-        const numericSize = artwork.edition_info?.numeric_size || 0;
-        const apSize = artwork.edition_info?.ap_size || 0;
+        const info = artwork.edition_info as EditionInfo | null;
+        const numericSize = info?.numeric_size || 0;
+        const apSize = info?.ap_size || 0;
         for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`);
         for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`);
         return editions;
-    }, [artwork.edition_info?.numeric_size, artwork.edition_info?.ap_size]);
+    }, [artwork.edition_info]);
 
     const handleEditionSaleChange = (identifier: string, isChecked: boolean) => {
         const newSet = new Set(localSoldEditions);
