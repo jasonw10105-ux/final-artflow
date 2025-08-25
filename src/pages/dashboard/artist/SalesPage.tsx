@@ -4,9 +4,12 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { Database } from '@/types/database.types';
 import { CreditCard, TrendingUp, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
+// Composite type for the sales query
 type Sale = Database['public']['Tables']['sales']['Row'] & {
-    artworks: Pick<Database['public']['Tables']['artworks']['Row'], 'title' | 'image_url'>;
+    artworks: Pick<Database['public']['Tables']['artworks']['Row'], 'title' | 'image_url' | 'slug'>;
+    collector: Pick<Database['public']['Tables']['profiles']['Row'], 'full_name' | 'slug'>;
 };
 
 const fetchSalesData = async (artistId: string): Promise<Sale[]> => {
@@ -14,11 +17,16 @@ const fetchSalesData = async (artistId: string): Promise<Sale[]> => {
         .from('sales')
         .select(`
             *,
-            artworks ( title, image_url )
+            artworks ( title, image_url, slug ),
+            collector:profiles!sales_collector_id_fkey ( full_name, slug )
         `)
         .eq('artist_id', artistId)
-        .order('created_at', { ascending: false });
-    if (error) throw new Error(error.message);
+        .order('sale_date', { ascending: false });
+
+    if (error) {
+        console.error("Error fetching sales data:", error);
+        throw new Error(error.message);
+    }
     return data as Sale[];
 };
 
@@ -43,13 +51,13 @@ const SalesPage = () => {
     });
 
     const stats = useMemo(() => {
-        if (!sales) return { totalRevenue: 0, totalSales: 0, uniqueBuyers: 0 };
-        const totalRevenue = sales.reduce((acc, sale) => acc + (sale.amount_net || 0), 0);
-        const uniqueBuyers = new Set(sales.map(sale => sale.buyer_email)).size;
+        if (!sales) return { totalRevenue: 0, totalSales: 0, uniqueCollectors: 0 };
+        const totalRevenue = sales.reduce((acc, sale) => acc + (sale.sale_price || 0), 0);
+        const uniqueCollectors = new Set(sales.map(sale => sale.collector_id)).size;
         return {
             totalRevenue,
             totalSales: sales.length,
-            uniqueBuyers,
+            uniqueCollectors,
         };
     }, [sales]);
 
@@ -59,9 +67,9 @@ const SalesPage = () => {
         <div>
             <h1>Sales Overview</h1>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', margin: '2rem 0' }}>
-                <StatCard title="Total Revenue (Net)" value={formatCurrency(stats.totalRevenue)} icon={<TrendingUp />} />
+                <StatCard title="Total Revenue" value={formatCurrency(stats.totalRevenue)} icon={<TrendingUp />} />
                 <StatCard title="Artworks Sold" value={stats.totalSales.toString()} icon={<CreditCard />} />
-                <StatCard title="Unique Collectors" value={stats.uniqueBuyers.toString()} icon={<Users />} />
+                <StatCard title="Unique Collectors" value={stats.uniqueCollectors.toString()} icon={<Users />} />
             </div>
 
             <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -70,8 +78,8 @@ const SalesPage = () => {
                         <tr>
                             <th style={{ padding: '1rem', textAlign: 'left' }}>Artwork</th>
                             <th style={{ padding: '1rem', textAlign: 'left' }}>Date Sold</th>
-                            <th style={{ padding: '1rem', textAlign: 'left' }}>Buyer</th>
-                            <th style={{ padding: '1rem', textAlign: 'right' }}>Net Amount</th>
+                            <th style={{ padding: '1rem', textAlign: 'left' }}>Collector</th>
+                            <th style={{ padding: '1rem', textAlign: 'right' }}>Sale Price</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -80,13 +88,23 @@ const SalesPage = () => {
                         ) : sales && sales.length > 0 ? (
                             sales.map(sale => (
                                 <tr key={sale.id} style={{ borderTop: '1px solid var(--border)' }}>
-                                    <td style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <img src={sale.artworks.image_url || ''} alt={sale.artworks.title || ''} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
-                                        <span>{sale.artworks.title}</span>
+                                    <td style={{ padding: '1rem' }}>
+                                        <Link to={`/artist/artworks/edit/${sale.artwork_id}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', textDecoration: 'none', color: 'inherit' }}>
+                                            <img src={sale.artworks.image_url || ''} alt={sale.artworks.title || ''} style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
+                                            <span>{sale.artworks.title}</span>
+                                        </Link>
                                     </td>
-                                    <td style={{ padding: '1rem' }}>{new Date(sale.created_at).toLocaleDateString()}</td>
-                                    <td style={{ padding: '1rem' }}>{sale.buyer_name}<br /><span style={{ color: 'var(--muted-foreground)', fontSize: '0.8rem' }}>{sale.buyer_email}</span></td>
-                                    <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 'bold' }}>{formatCurrency(sale.amount_net)}</td>
+                                    <td style={{ padding: '1rem' }}>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : 'N/A'}</td>
+                                    <td style={{ padding: '1rem' }}>
+                                        {sale.collector?.slug ? (
+                                            <Link to={`/${sale.collector.slug}`} style={{ textDecoration: 'none' }}>
+                                                {sale.collector.full_name}
+                                            </Link>
+                                        ) : (
+                                            <span>{sale.collector?.full_name || 'N/A'}</span>
+                                        )}
+                                    </td>
+                                    <td style={{ padding: '1rem', textAlign: 'right', fontWeight: 'bold' }}>{formatCurrency(sale.sale_price)}</td>
                                 </tr>
                             ))
                         ) : (
