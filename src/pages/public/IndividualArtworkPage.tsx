@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { supabase } from '@/lib/supabaseClient';
 
-// Corrected default imports pointing to the 'public' folder
 import InquiryModal from '@/components/public/InquiryModal';
 import ShareModal from '@/components/public/ShareModal';
 import VisualizationModal from '@/components/public/VisualizationModal';
@@ -25,12 +24,12 @@ interface Artist {
 
 interface Artwork {
     id: string;
+    user_id: string; // The foreign key from your schema
     title: string | null;
     slug: string | null;
     image_url: string | null;
     visualization_image_url: string | null;
-    artist_id: string;
-    artist: Artist;
+    artist: Artist; // The joined profile data
     creation_year: string | number | null;
     price: number | null;
     dimensions: {
@@ -41,14 +40,18 @@ interface Artwork {
     } | null;
 }
 
-// --- API Fetching Functions ---
+// --- Corrected API Fetching Functions ---
 const fetchArtwork = async (slug: string): Promise<Artwork> => {
     const { data, error } = await supabase
         .from('artworks')
-        .select(`*, artist:artists(*)`)
+        .select(`*, artist:profiles(*)`) // Correctly joins profiles and renames to artist
         .eq('slug', slug)
         .single();
-    if (error) throw new Error(error.message);
+
+    if (error) {
+        console.error("Supabase query error:", error);
+        throw new Error(error.message);
+    }
     return data as Artwork;
 };
 
@@ -56,13 +59,15 @@ const fetchRelatedArtworks = async (artistId: string, currentArtworkId: string):
     const { data, error } = await supabase
         .from('artworks')
         .select('*')
-        .eq('artist_id', artistId)
+        .eq('user_id', artistId) // Correctly filters by user_id
         .neq('id', currentArtworkId)
         .limit(4);
-    if (error) throw new Error(error.message);
+
+    if (error) {
+        throw new Error(error.message);
+    }
     return data as Artwork[];
 };
-
 
 // --- The Main Page Component ---
 const IndividualArtworkPage = () => {
@@ -80,9 +85,9 @@ const IndividualArtworkPage = () => {
     });
 
     const { data: relatedArtworks, isLoading: isLoadingRelated } = useQuery({
-        queryKey: ['relatedArtworks', artwork?.artist?.id],
-        queryFn: () => fetchRelatedArtworks(artwork!.artist.id, artwork!.id),
-        enabled: !!artwork && !!artwork.artist,
+        queryKey: ['relatedArtworks', artwork?.user_id],
+        queryFn: () => fetchRelatedArtworks(artwork!.user_id, artwork!.id),
+        enabled: !!artwork && !!artwork.user_id, // Correctly depends on user_id
     });
 
     useEffect(() => {
@@ -105,7 +110,6 @@ const IndividualArtworkPage = () => {
         );
     }
 
-    // --- Prepare derived data for components and modals ---
     const artistLocation = artwork.artist?.location
         ? [artwork.artist.location.city, artwork.artist.location.country].filter(Boolean).join(', ')
         : null;
@@ -154,7 +158,7 @@ const IndividualArtworkPage = () => {
 
                 {!isLoadingRelated && relatedArtworks && relatedArtworks.length > 0 && (
                     <div className="related-artworks-section">
-                        <div className="related-header">
+                         <div className="related-header">
                             {artwork.artist?.full_name && <h3>Other works by {artwork.artist.full_name}</h3>}
                             {artwork.artist?.slug && <Link to={`/${artwork.artist.slug}`} className="button-link">View all</Link>}
                         </div>
@@ -176,7 +180,6 @@ const IndividualArtworkPage = () => {
                 )}
             </div>
 
-            {/* --- MODALS --- */}
             {showInquiryModal && (
                 <InquiryModal artworkId={artwork.id} onClose={() => setShowInquiryModal(false)} />
             )}
