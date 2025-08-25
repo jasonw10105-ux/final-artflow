@@ -4,13 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useRecentlyViewed } from '@/hooks/useRecentlyViewed';
 import { supabase } from '@/lib/supabaseClient';
 
-// --- CORRECTED IMPORT PATHS ---
-import { InquiryModal } from '@/components/public/InquiryModal';
-import { ShareModal } from '@/components/public/ShareModal';
-import { VisualizationModal } from '@/components/public/VisualizationModal';
+// Corrected default imports pointing to the 'public' folder
+import InquiryModal from '@/components/public/InquiryModal';
+import ShareModal from '@/components/public/ShareModal';
+import VisualizationModal from '@/components/public/VisualizationModal';
 
-// (The rest of the file is identical)
-
+// --- Type Definitions to match your data structure ---
 interface Artist {
     id: string;
     full_name: string | null;
@@ -32,18 +31,24 @@ interface Artwork {
     visualization_image_url: string | null;
     artist_id: string;
     artist: Artist;
+    creation_year: string | number | null;
+    price: number | null;
+    dimensions: {
+        width?: number;
+        height?: number;
+        depth?: number;
+        unit?: string;
+    } | null;
 }
 
+// --- API Fetching Functions ---
 const fetchArtwork = async (slug: string): Promise<Artwork> => {
     const { data, error } = await supabase
         .from('artworks')
         .select(`*, artist:artists(*)`)
         .eq('slug', slug)
         .single();
-
-    if (error) {
-        throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
     return data as Artwork;
 };
 
@@ -54,13 +59,12 @@ const fetchRelatedArtworks = async (artistId: string, currentArtworkId: string):
         .eq('artist_id', artistId)
         .neq('id', currentArtworkId)
         .limit(4);
-
-    if (error) {
-        throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
     return data as Artwork[];
 };
 
+
+// --- The Main Page Component ---
 const IndividualArtworkPage = () => {
     const { artworkSlug } = useParams<{ artworkSlug: string }>();
     const { addArtwork } = useRecentlyViewed();
@@ -93,26 +97,29 @@ const IndividualArtworkPage = () => {
 
     if (isError || !artwork) {
         return (
-            <div className="page-container">
+            <div className="page-container" style={{ textAlign: 'center' }}>
                 <h1>Artwork Not Found</h1>
                 <p>The piece you are looking for does not exist or has been moved.</p>
-                <Link to="/">Return Home</Link>
+                <Link to="/" className="button primary" style={{ textDecoration: 'none', display: 'inline-block', width: 'auto' }}>Return Home</Link>
             </div>
         );
     }
 
+    // --- Prepare derived data for components and modals ---
     const artistLocation = artwork.artist?.location
         ? [artwork.artist.location.city, artwork.artist.location.country].filter(Boolean).join(', ')
         : null;
 
+    const artworkDimensions = artwork.dimensions
+        ? [artwork.dimensions.height, artwork.dimensions.width, artwork.dimensions.depth].filter(Boolean).join(' x ') + (artwork.dimensions.unit ? ` ${artwork.dimensions.unit}` : '')
+        : null;
+        
     return (
         <>
             <div className="page-container">
                 <div className="artwork-layout-grid">
                     <div className="artwork-image-column">
-                        {artwork.image_url && (
-                            <img src={artwork.image_url} alt={artwork.title || ''} className="main-artwork-image" />
-                        )}
+                        {artwork.image_url && <img src={artwork.image_url} alt={artwork.title || ''} className="main-artwork-image" />}
                         {artwork.visualization_image_url && (
                             <button onClick={() => setShowVisualizationModal(true)} className="button-secondary view-in-room-button">
                                 View in a Room
@@ -122,17 +129,9 @@ const IndividualArtworkPage = () => {
 
                     <div className="artwork-main-info">
                         {artwork.artist?.slug && artwork.artist?.full_name && (
-                             <h1>
-                                <Link to={`/${artwork.artist.slug}`} className="artist-link">
-                                    {artwork.artist.full_name}
-                                </Link>
-                            </h1>
+                             <h1><Link to={`/${artwork.artist.slug}`} className="artist-link">{artwork.artist.full_name}</Link></h1>
                         )}
-                        {artwork.title && (
-                            <h2>
-                                <i>{artwork.title}</i>
-                            </h2>
-                        )}
+                        {artwork.title && <h2><i>{artwork.title}</i></h2>}
 
                         <div className="artwork-actions">
                             <button onClick={() => setShowInquiryModal(true)} className="button button-secondary">Inquire</button>
@@ -143,18 +142,12 @@ const IndividualArtworkPage = () => {
 
                 {artwork.artist && (
                     <div className="artwork-details-section artist-spotlight">
-                        {artwork.artist.avatar_url && (
-                            <img src={artwork.artist.avatar_url} alt={artwork.artist.full_name || ''} className="artist-avatar" />
-                        )}
+                        {artwork.artist.avatar_url && <img src={artwork.artist.avatar_url} alt={artwork.artist.full_name || ''} className="artist-avatar" />}
                         <div>
                             {artwork.artist.full_name && <h3>About {artwork.artist.full_name}</h3>}
                             {artistLocation && <p className="artist-location">{artistLocation}</p>}
-                            {(artwork.artist.bio || artwork.artist.short_bio) && (
-                                <p className="artist-bio">{artwork.artist.bio || artwork.artist.short_bio}</p>
-                            )}
-                            {artwork.artist.slug && (
-                                <Link to={`/${artwork.artist.slug}`} className="button-link">View artist profile &rarr;</Link>
-                            )}
+                            {(artwork.artist.bio || artwork.artist.short_bio) && <p className="artist-bio">{artwork.artist.bio || artwork.artist.short_bio}</p>}
+                            {artwork.artist.slug && <Link to={`/${artwork.artist.slug}`} className="button-link">View artist profile &rarr;</Link>}
                         </div>
                     </div>
                 )}
@@ -183,16 +176,25 @@ const IndividualArtworkPage = () => {
                 )}
             </div>
 
+            {/* --- MODALS --- */}
             {showInquiryModal && (
                 <InquiryModal artworkId={artwork.id} onClose={() => setShowInquiryModal(false)} />
             )}
-            {showShareModal && artwork.title && artwork.artist?.full_name && (
+
+            {showShareModal && artwork.title && artwork.artist?.full_name && artwork.image_url && (
                 <ShareModal
+                    onClose={() => setShowShareModal(false)}
                     title={artwork.title}
                     byline={artwork.artist.full_name}
-                    onClose={() => setShowShareModal(false)}
+                    shareUrl={window.location.href}
+                    previewImageUrls={[artwork.image_url]}
+                    isCatalogue={false}
+                    dimensions={artworkDimensions}
+                    price={artwork.price}
+                    year={artwork.creation_year}
                 />
             )}
+
             {showVisualizationModal && artwork.visualization_image_url && artwork.title && (
                  <VisualizationModal
                     imageUrl={artwork.visualization_image_url}
