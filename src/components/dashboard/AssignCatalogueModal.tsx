@@ -6,7 +6,6 @@ import { Database } from '@/types/database.types';
 import { X } from 'lucide-react';
 
 type Artwork = Database['public']['Tables']['artworks']['Row'];
-type Catalogue = Database['public']['Tables']['catalogues']['Row'];
 
 interface AssignCatalogueModalProps {
     artwork: Artwork;
@@ -18,7 +17,7 @@ const fetchUserCatalogues = async (userId: string) => {
         .from('catalogues')
         .select('id, title')
         .eq('user_id', userId)
-        .eq('is_system_catalogue', false); // Don't allow assigning to the system catalogue
+        .eq('is_system_catalogue', false); // Users can't manually assign to the system catalogue
     if (error) throw new Error(error.message);
     return data || [];
 };
@@ -43,26 +42,29 @@ const AssignCatalogueModal = ({ artwork, onClose }: AssignCatalogueModalProps) =
             if (error) throw error;
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['artworks'] }); // Refetch the artwork list
-            alert('Artwork assigned to catalogue successfully!');
+            // Invalidate artworks and catalogues to refetch all data
+            queryClient.invalidateQueries({ queryKey: ['artworks'] });
+            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts'] });
+            alert('Artwork assigned successfully!');
             onClose();
         },
         onError: (error: any) => alert(`Error: ${error.message}`),
     });
 
     const handleSave = () => {
-        mutation.mutate(selectedCatalogueId || null);
+        // Pass null if the user selects the "None" option
+        mutation.mutate(selectedCatalogueId === '' ? null : selectedCatalogueId);
     };
 
     return (
         <div className="modal-backdrop">
             <div className="modal-content">
                 <button onClick={onClose} className="modal-close-button"><X size={24} /></button>
-                <h3>Assign "{artwork.title}" to a Catalogue</h3>
+                <h3>Assign "{artwork.title}"</h3>
                 
                 {isLoading ? <p>Loading catalogues...</p> : (
                     <div style={{ marginTop: '1.5rem' }}>
-                        <label className="label">Select Catalogue</label>
+                        <label className="label">Select a Catalogue</label>
                         <select
                             className="select"
                             value={selectedCatalogueId}
