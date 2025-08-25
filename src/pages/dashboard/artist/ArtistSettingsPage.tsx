@@ -1,6 +1,4 @@
-// src/pages/dashboard/artist/ArtistSettingsPage.tsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '@/contexts/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -8,17 +6,28 @@ import Button from '@/components/ui/Button';
 import ImageUpload from '@/components/ui/ImageUpload';
 import { Trash2 } from 'lucide-react';
 
+// Define structured types for JSONB data to improve type safety
 interface SocialLink {
     platform: string;
     url: string;
 }
 
+interface Location {
+    country?: string;
+    city?: string;
+}
+
 const ArtistSettingsPage = () => {
+    // Authentication and user profile data from context
     const { user, profile, loading: authLoading } = useAuth();
 
+    // Component-level loading state for form submission
     const [loading, setLoading] = useState(false);
+
+    // Form field states
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
+    const [displayName, setDisplayName] = useState(''); // ADDED: For the display_name field
     const [shortBio, setShortBio] = useState('');
     const [artistStatement, setArtistStatement] = useState('');
     const [contactNumber, setContactNumber] = useState('');
@@ -26,49 +35,59 @@ const ArtistSettingsPage = () => {
     const [locationCity, setLocationCity] = useState('');
     const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
     
+    // State for avatar image file and its preview URL
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
+    // Effect to populate the form with profile data once it's loaded
     useEffect(() => {
         if (profile) {
             setFirstName(profile.first_name || '');
             setLastName(profile.last_name || '');
+            setDisplayName(profile.display_name || ''); // ADDED: Populate display_name
             setShortBio(profile.short_bio || '');
             setArtistStatement(profile.artist_statement || '');
             setContactNumber(profile.contact_number || '');
             setAvatarPreview(profile.avatar_url || null);
 
-            // FIX: Type guard to safely access location properties
+            // FIX: Type guard to safely access properties of the 'location' JSONB field.
+            // This prevents build errors if 'location' is not a structured object.
             if (profile.location && typeof profile.location === 'object' && !Array.isArray(profile.location)) {
-                const loc = profile.location as { country?: string; city?: string };
+                const loc = profile.location as Location;
                 setLocationCountry(loc.country || '');
                 setLocationCity(loc.city || '');
             }
 
-            // FIX: Type guard to safely set social links
+            // FIX: Type guard to safely handle the 'social_links' JSONB field.
+            // This ensures the data is an array of valid SocialLink objects before setting state.
             if (Array.isArray(profile.social_links)) {
-                // Ensure all items are valid SocialLink objects before setting
                 const validLinks = profile.social_links.filter(
-                    (link: any) => typeof link === 'object' && link !== null && 'platform' in link && 'url' in link
+                    (link: any): link is SocialLink => 
+                        typeof link === 'object' && link !== null && 'platform' in link && 'url' in link
                 );
                 setSocialLinks(validLinks);
             }
         }
     }, [profile]);
 
+    // --- Social Links Management ---
     const handleAddSocialLink = () => {
         setSocialLinks([...socialLinks, { platform: 'Website', url: '' }]);
     };
+
     const handleRemoveSocialLink = (index: number) => {
         setSocialLinks(socialLinks.filter((_, i) => i !== index));
     };
-    const handleSocialLinkChange = (index: number, field: 'platform' | 'url', value: string) => {
-        const newLinks = [...socialLinks];
-        newLinks[index][field] = value;
+
+    const handleSocialLinkChange = (index: number, field: keyof SocialLink, value: string) => {
+        const newLinks = socialLinks.map((link, i) => 
+            i === index ? { ...link, [field]: value } : link
+        );
         setSocialLinks(newLinks);
     };
 
-    const handleUpdateProfile = async (e: React.FormEvent) => {
+    // --- Profile Update Handler ---
+    const handleUpdateProfile = async (e: FormEvent) => {
         e.preventDefault();
         if (!user) return;
 
@@ -78,46 +97,53 @@ const ArtistSettingsPage = () => {
         try {
             let avatarUrl = profile?.avatar_url;
 
+            // Step 1: Upload new avatar if one has been selected
             if (avatarFile) {
                 const fileExt = avatarFile.name.split('.').pop();
-                const filePath = `${user.id}/${Math.random()}.${fileExt}`;
+                const filePath = `${user.id}/${Date.now()}.${fileExt}`;
                 
                 const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, {
-                    upsert: true,
+                    upsert: true, // Overwrite existing file
                 });
                 if (uploadError) throw uploadError;
 
+                // Get the public URL of the uploaded file
                 const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
                 avatarUrl = data.publicUrl;
             }
 
+            // Step 2: Prepare the data object for the 'profiles' table update
             const updates = {
                 id: user.id,
                 first_name: firstName,
                 last_name: lastName,
+                display_name: displayName, // ADDED: Include display_name in the update
                 full_name: `${firstName} ${lastName}`.trim(),
                 short_bio: shortBio,
                 artist_statement: artistStatement,
                 contact_number: contactNumber,
                 location: { country: locationCountry, city: locationCity },
-                social_links: socialLinks.filter(link => link.url),
+                // Filter out any social links that don't have a URL
+                social_links: socialLinks.filter(link => link.url.trim() !== ''),
                 avatar_url: avatarUrl,
                 updated_at: new Date().toISOString(),
             };
 
+            // Step 3: Upsert the profile data into Supabase
             const { error: profileError } = await supabase.from('profiles').upsert(updates);
             if (profileError) throw profileError;
             
             toast.success('Profile updated successfully!', { id: toastId });
         } catch (error: any) {
-            toast.error(error.message, { id: toastId });
+            toast.error(error.message || 'An unknown error occurred.', { id: toastId });
         } finally {
             setLoading(false);
         }
     };
 
+    // Render loading state while waiting for user/profile data
     if (authLoading) {
-        return <div>Loading your profile...</div>;
+        return <div className="p-4">Loading your profile...</div>;
     }
 
     return (
@@ -126,11 +152,18 @@ const ArtistSettingsPage = () => {
             <p className="page-subtitle">Manage your public profile information, contact details, and account settings.</p>
 
             <form onSubmit={handleUpdateProfile} className="settings-form">
+                {/* Section for Public Profile */}
                 <div className="form-section">
                     <h3>Public Profile</h3>
                     <p>This information will be displayed on your public artist portfolio.</p>
                     
+                    {/* Note: The ImageUpload component requires the 'initialPreview' prop to be defined in its props interface */}
                     <ImageUpload onFileSelect={setAvatarFile} initialPreview={avatarPreview || undefined} />
+                    
+                    <div className="form-group">
+                        <label className="label" htmlFor="displayName">Display Name</label>
+                        <input id="displayName" className="input" type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="The name shown publicly on your profile" />
+                    </div>
 
                     <div className="form-grid-2-col">
                         <div className="form-group">
@@ -154,6 +187,7 @@ const ArtistSettingsPage = () => {
                     </div>
                 </div>
 
+                {/* Section for Contact & Location */}
                 <div className="form-section">
                     <h3>Contact & Location</h3>
                     <p>This information is private and will only be used for communication and shipping.</p>
@@ -173,6 +207,7 @@ const ArtistSettingsPage = () => {
                     </div>
                 </div>
                 
+                 {/* Section for Social Links */}
                  <div className="form-section">
                     <h3>Social Links</h3>
                     <p>Link to your website, social media, and other online presences.</p>
@@ -186,7 +221,7 @@ const ArtistSettingsPage = () => {
                                 <option>Other</option>
                             </select>
                             <input type="url" value={link.url} onChange={e => handleSocialLinkChange(index, 'url', e.target.value)} className="input" placeholder="https://..." />
-                            <button type="button" onClick={() => handleRemoveSocialLink(index)} className="button-icon-danger">
+                            <button type="button" onClick={() => handleRemoveSocialLink(index)} className="button-icon-danger" aria-label="Remove social link">
                                 <Trash2 size={16} />
                             </button>
                         </div>
@@ -194,6 +229,7 @@ const ArtistSettingsPage = () => {
                     <button type="button" onClick={handleAddSocialLink} className="button secondary">Add Social Link</button>
                 </div>
 
+                {/* Form Submission Actions */}
                 <div className="form-actions">
                     <Button type="submit" className="primary" isLoading={loading}>Save Changes</Button>
                 </div>
