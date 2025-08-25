@@ -1,11 +1,9 @@
-// src/pages/dashboard/artist/ArtworkListPage.tsx
-
 import React, { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
-import { PlusCircle, List, LayoutGrid, Folder, MoreVertical } from 'lucide-react';
+import { PlusCircle, List, LayoutGrid, Folder, MoreVertical, Circle, CheckCircle, Archive } from 'lucide-react';
 import ArtworkUploadModal from '@/components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '@/stores/artworkUploadStore';
 import ArtworkActionsMenu from '@/components/dashboard/ArtworkActionsMenu';
@@ -32,7 +30,22 @@ const fetchArtistCatalogues = async (userId: string): Promise<Pick<Catalogue, 'i
 
 const formatPrice = (price: number | null, currency: string | null) => {
     if (price === null || price === undefined) return 'Price not set';
-    return new Intl.NumberFormat('en-ZA', { style: 'currency', currency: currency || 'ZAR' }).format(price);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(price);
+};
+
+const StatusBadge = ({ status }: { status: string }) => {
+    const statusMap: { [key: string]: { text: string; icon: React.ReactNode; color: string } } = {
+        'Active': { text: 'Active', icon: <CheckCircle size={14} />, color: 'var(--color-green-success)' },
+        'Sold': { text: 'Sold', icon: <Archive size={14} />, color: 'var(--foreground)' },
+        'Pending': { text: 'Pending', icon: <Circle size={14} />, color: 'var(--muted-foreground)' }
+    };
+    const currentStatus = statusMap[status] || statusMap['Pending'];
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: currentStatus.color }}>
+            {currentStatus.icon}
+            <span>{currentStatus.text}</span>
+        </div>
+    );
 };
 
 const ArtworkListPage = () => {
@@ -44,9 +57,10 @@ const ArtworkListPage = () => {
 
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [sortOption, setSortOption] = useState('created_at-desc');
+    const [filterStatus, setFilterStatus] = useState('all');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     
-    // State for the actions menu
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
 
@@ -71,7 +85,6 @@ const ArtworkListPage = () => {
         enabled: !!user,
     });
 
-    // Mutation for deleting an artwork
     const deleteMutation = useMutation({
         mutationFn: async (artworkId: string) => {
             const { error } = await supabase.from('artworks').delete().eq('id', artworkId);
@@ -84,7 +97,6 @@ const ArtworkListPage = () => {
         onError: (error) => alert(`Error deleting artwork: ${error.message}`),
     });
 
-    // Mutation for marking an artwork as sold
     const markAsSoldMutation = useMutation({
         mutationFn: async (artworkId: string) => {
             const { error } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
@@ -97,13 +109,30 @@ const ArtworkListPage = () => {
         onError: (error) => alert(`Error updating artwork: ${error.message}`),
     });
 
-    const filteredArtworks = useMemo(() => {
+    const processedArtworks = useMemo(() => {
         if (!artworks) return [];
-        return artworks.filter(art => 
-            (art.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
-            (art.status || '').toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [artworks, searchQuery]);
+        let filtered = artworks.filter(art => {
+            const statusMatch = filterStatus === 'all' || art.status.toLowerCase() === filterStatus.toLowerCase();
+            const searchMatch = !searchQuery || (art.title || '').toLowerCase().includes(searchQuery.toLowerCase());
+            return statusMatch && searchMatch;
+        });
+        const [key, direction] = sortOption.split('-');
+        return filtered.sort((a, b) => {
+            const valA = a[key as keyof Artwork];
+            const valB = b[key as keyof Artwork];
+            if (valA === null || valA === undefined) return 1;
+            if (valB === null || valB === undefined) return -1;
+            let comparison = 0;
+            if (key === 'price') {
+                comparison = (valA as number) - (valB as number);
+            } else if (key === 'title') {
+                comparison = (valA as string).localeCompare(valB as string);
+            } else {
+                comparison = new Date(valA as string).getTime() - new Date(valB as string).getTime();
+            }
+            return direction === 'asc' ? comparison : -comparison;
+        });
+    }, [artworks, searchQuery, sortOption, filterStatus]);
     
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files?.length) {
@@ -119,10 +148,18 @@ const ArtworkListPage = () => {
         navigate(`/artist/artworks/wizard?ids=${artworkIds.join(',')}`);
     };
 
+    const handleEdit = (id: string) => navigate(`/artist/artworks/edit/${id}`);
+    const handleDelete = (id: string, title: string | null) => {
+        if (window.confirm(`Are you sure you want to permanently delete "${title || 'this artwork'}"?`)) {
+            deleteMutation.mutate(id);
+        }
+    };
+    const handleMarkAsSold = (id: string) => markAsSoldMutation.mutate(id);
+
     return (
         <div>
             {showUploadModal && <ArtworkUploadModal onUploadComplete={handleUploadComplete} />}
-            <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*" />
+            <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/jpeg,image/png,image/webp" />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <h1>Artworks</h1>
@@ -131,46 +168,69 @@ const ArtworkListPage = () => {
                 </button>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem' }}>
-                <input className="input" placeholder="Search by title or status..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{flexGrow: 1}} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
+                <input className="input" placeholder="Search by title..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{flexGrow: 1, minWidth: '200px'}} />
+                <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{flex: '0 0 150px'}}>
+                    <option value="all">All Statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Sold">Sold</option>
+                    <option value="Pending">Pending</option>
+                </select>
+                <select className="input" value={sortOption} onChange={(e) => setSortOption(e.target.value)} style={{flex: '0 0 180px'}}>
+                    <option value="created_at-desc">Sort by: Newest</option>
+                    <option value="created_at-asc">Sort by: Oldest</option>
+                    <option value="title-asc">Sort by: Title (A-Z)</option>
+                    <option value="price-desc">Sort by: Price (High-Low)</option>
+                    <option value="price-asc">Sort by: Price (Low-High)</option>
+                </select>
                 <div style={{display: 'flex', gap: '0.5rem', background: 'var(--input)', padding: '0.25rem', borderRadius: 'var(--radius)'}}>
-                    <button onClick={() => setViewMode('grid')} style={{background: viewMode === 'grid' ? 'var(--secondary)' : 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem'}}><LayoutGrid size={18} /></button>
-                    <button onClick={() => setViewMode('list')} style={{background: viewMode === 'list' ? 'var(--secondary)' : 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem'}}><List size={18} /></button>
+                    <button onClick={() => setViewMode('grid')} title="Grid View" style={{background: viewMode === 'grid' ? 'var(--card)' : 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: 'var(--radius-sm)'}}><LayoutGrid size={18} /></button>
+                    <button onClick={() => setViewMode('list')} title="List View" style={{background: viewMode === 'list' ? 'var(--card)' : 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem', borderRadius: 'var(--radius-sm)'}}><List size={18} /></button>
                 </div>
             </div>
             
             {isLoadingArtworks ? <p>Loading artworks...</p> : (
                 <div style={viewMode === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' } : { display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {filteredArtworks.map((art: Artwork) => {
+                    {processedArtworks.map((art) => {
                         const catalogue = catalogues?.find(c => c.id === art.catalogue_id);
-
-                        return (
-                            <div key={art.id} style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: viewMode === 'grid' ? 'column' : 'row' }}>
-                               <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={viewMode === 'grid' ? { width: '100%', height: '200px', objectFit: 'cover' } : { width: '100px', height: '100px', objectFit: 'cover' }} />
-                                <div style={{ padding: '1rem', flexGrow: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                                    <div>
-                                        <h4 style={{ marginBottom: '0.25rem', marginTop: 0 }}>{art.title || "Untitled (Pending Details)"}</h4>
-                                        <p style={{ fontWeight: 'bold', fontSize: '1rem', margin: '0 0 0.5rem 0' }}>{formatPrice(art.price, art.currency)}</p>
-                                        
-                                        {catalogue && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--muted-foreground)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                                                <Folder size={14} />
-                                                <span>{catalogue.title}</span>
-                                            </div>
-                                        )}
+                        return viewMode === 'grid' ? (
+                            <div key={art.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ position: 'relative' }}>
+                                    <Link to={`/artist/artworks/edit/${art.id}`}>
+                                        <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={{ width: '100%', height: '200px', objectFit: 'cover' }} />
+                                    </Link>
+                                    <button onClick={(e) => handleMenuOpen(e, art)} style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', background: 'rgba(255,255,255,0.7)', border: 'none', borderRadius: '50%', cursor: 'pointer', padding: '0.25rem' }}><MoreVertical size={20} /></button>
+                                </div>
+                                <div style={{ padding: '1rem', flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                                    <h4 style={{ margin: '0 0 0.5rem 0', fontStyle: 'italic' }}>{art.title || "Untitled (Pending Details)"}</h4>
+                                    <p style={{ fontWeight: 'bold', fontSize: '1rem', margin: 0 }}>{formatPrice(art.price, art.currency)}</p>
+                                    <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
+                                        <StatusBadge status={art.status} />
                                     </div>
-                                    <div style={{display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center'}}>
-                                        <Link to={`/artist/artworks/edit/${art.id}`} className='button button-secondary'>Edit</Link>
-                                        {art.slug && profile?.slug && (
-                                            <a href={`/${profile.slug}/artwork/${art.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">
-                                                Preview
-                                            </a>
-                                        )}
-                                        <div style={{ flexGrow: 1 }}></div>
-                                        <button onClick={(e) => handleMenuOpen(e, art)} style={{background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem'}}>
-                                            <MoreVertical size={20} />
-                                        </button>
-                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div key={art.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', padding: '1rem', gap: '1rem' }}>
+                               <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
+                                <div style={{ flexGrow: 1 }}>
+                                    <h4 style={{ margin: 0, fontStyle: 'italic' }}>{art.title || "Untitled (Pending Details)"}</h4>
+                                    <p style={{ fontWeight: 'bold', fontSize: '1rem', margin: '0.25rem 0' }}>{formatPrice(art.price, art.currency)}</p>
+                                    {catalogue && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
+                                            <Folder size={14} />
+                                            <span>{catalogue.title}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ width: '120px' }}><StatusBadge status={art.status} /></div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <Link to={`/artist/artworks/edit/${art.id}`} className='button button-secondary'>Edit</Link>
+                                    {art.slug && profile?.slug && (
+                                        <a href={`/${profile.slug}/artwork/${art.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">
+                                            Preview
+                                        </a>
+                                    )}
+                                    <button onClick={(e) => handleMenuOpen(e, art)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '0.5rem' }}><MoreVertical size={20} /></button>
                                 </div>
                             </div>
                         );
@@ -183,27 +243,18 @@ const ArtworkListPage = () => {
                     artwork={selectedArtwork}
                     anchorEl={anchorEl}
                     onClose={handleMenuClose}
-                    onEdit={(id) => {
-                        navigate(`/artist/artworks/edit/${id}`);
-                        handleMenuClose();
-                    }}
-                    onDelete={(id) => {
-                        if (window.confirm('Are you sure you want to delete this artwork?')) {
-                            deleteMutation.mutate(id);
-                        }
-                        handleMenuClose();
-                    }}
-                    onMarkAsSold={(id) => {
-                        markAsSoldMutation.mutate(id);
-                        handleMenuClose();
-                    }}
+                    onEdit={() => { handleEdit(selectedArtwork.id); handleMenuClose(); }}
+                    onDelete={() => { handleDelete(selectedArtwork.id, selectedArtwork.title); handleMenuClose(); }}
+                    onMarkAsSold={() => { handleMarkAsSold(selectedArtwork.id); handleMenuClose(); }}
                 />
             )}
 
-            {filteredArtworks?.length === 0 && !isLoadingArtworks && (
-                <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card)', borderRadius: 'var(--radius)' }}>
-                    <p>No artworks found.</p>
-                    <p style={{color: 'var(--muted-foreground)'}}>Click "Create New Artwork" to get started.</p>
+            {processedArtworks?.length === 0 && !isLoadingArtworks && (
+                <div style={{ textAlign: 'center', padding: '3rem', background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px dashed var(--border)' }}>
+                    <h4>No artworks found</h4>
+                    <p style={{color: 'var(--muted-foreground)'}}>
+                        {artworks && artworks.length > 0 ? "No artworks match your current filters." : 'Click "Create New Artwork" to get started.'}
+                    </p>
                 </div>
             )}
         </div>
