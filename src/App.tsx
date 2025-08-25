@@ -1,5 +1,3 @@
-// src/App.tsx
-
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
@@ -43,8 +41,9 @@ import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
 import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
 
 const AuthLoading = () => (
-    <div className="loading-container">
-        Loading Application...
+    <div className="loading-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        {/* Replace with a proper spinner component if you have one */}
+        <p>Loading Application...</p>
     </div>
 );
 
@@ -54,16 +53,27 @@ const DashboardRedirector = () => {
     if (profile && !profile.profile_completed) return <Navigate to="/complete-profile" replace />;
     if (profile?.role === 'artist' || profile?.role === 'both') return <Navigate to="/artist/dashboard" replace />;
     if (profile?.role === 'collector') return <Navigate to="/collector/dashboard" replace />;
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace />; // Fallback if no user or role after loading
 };
 
 const ProtectedRoute = () => {
     const { user, profile, loading } = useAuth();
     if (loading) return <AuthLoading />;
+
+    // 1. If no user, redirect to login
     if (!user) return <Navigate to="/login" replace />;
-    if (!profile?.profile_completed && window.location.pathname !== '/complete-profile') {
-        return <Navigate to="/complete-profile" replace />;
+
+    // --- REFINED LOGIC ---
+    // 2. If user has an incomplete profile, they MUST complete it.
+    // The only protected page they can visit is /complete-profile itself.
+    if (!profile?.profile_completed) {
+        // If they are not already on the complete profile page, force them there.
+        if (window.location.pathname !== '/complete-profile') {
+            return <Navigate to="/complete-profile" replace />;
+        }
     }
+    
+    // 3. If the user is authenticated and has a complete profile, render the requested child route.
     return <Outlet />;
 };
 
@@ -92,6 +102,7 @@ const AppRoutes = () => {
 
         {/* --- Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
+            {/* The /complete-profile page is now protected, ensuring only logged-in users can access it */}
             <Route path="/complete-profile" element={<CompleteProfilePage />} />
             <Route path="/dashboard" element={<DashboardRedirector />} />
             
@@ -132,27 +143,19 @@ const App = () => {
         <Toaster 
           position="bottom-right"
           toastOptions={{
-            // Define default options for all toasts
             style: {
               background: 'var(--color-neutral-700)',
               color: 'var(--primary-foreground)',
               borderRadius: 'var(--radius-sm)',
               boxShadow: 'var(--shadow-md)',
             },
-            // Override for specific toast types
             success: {
               duration: 3000,
-              style: {
-                background: 'var(--color-green-success)',
-                color: 'var(--primary-foreground)',
-              },
+              style: { background: 'var(--color-green-success)', color: 'var(--primary-foreground)' },
             },
             error: {
               duration: 5000,
-              style: {
-                background: 'var(--color-red-danger)',
-                color: 'var(--primary-foreground)',
-              },
+              style: { background: 'var(--color-red-danger)', color: 'var(--primary-foreground)' },
             },
           }}
         />
