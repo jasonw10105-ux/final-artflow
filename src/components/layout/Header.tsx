@@ -1,89 +1,81 @@
 // src/components/layout/Header.tsx
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
+import { Menu, X } from 'lucide-react'; // Using icons for the toggle
 
 const Header = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        // Use replace to prevent the user from going back to a protected page
+        setIsMenuOpen(false); // Close menu on logout
         navigate('/login', { replace: true });
     };
+    
+    // --- Define Navigation Links Once to Avoid Repetition ---
 
-    // Basic styles for nav items, you can move these to a CSS file
-    const navItemStyle = {
-        padding: '0.5rem 1rem',
-        textDecoration: 'none',
-        color: 'var(--foreground)',
-        borderRadius: 'var(--radius)',
-        transition: 'background 0.2s',
-    };
+    const LoggedInNav = () => (
+        <>
+            <NavLink to="/artworks" className="nav-item">Browse Art</NavLink>
+            <NavLink to="/artists" className="nav-item">Browse Artists</NavLink>
+            <div className="nav-divider" />
+            <NavLink to="/dashboard" className="button secondary">My Dashboard</NavLink>
+            <button onClick={handleLogout} className="button primary">Logout</button>
+        </>
+    );
 
-    const activeStyle = {
-        background: 'var(--accent)',
-        fontWeight: '500',
-    };
+    const LoggedOutNav = () => (
+        <>
+            <NavLink to="/artworks" className="nav-item">Browse Art</NavLink>
+            <NavLink to="/artists" className="nav-item">Browse Artists</NavLink>
+            <NavLink to="/login" className="button secondary">Login</NavLink>
+            <NavLink to="/register" className="button primary">Register</NavLink>
+        </>
+    );
 
     return (
-        <header style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            padding: '1rem 2rem', 
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--card)'
-        }}>
-            <Link to={user ? "/dashboard" : "/home"} style={{ display: 'flex', alignItems: 'center' }}>
-                <img src="/logo.svg" alt="Artflow" height="40px" />
-            </Link>
-            <nav style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                {user ? (
-                    // --- LOGGED-IN NAVIGATION ---
-                    <>
-                        <NavLink 
-                            to="/artworks" 
-                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
-                        >
-                            Browse Art
-                        </NavLink>
-                        <NavLink 
-                            to="/artists" 
-                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
-                        >
-                            Browse Artists
-                        </NavLink>
-                        <div style={{width: '1px', height: '24px', background: 'var(--border)'}}></div>
-                        <NavLink to="/dashboard" className="button button-secondary">
-                            My Dashboard
-                        </NavLink>
-                        <button onClick={handleLogout} className="button button-primary">Logout</button>
-                    </>
-                ) : (
-                    // --- LOGGED-OUT NAVIGATION ---
-                    <>
-                        <NavLink 
-                            to="/artworks" 
-                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
-                        >
-                            Browse Art
-                        </NavLink>
-                        <NavLink 
-                            to="/artists" 
-                            style={({ isActive }) => isActive ? {...navItemStyle, ...activeStyle} : navItemStyle}
-                        >
-                            Browse Artists
-                        </NavLink>
-                        <NavLink to="/login" className="button button-secondary">Login</NavLink>
-                        <NavLink to="/register" className="button button-primary">Register</NavLink>
-                    </>
-                )}
-            </nav>
-        </header>
+        <>
+            <header className="main-header">
+                <Link to={user ? "/dashboard" : "/"} className="header-logo">
+                    <img src="/logo.svg" alt="Artflow" />
+                </Link>
+
+                {/* --- Desktop Navigation --- */}
+                <nav className="desktop-nav">
+                    {user ? <LoggedInNav /> : <LoggedOutNav />}
+                </nav>
+
+                {/* --- Mobile Menu Toggle --- */}
+                <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(true)}>
+                    <Menu size={28} />
+                </button>
+            </header>
+
+            {/* --- Off-Canvas Menu --- */}
+            {isMenuOpen && (
+                <>
+                    <div className="offcanvas-menu-backdrop" onClick={() => setIsMenuOpen(false)}></div>
+                    <div className={`offcanvas-menu ${isMenuOpen ? 'open' : ''}`}>
+                        <div className="offcanvas-header">
+                            <Link to={user ? "/dashboard" : "/"} className="header-logo" onClick={() => setIsMenuOpen(false)}>
+                                <img src="/logo.svg" alt="Artflow" />
+                            </Link>
+                            <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(false)}>
+                                <X size={28} />
+                            </button>
+                        </div>
+                        <nav className="offcanvas-body">
+                            {user ? <LoggedInNav /> : <LoggedOutNav />}
+                        </nav>
+                    </div>
+                </>
+            )}
+        </>
     );
 };
 
