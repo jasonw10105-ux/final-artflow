@@ -56,15 +56,26 @@ const ArtistSettingsPage = () => {
                 setLocationCity(loc.city || '');
             }
 
-            // *** THE DEFINITIVE FIX ***
-            // We filter to ensure runtime safety, then use a type assertion (`as SocialLink[]`)
-            // to forcefully tell TypeScript the correct type, fixing the build error.
+            // *** BULLETPROOF TYPE CONVERSION ***
+            // This is the most explicit way to handle the type conversion.
+            // We manually create a new, correctly typed array and populate it.
             if (Array.isArray(profile.social_links)) {
-                const validLinks = profile.social_links.filter(
-                    (link: any): link is SocialLink => 
-                        typeof link === 'object' && link !== null && 'platform' in link && 'url' in link
-                );
-                setSocialLinks(validLinks as SocialLink[]);
+                // 1. Create a new variable that is explicitly typed as SocialLink[]
+                const correctlyTypedLinks: SocialLink[] = [];
+
+                // 2. Loop through the raw data from the database
+                for (const link of profile.social_links) {
+                    // 3. Robustly check if each item is a valid object with the correct properties
+                    if (link && typeof link === 'object' && 'platform' in link && 'url' in link) {
+                        // 4. Push a correctly structured object into our new, clean array
+                        correctlyTypedLinks.push({
+                            platform: String((link as any).platform),
+                            url: String((link as any).url)
+                        });
+                    }
+                }
+                // 5. Call setState with the new array that is guaranteed to be the correct type.
+                setSocialLinks(correctlyTypedLinks);
             }
         }
     }, [profile]);
