@@ -5,7 +5,6 @@ import { Database } from '@/types/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
-// --- FIX: Added the signOut function to the type definition ---
 interface AuthContextType {
     user: User | null;
     profile: Profile | null;
@@ -78,7 +77,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         };
     }, []);
 
-    // --- FIX: Defined the signOut function ---
     const signOut = () => supabase.auth.signOut();
 
     const value = {
@@ -86,10 +84,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         profile,
         session,
         loading,
-        signOut, // --- FIX: Exposed the signOut function through the context ---
+        signOut,
     };
 
-    return <AuthContext.Provider value={value}>{children}</Auth.Context.Provider>;
+    // --- FIX APPLIED HERE ---
+    // Corrected the closing JSX tag.
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
