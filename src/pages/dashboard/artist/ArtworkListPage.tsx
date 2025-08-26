@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { PlusCircle, List, LayoutGrid, MoreVertical, Circle, CheckCircle, Archive, BookCopy, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useDebounce } from '@/hooks/useDebounce'; // IMPROVEMENT: Assumes a useDebounce hook exists
+import { useDebounce } from '@/hooks/useDebounce';
 
 import ArtworkUploadModal from '@/components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '@/stores/artworkUploadStore';
@@ -35,7 +35,6 @@ const formatPrice = (price: number | null, currency: string | null) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(price);
 };
 
-// IMPROVEMENT: Memoize the StatusBadge component to prevent re-renders
 const StatusBadge = React.memo(({ status }: { status: string }) => {
     const statusMap: { [key: string]: { text: string; icon: React.ReactNode; color: string } } = {
         'Available': { text: 'Available', icon: <CheckCircle size={14} />, color: 'var(--color-green-success)' },
@@ -51,7 +50,6 @@ const StatusBadge = React.memo(({ status }: { status: string }) => {
     );
 });
 
-// IMPROVEMENT: Memoize the ArtworkListItem component
 const ArtworkListItem = React.memo(({ art, onMenuOpen }: { art: ArtworkWithCatalogueCount; onMenuOpen: (event: React.MouseEvent<HTMLElement>, artwork: ArtworkWithCatalogueCount) => void }) => (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', padding: '1rem', gap: '1rem' }}>
         <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
@@ -85,10 +83,10 @@ const ArtworkListPage = () => {
 
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const debouncedSearchQuery = useDebounce(searchQuery, 300); // Debounce search
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [sortOption, setSortOption] = useState('updated_at-desc');
     const [filterStatus, setFilterStatus] = useState('all');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list'); // Default to list view
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
     
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const [selectedArtwork, setSelectedArtwork] = useState<ArtworkWithCatalogueCount | null>(null);
@@ -222,23 +220,19 @@ const ArtworkListPage = () => {
             {isLoadingArtworks ? (
                 <p>Loading artworks...</p>
             ) : artworks && artworks.length === 0 ? (
-                // IMPROVEMENT: Empty state for when the artist has no artworks yet.
                 <div className="empty-state-card">
                     <Info size={48} style={{ color: 'var(--muted-foreground)' }} />
                     <h2>No Artworks Yet</h2>
                     <p>Click "Create New Artwork" to upload your first piece and get started.</p>
                 </div>
             ) : processedArtworks.length === 0 ? (
-                // IMPROVEMENT: No results message for when filters yield no artworks.
                  <div className="empty-state-card">
                     <Info size={48} style={{ color: 'var(--muted-foreground)' }} />
                     <h2>No Matching Artworks</h2>
                     <p>Try adjusting your search or filter criteria.</p>
                 </div>
             ) : (
-                // Renders the list or grid view
                 <div style={viewMode === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' } : { display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                   {/* Grid view would also be wrapped in a memoized component */}
                    {processedArtworks.map((art) => <ArtworkListItem key={art.id} art={art} onMenuOpen={handleMenuOpen} />)}
                 </div>
             )}
