@@ -3,32 +3,99 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
+import { useDebounce } from '@/hooks/useDebounce'; // IMPROVEMENT: Import debounce hook
 import { PlusCircle, ImageOff, CheckCircle, Archive, Lock } from 'lucide-react';
-import { Database } from '@/types/database.types';
+import { Database } from '@/types/database/types';
 
-// Type for the data returned by our RPC
 type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
-    total_count: number;
-    available_count: number;
-    sold_count: number;
+    total_count: number; available_count: number; sold_count: number;
 };
 
-// This function calls the custom database function (RPC)
 const fetchCataloguesWithStatusCounts = async (userId: string): Promise<CatalogueWithCounts[]> => {
-    const { data, error } = await supabase.rpc('get_catalogues_with_status_counts', {
-        auth_user_id: userId
-    });
-
+    const { data, error } = await supabase.rpc('get_catalogues_with_status_counts', { auth_user_id: userId });
     if (error) {
         console.error("Error fetching catalogues with RPC:", error);
         throw new Error(error.message);
     }
     return data || [];
-}
+};
+
+// IMPROVEMENT: Extracted the list item into a memoized component for performance.
+const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWithCounts; profileSlug: string | null | undefined }) => (
+    <div style={{
+        background: 'var(--card)', borderRadius: 'var(--radius)',
+        display: 'flex', alignItems: 'center', gap: '1.5rem',
+        border: '1px solid var(--border)', overflow: 'hidden'
+    }}>
+        {cat.cover_image_url ? (
+            <img src={cat.cover_image_url} alt={cat.title} style={{ width: '150px', height: '150px', objectFit: 'cover' }}/>
+        ) : (
+            <div style={{
+                width: '150px', height: '150px', display: 'flex', alignItems: 'center', 
+                justifyContent: 'center', background: 'var(--input)', color: 'var(--muted-foreground)'
+            }}>
+                <ImageOff size={32} />
+            </div>
+        )}
+        <div style={{ flexGrow: 1, padding: '1rem 0' }}>
+            <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem'}}>
+               <h3 style={{ margin: 0 }}>{cat.title}</h3>
+                {cat.is_system_catalogue && (
+                    <span title="This system catalogue's details cannot be edited, but you can manage its artworks." style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', background: 'var(--muted)', color: 'var(--muted-foreground)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>
+                        <Lock size={12} /> System
+                    </span>
+                )}
+                {!cat.is_published && !cat.is_system_catalogue && (
+                    <span style={{ fontSize: '0.75rem', background: 'var(--secondary)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>Draft</span>
+                )}
+            </div>
+            <p style={{ color: 'var(--muted-foreground)', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+                Total of {cat.total_count || 0} artwork(s)
+            </p>
+            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CheckCircle size={16} color="var(--color-green-success)" />
+                    <span>{cat.available_count || 0} Available</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--muted-foreground)' }}>
+                    <Archive size={16} />
+                    <span>{cat.sold_count || 0} Sold</span>
+                </div>
+            </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', paddingRight: '1.5rem' }}>
+            {cat.is_published && profileSlug && (
+                <Link to={`/${profileSlug}/catalogue/${cat.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">View</Link>
+            )}
+            <Link to={`/artist/catalogues/edit/${cat.id}`} className='button button-secondary'>
+                {cat.is_system_catalogue ? 'Manage Artworks' : 'Edit'}
+            </Link>
+        </div>
+    </div>
+));
+
+// IMPROVEMENT: Added a skeleton component for a better loading experience.
+const CatalogueListSkeleton = () => (
+    Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', paddingRight: '1.5rem' }}>
+            <div style={{ width: '150px', height: '150px', background: 'var(--input)' }} />
+            <div style={{ flexGrow: 1, padding: '1rem 0' }}>
+                <div style={{ height: '24px', width: '40%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '0.5rem' }} />
+                <div style={{ height: '18px', width: '25%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }} />
+                <div style={{ display: 'flex', gap: '1.5rem' }}>
+                    <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
+                    <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
+                </div>
+            </div>
+        </div>
+    ))
+);
+
 
 const CatalogueListPage = () => {
     const { user, profile } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
+    const debouncedSearchQuery = useDebounce(searchQuery, 300); // Debounced search
     const [sortOption, setSortOption] = useState('created_at-desc');
     const [filterStatus, setFilterStatus] = useState('all');
 
@@ -40,13 +107,12 @@ const CatalogueListPage = () => {
     
     const processedCatalogues = useMemo(() => {
         if (!catalogues) return [];
-
         const systemCatalogue = catalogues.find(cat => cat.is_system_catalogue);
         const userCatalogues = catalogues.filter(cat => !cat.is_system_catalogue);
 
         let filtered = userCatalogues.filter(cat => {
             const statusMatch = filterStatus === 'all' || (filterStatus === 'published' ? cat.is_published : !cat.is_published);
-            const searchMatch = !searchQuery || cat.title.toLowerCase().includes(searchQuery.toLowerCase());
+            const searchMatch = !debouncedSearchQuery || cat.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
             return statusMatch && searchMatch;
         });
 
@@ -54,25 +120,17 @@ const CatalogueListPage = () => {
         const sorted = filtered.sort((a, b) => {
             const valA = a[key as keyof typeof a];
             const valB = b[key as keyof typeof b];
-
             if (valA === null || valA === undefined) return 1;
             if (valB === null || valB === undefined) return -1;
-            
             let comparison = 0;
-            if (typeof valA === 'number' && typeof valB === 'number') {
-                comparison = valA - valB;
-            } else if (typeof valA === 'string' && typeof valB === 'string') {
-                comparison = valA.localeCompare(valB);
-            } else {
-                comparison = new Date(valA as string).getTime() - new Date(valB as string).getTime();
-            }
-
+            if (typeof valA === 'number' && typeof valB === 'number') comparison = valA - valB;
+            else if (typeof valA === 'string' && typeof valB === 'string') comparison = valA.localeCompare(valB);
+            else comparison = new Date(valA as string).getTime() - new Date(valB as string).getTime();
             return direction === 'asc' ? comparison : -comparison;
         });
 
         return systemCatalogue ? [systemCatalogue, ...sorted] : sorted;
-
-    }, [catalogues, searchQuery, sortOption, filterStatus]);
+    }, [catalogues, debouncedSearchQuery, sortOption, filterStatus]);
 
 
     return (
@@ -108,73 +166,23 @@ const CatalogueListPage = () => {
                 </select>
             </div>
             
-            {isLoading ? <p>Loading catalogues...</p> : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                    {processedCatalogues.length > 0 ? (
-                        processedCatalogues.map((cat) => (
-                            <div key={cat.id} style={{
-                                background: 'var(--card)', borderRadius: 'var(--radius)',
-                                display: 'flex', alignItems: 'center', gap: '1.5rem',
-                                border: '1px solid var(--border)', overflow: 'hidden'
-                            }}>
-                                {cat.cover_image_url ? (
-                                    <img src={cat.cover_image_url} alt={cat.title} style={{ width: '150px', height: '150px', objectFit: 'cover' }}/>
-                                ) : (
-                                    <div style={{
-                                        width: '150px', height: '150px', display: 'flex', alignItems: 'center', 
-                                        justifyContent: 'center', background: 'var(--input)', color: 'var(--muted-foreground)'
-                                    }}>
-                                        <ImageOff size={32} />
-                                    </div>
-                                )}
-                                <div style={{ flexGrow: 1, padding: '1rem 0' }}>
-                                    <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem'}}>
-                                       <h3 style={{ margin: 0 }}>{cat.title}</h3>
-                                        {cat.is_system_catalogue && (
-                                            <span title="This system catalogue's details cannot be edited, but you can manage its artworks." style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', background: 'var(--muted)', color: 'var(--muted-foreground)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>
-                                                <Lock size={12} /> System
-                                            </span>
-                                        )}
-                                        {!cat.is_published && !cat.is_system_catalogue && (
-                                            <span style={{ fontSize: '0.75rem', background: 'var(--secondary)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>Draft</span>
-                                        )}
-                                    </div>
-                                    <p style={{ color: 'var(--muted-foreground)', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
-                                        Total of {cat.total_count || 0} artwork(s)
-                                    </p>
-                                    
-                                    <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <CheckCircle size={16} color="var(--color-green-success)" />
-                                            <span>{cat.available_count || 0} Available</span>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--muted-foreground)' }}>
-                                            <Archive size={16} />
-                                            <span>{cat.sold_count || 0} Sold</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.5rem', paddingRight: '1.5rem' }}>
-                                    {cat.is_published && profile?.slug && (
-                                        <Link to={`/${profile.slug}/catalogue/${cat.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">View</Link>
-                                    )}
-                                    <Link to={`/artist/catalogues/edit/${cat.id}`} className='button button-secondary'>
-                                        {cat.is_system_catalogue ? 'Manage Artworks' : 'Edit'}
-                                    </Link>
-                                </div>
-                            </div>
-                        ))
-                    ) : (
-                        <div style={{ textAlign: 'center', padding: '3rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
-                            <p>
-                                {catalogues && catalogues.length > 0
-                                    ? "No catalogues match your current filters."
-                                    : "You haven't created any catalogues yet."}
-                            </p>
-                        </div>
-                    )}
-                </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {isLoading ? (
+                    <CatalogueListSkeleton />
+                ) : processedCatalogues.length > 0 ? (
+                    processedCatalogues.map((cat) => (
+                        <CatalogueListItem key={cat.id} cat={cat} profileSlug={profile?.slug} />
+                    ))
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '3rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+                        <p>
+                            {catalogues && catalogues.length > 0
+                                ? "No catalogues match your current filters."
+                                : "You haven't created any catalogues yet."}
+                        </p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 };
