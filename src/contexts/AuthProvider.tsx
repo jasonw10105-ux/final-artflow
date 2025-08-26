@@ -1,20 +1,18 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { Session, User, AuthError } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabaseClient';
+import { Session, User } from '@supabase/supabase-js';
 import { Database } from '@/types/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
-export interface AuthContextType {
+interface AuthContextType {
     user: User | null;
     profile: Profile | null;
     session: Session | null;
     loading: boolean;
-    refetchProfile: () => Promise<void>;
-    signOut: () => Promise<{ error: AuthError | null }>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -22,87 +20,85 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const fetchProfile = async (userToFetch: User | null) => {
-        if (!userToFetch) {
-            setProfile(null);
-            return;
-        }
-        try {
-            const { data: userProfile, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userToFetch.id)
-                .single();
-            
-            if (error) {
-                console.error("Error fetching profile:", error);
-                setProfile(null);
-            } else {
-                setProfile(userProfile ?? null);
-            }
-        } catch (e) {
-            console.error("An exception occurred while fetching profile:", e);
-            setProfile(null);
-        }
-    };
-
-    // This function can be called from anywhere to manually refetch the profile
-    const refetchProfile = async () => {
-        // Use the 'user' from state, as it's the most current source of truth
-        await fetchProfile(user);
-    };
-
-    // The signOut function to be exposed by the context
-    const signOut = () => supabase.auth.signOut();
-
     useEffect(() => {
-        const getInitialSession = async () => {
-            const { data: { session: initialSession } } = await supabase.auth.getSession();
-            setSession(initialSession);
-            const currentUser = initialSession?.user ?? null;
-            setUser(currentUser);
-            await fetchProfile(currentUser);
-            setLoading(false);
+        const fetchSessionAndProfile = async () => {
+            try {
+                // 1. Get the initial session
+                const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) throw error;
+
+                setSession(session);
+                setUser(session?.user ?? null);
+
+                // 2. If a session exists, fetch the associated profile
+                if (session?.user) {
+                    const { data: userProfile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+                    
+                    if (profileError) {
+                        console.error('Error fetching profile:', profileError.message);
+                    }
+                    setProfile(userProfile || null);
+                }
+            } catch (e) {
+                console.error("Error during initial auth session:", (e as Error).message);
+            } finally {
+                // --- THIS IS THE CRITICAL FIX ---
+                // 3. No matter the outcome, set loading to false after the check.
+                setLoading(false);
+            }
         };
 
-        getInitialSession();
+        fetchSessionAndProfile();
 
+        // Listen for auth state changes (login, logout)
         const { data: authListener } = supabase.auth.onAuthStateChange(
-            async (_event, newSession) => {
-                setSession(newSession);
-                const currentUser = newSession?.user ?? null;
+            async (_event, session) => {
+                setSession(session);
+                const currentUser = session?.user ?? null;
                 setUser(currentUser);
-                
-                // --- IMPROVEMENT ---
-                // When the auth state changes (e.g., user logs in or out),
-                // we should always try to fetch the profile or clear it.
-                // This makes the context reactive and up-to-date without a page refresh.
-                if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') {
-                    await fetchProfile(currentUser);
-                }
-                if (_event === 'SIGNED_OUT') {
+
+                // If user logs in, fetch their profile
+                if (currentUser) {
+                     const { data: userProfile } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', currentUser.id)
+                        .single();
+                    setProfile(userProfile || null);
+                } else {
+                    // If user logs out, clear the profile
                     setProfile(null);
                 }
+                
+                // Set loading to false after auth state changes as well
+                setLoading(false);
             }
         );
 
+        // Cleanup the listener on component unmount
         return () => {
             authListener?.subscription?.unsubscribe();
         };
     }, []);
 
-    const value = { user, profile, session, loading, refetchProfile, signOut };
+    const value = {
+        user,
+        profile,
+        session,
+        loading,
+    };
 
-    return (
-        <AuthContext.Provider value={value}>
-            {children}
-        </AuthContext.Provider>
-    );
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// Custom hook to use the auth context
 export const useAuth = () => {
     const context = useContext(AuthContext);
-    if (context === undefined) {
+    if (context === null) {
         throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;
