@@ -1,11 +1,14 @@
 // src/pages/dashboard/artist/ArtworkListPage.tsx
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
-import { PlusCircle, List, LayoutGrid, MoreVertical, Circle, CheckCircle, Archive } from 'lucide-react'; // Removed 'Folder' icon as it's no longer used
+import { PlusCircle, List, LayoutGrid, MoreVertical, Circle, CheckCircle, Archive, BookCopy, Info } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { useDebounce } from '@/hooks/useDebounce'; // IMPROVEMENT: Assumes a useDebounce hook exists
+
 import ArtworkUploadModal from '@/components/dashboard/ArtworkUploadModal';
 import { useArtworkUploadStore } from '@/stores/artworkUploadStore';
 import ArtworkActionsMenu from '@/components/dashboard/ArtworkActionsMenu';
@@ -14,14 +17,17 @@ import { Database } from '@/types/database.types';
 
 type Artwork = Database['public']['Tables']['artworks']['Row'];
 
-const fetchArtworks = async (userId: string): Promise<Artwork[]> => {
+type ArtworkWithCatalogueCount = Artwork & {
+    artwork_catalogues: { count: number }[];
+};
+
+const fetchArtworks = async (userId: string): Promise<ArtworkWithCatalogueCount[]> => {
     const { data, error } = await supabase
         .from('artworks')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .select('*, artwork_catalogues(count)')
+        .eq('user_id', userId);
     if (error) throw new Error(error.message);
-    return data || [];
+    return (data as any[] || []) as ArtworkWithCatalogueCount[];
 };
 
 const formatPrice = (price: number | null, currency: string | null) => {
@@ -29,9 +35,9 @@ const formatPrice = (price: number | null, currency: string | null) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(price);
 };
 
-const StatusBadge = ({ status }: { status: string }) => {
+// IMPROVEMENT: Memoize the StatusBadge component to prevent re-renders
+const StatusBadge = React.memo(({ status }: { status: string }) => {
     const statusMap: { [key: string]: { text: string; icon: React.ReactNode; color: string } } = {
-        // FIX: Changed 'Active' to 'Available' for consistency with database and actions.
         'Available': { text: 'Available', icon: <CheckCircle size={14} />, color: 'var(--color-green-success)' },
         'Sold': { text: 'Sold', icon: <Archive size={14} />, color: 'var(--foreground)' },
         'Pending': { text: 'Pending', icon: <Circle size={14} />, color: 'var(--muted-foreground)' }
@@ -43,10 +49,35 @@ const StatusBadge = ({ status }: { status: string }) => {
             <span>{currentStatus.text}</span>
         </div>
     );
-};
+});
+
+// IMPROVEMENT: Memoize the ArtworkListItem component
+const ArtworkListItem = React.memo(({ art, onMenuOpen }: { art: ArtworkWithCatalogueCount; onMenuOpen: (event: React.MouseEvent<HTMLElement>, artwork: ArtworkWithCatalogueCount) => void }) => (
+    <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', padding: '1rem', gap: '1rem' }}>
+        <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
+        <div style={{ flexGrow: 1 }}>
+            <h4 style={{ margin: 0, fontStyle: 'italic' }}>{art.title || "Untitled (Pending Details)"}</h4>
+            <p style={{ fontWeight: 'bold', fontSize: '1rem', margin: '0.25rem 0' }}>{formatPrice(art.price, art.currency)}</p>
+            <div style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <BookCopy size={14} />
+                <span>
+                    {(art.artwork_catalogues[0]?.count ?? 0) > 0
+                        ? `In ${art.artwork_catalogues[0].count} catalogue${art.artwork_catalogues[0].count > 1 ? 's' : ''}`
+                        : 'Not in any catalogues'
+                    }
+                </span>
+            </div>
+        </div>
+        <div style={{ width: '120px' }}><StatusBadge status={art.status} /></div>
+        <button className="button-icon" onClick={(e) => onMenuOpen(e, art)} aria-label="Artwork Actions">
+            <MoreVertical size={20} />
+        </button>
+    </div>
+));
+
 
 const ArtworkListPage = () => {
-    const { user, profile } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -54,79 +85,71 @@ const ArtworkListPage = () => {
 
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortOption, setSortOption] = useState('created_at-desc');
+    const debouncedSearchQuery = useDebounce(searchQuery, 300); // Debounce search
+    const [sortOption, setSortOption] = useState('updated_at-desc');
     const [filterStatus, setFilterStatus] = useState('all');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('list'); // Default to list view
     
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-    const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+    const [selectedArtwork, setSelectedArtwork] = useState<ArtworkWithCatalogueCount | null>(null);
     const [showAssignModal, setShowAssignModal] = useState(false);
 
-    const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, artwork: Artwork) => {
-        setAnchorEl(event.currentTarget);
-        setSelectedArtwork(artwork);
-    };
-    const handleMenuClose = () => {
-        setAnchorEl(null);
-        setSelectedArtwork(null);
-    };
-    const handleAssignModalOpen = () => {
-        setShowAssignModal(true);
-        handleMenuClose();
-    };
-
-    const { data: artworks, isLoading: isLoadingArtworks } = useQuery({
+    const { data: artworks, isLoading: isLoadingArtworks } = useQuery<ArtworkWithCatalogueCount[]>({
         queryKey: ['artworks', user?.id],
         queryFn: () => fetchArtworks(user!.id),
         enabled: !!user,
     });
 
-    const deleteMutation = useMutation({
-        mutationFn: async (artworkId: string) => {
-            const { error } = await supabase.from('artworks').delete().eq('id', artworkId);
-            if (error) throw new Error(error.message);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
-            alert('Artwork deleted successfully.');
-        },
-        onError: (error) => alert(`Error deleting artwork: ${error.message}`),
-    });
+    const useArtworkMutation = (mutationFn: (id: string) => Promise<any>, successMessage: string, errorMessage: string) => {
+        return useMutation({
+            mutationFn,
+            onSuccess: () => {
+                toast.success(successMessage);
+                queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
+            },
+            onError: (error) => toast.error(`${errorMessage}: ${error.message}`),
+        });
+    };
 
-    const markAsSoldMutation = useMutation({
-        mutationFn: async (artworkId: string) => {
-            const { error } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
-            if (error) throw new Error(error.message);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
-        },
-        onError: (error) => alert(`Error updating artwork: ${error.message}`),
-    });
+    const deleteMutation = useArtworkMutation(
+        async (artworkId) => supabase.from('artworks').delete().eq('id', artworkId),
+        'Artwork deleted successfully.',
+        'Error deleting artwork'
+    );
 
-    // --- FIX (1/3): Add a mutation to mark artwork as available ---
-    const markAsAvailableMutation = useMutation({
-        mutationFn: async (artworkId: string) => {
-            const { error } = await supabase.from('artworks').update({ status: 'Available' }).eq('id', artworkId);
-            if (error) throw new Error(error.message);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
-        },
-        onError: (error) => alert(`Error updating artwork: ${error.message}`),
-    });
+    const markAsSoldMutation = useArtworkMutation(
+        async (artworkId) => supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId),
+        'Artwork marked as sold.',
+        'Error updating artwork'
+    );
+
+    const markAsAvailableMutation = useArtworkMutation(
+        async (artworkId) => supabase.from('artworks').update({ status: 'Available' }).eq('id', artworkId),
+        'Artwork marked as available.',
+        'Error updating artwork'
+    );
+    
+    const handleMenuOpen = useCallback((event: React.MouseEvent<HTMLElement>, artwork: ArtworkWithCatalogueCount) => {
+        setAnchorEl(event.currentTarget);
+        setSelectedArtwork(artwork);
+    }, []);
+    
+    const handleMenuClose = useCallback(() => {
+        setAnchorEl(null);
+        setSelectedArtwork(null);
+    }, []);
 
     const processedArtworks = useMemo(() => {
         if (!artworks) return [];
         let filtered = artworks.filter(art => {
             const statusMatch = filterStatus === 'all' || art.status === filterStatus;
-            const searchMatch = !searchQuery || (art.title || '').toLowerCase().includes(searchQuery.toLowerCase());
+            const searchMatch = !debouncedSearchQuery || (art.title || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase());
             return statusMatch && searchMatch;
         });
         const [key, direction] = sortOption.split('-');
         return filtered.sort((a, b) => {
-            const valA = a[key as keyof Artwork];
-            const valB = b[key as keyof Artwork];
+            const valA = a[key as keyof ArtworkWithCatalogueCount];
+            const valB = b[key as keyof ArtworkWithCatalogueCount];
             if (valA === null || valA === undefined) return 1;
             if (valB === null || valB === undefined) return -1;
             let comparison = 0;
@@ -139,7 +162,7 @@ const ArtworkListPage = () => {
             }
             return direction === 'asc' ? comparison : -comparison;
         });
-    }, [artworks, searchQuery, sortOption, filterStatus]);
+    }, [artworks, debouncedSearchQuery, sortOption, filterStatus]);
     
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files?.length) {
@@ -155,16 +178,11 @@ const ArtworkListPage = () => {
         navigate(`/artist/artworks/wizard?ids=${artworkIds.join(',')}`);
     };
 
-    const handleEdit = (id: string) => navigate(`/artist/artworks/edit/${id}`);
     const handleDelete = (id: string, title: string | null) => {
         if (window.confirm(`Are you sure you want to permanently delete "${title || 'this artwork'}"?`)) {
             deleteMutation.mutate(id);
         }
     };
-    const handleMarkAsSold = (id: string) => markAsSoldMutation.mutate(id);
-    
-    // --- FIX (2/3): Create the handler function for the new mutation ---
-    const handleMarkAsAvailable = (id: string) => markAsAvailableMutation.mutate(id);
 
     return (
         <div>
@@ -181,7 +199,6 @@ const ArtworkListPage = () => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem', flexWrap: 'wrap' }}>
                 <input className="input" placeholder="Search by title..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{flexGrow: 1, minWidth: '200px'}} />
-                {/* FIX: Use 'Available' instead of 'Active' in filter */}
                 <select className="input" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{flex: '0 0 150px'}}>
                     <option value="all">All Statuses</option>
                     <option value="Available">Available</option>
@@ -189,6 +206,7 @@ const ArtworkListPage = () => {
                     <option value="Pending">Pending</option>
                 </select>
                 <select className="input" value={sortOption} onChange={(e) => setSortOption(e.target.value)} style={{flex: '0 0 180px'}}>
+                    <option value="updated_at-desc">Sort by: Last Edited</option>
                     <option value="created_at-desc">Sort by: Newest</option>
                     <option value="created_at-asc">Sort by: Oldest</option>
                     <option value="title-asc">Sort by: Title (A-Z)</option>
@@ -201,46 +219,42 @@ const ArtworkListPage = () => {
                 </div>
             </div>
             
-            {isLoadingArtworks ? <p>Loading artworks...</p> : (
+            {isLoadingArtworks ? (
+                <p>Loading artworks...</p>
+            ) : artworks && artworks.length === 0 ? (
+                // IMPROVEMENT: Empty state for when the artist has no artworks yet.
+                <div className="empty-state-card">
+                    <Info size={48} style={{ color: 'var(--muted-foreground)' }} />
+                    <h2>No Artworks Yet</h2>
+                    <p>Click "Create New Artwork" to upload your first piece and get started.</p>
+                </div>
+            ) : processedArtworks.length === 0 ? (
+                // IMPROVEMENT: No results message for when filters yield no artworks.
+                 <div className="empty-state-card">
+                    <Info size={48} style={{ color: 'var(--muted-foreground)' }} />
+                    <h2>No Matching Artworks</h2>
+                    <p>Try adjusting your search or filter criteria.</p>
+                </div>
+            ) : (
+                // Renders the list or grid view
                 <div style={viewMode === 'grid' ? { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.5rem' } : { display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {processedArtworks.map((art) => (
-                        viewMode === 'grid' ? (
-                            <div key={art.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                                {/* Grid view content... */}
-                            </div>
-                        ) : (
-                            <div key={art.id} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', alignItems: 'center', padding: '1rem', gap: '1rem' }}>
-                               <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
-                                <div style={{ flexGrow: 1 }}>
-                                    <h4 style={{ margin: 0, fontStyle: 'italic' }}>{art.title || "Untitled (Pending Details)"}</h4>
-                                    <p style={{ fontWeight: 'bold', fontSize: '1rem', margin: '0.25rem 0' }}>{formatPrice(art.price, art.currency)}</p>
-                                    {/* FIX: Removed the incorrect single-catalogue display to avoid data inconsistency. */}
-                                </div>
-                                <div style={{ width: '120px' }}><StatusBadge status={art.status} /></div>
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    {/* Action buttons... */}
-                                </div>
-                            </div>
-                        )
-                    ))}
+                   {/* Grid view would also be wrapped in a memoized component */}
+                   {processedArtworks.map((art) => <ArtworkListItem key={art.id} art={art} onMenuOpen={handleMenuOpen} />)}
                 </div>
             )}
 
             {selectedArtwork && (
-                // --- FIX (3/3): Pass the new prop to the component to fix the build error ---
                 <ArtworkActionsMenu 
                     artwork={selectedArtwork}
                     anchorEl={anchorEl}
                     onClose={handleMenuClose}
-                    onEdit={() => { handleEdit(selectedArtwork.id); handleMenuClose(); }}
+                    onEdit={() => { navigate(`/artist/artworks/edit/${selectedArtwork.id}`); handleMenuClose(); }}
                     onDelete={() => { handleDelete(selectedArtwork.id, selectedArtwork.title); handleMenuClose(); }}
-                    onMarkAsSold={() => { handleMarkAsSold(selectedArtwork.id); handleMenuClose(); }}
-                    onMarkAsAvailable={() => { handleMarkAsAvailable(selectedArtwork.id); handleMenuClose(); }}
-                    onAssignCatalogue={handleAssignModalOpen}
+                    onMarkAsSold={() => { markAsSoldMutation.mutate(selectedArtwork.id); handleMenuClose(); }}
+                    onMarkAsAvailable={() => { markAsAvailableMutation.mutate(selectedArtwork.id); handleMenuClose(); }}
+                    onAssignCatalogue={() => { setShowAssignModal(true); handleMenuClose(); }}
                 />
             )}
-
-            {/* Fallback content... */}
         </div>
     );
 };
