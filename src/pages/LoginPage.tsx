@@ -8,22 +8,27 @@ const LoginPage = () => {
     const navigate = useNavigate();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [loading,setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setError(null);
+        
         const { error } = await supabase.auth.signInWithPassword({ email, password });
+        
         if (error) {
             setError(error.message);
             setLoading(false);
         } else {
-            // FIX: Navigate to the generic /dashboard route.
             // The DashboardRedirector component in App.tsx will handle sending them
             // to the correct page (/artist/dashboard or /collector/dashboard).
             navigate('/dashboard');
+            // FIX: The loading state was not being reset on a successful login.
+            // Although navigation occurs, it's crucial to reset the state
+            // in case the component doesn't unmount immediately.
+            setLoading(false); 
         }
     };
 
