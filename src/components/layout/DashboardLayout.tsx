@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthProvider';
 import { 
     Image, BookCopy, HandCoins, BarChart2, Users, Heart, MessageSquare, 
-    Settings, LayoutDashboard, LogOut, Compass 
+    Settings, LayoutDashboard, LogOut, Compass, MoreVertical
 } from 'lucide-react';
 import NotificationIcon from '../notifications/NotificationIcon';
 import toast from 'react-hot-toast';
@@ -21,6 +21,7 @@ const DashboardLayout = () => {
     const navigate = useNavigate();
     const isArtist = profile?.role === 'artist' || profile?.role === 'both';
     const isCollector = profile?.role === 'collector' || profile?.role === 'both';
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // State for new menu
 
     const handleSignOut = async () => {
         const { error } = await signOut();
@@ -68,9 +69,28 @@ const DashboardLayout = () => {
             </aside>
 
             <div className="dashboard-main-wrapper">
+                {/* FIX: Added a dropdown menu to the top bar for essential actions on mobile. */}
                 <header className="dashboard-top-bar">
                     <div className="top-bar-actions">
                         <NotificationIcon />
+                        <div className="notification-icon-wrapper">
+                            <button className="notification-icon-button" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+                                <MoreVertical size={24} />
+                            </button>
+                            {isMobileMenuOpen && (
+                                <div className="notification-panel" style={{ width: '220px', maxHeight: 'none' }}>
+                                    <nav className="desktop-sidebar-nav" style={{ padding: '0.5rem' }} onClick={() => setIsMobileMenuOpen(false)}>
+                                        <h3 className="nav-heading" style={{ padding: '0 0.5rem', marginTop: 0 }}>Menu</h3>
+                                        <DesktopNavLink to={isArtist ? "/artist/settings" : "/collector/settings"}>
+                                            <Settings size={16} /> Settings
+                                        </DesktopNavLink>
+                                        <button onClick={handleSignOut} className="nav-link">
+                                            <LogOut size={16} /> Log Out
+                                        </button>
+                                    </nav>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </header>
                 
