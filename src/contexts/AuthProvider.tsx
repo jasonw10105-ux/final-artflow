@@ -5,11 +5,13 @@ import { Database } from '@/types/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
+// --- FIX: Added the signOut function to the type definition ---
 interface AuthContextType {
     user: User | null;
     profile: Profile | null;
     session: Session | null;
     loading: boolean;
+    signOut: () => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -23,14 +25,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         const fetchSessionAndProfile = async () => {
             try {
-                // 1. Get the initial session
                 const { data: { session }, error } = await supabase.auth.getSession();
                 if (error) throw error;
 
                 setSession(session);
                 setUser(session?.user ?? null);
 
-                // 2. If a session exists, fetch the associated profile
                 if (session?.user) {
                     const { data: userProfile, error: profileError } = await supabase
                         .from('profiles')
@@ -46,22 +46,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             } catch (e) {
                 console.error("Error during initial auth session:", (e as Error).message);
             } finally {
-                // --- THIS IS THE CRITICAL FIX ---
-                // 3. No matter the outcome, set loading to false after the check.
                 setLoading(false);
             }
         };
 
         fetchSessionAndProfile();
 
-        // Listen for auth state changes (login, logout)
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (_event, session) => {
                 setSession(session);
                 const currentUser = session?.user ?? null;
                 setUser(currentUser);
 
-                // If user logs in, fetch their profile
                 if (currentUser) {
                      const { data: userProfile } = await supabase
                         .from('profiles')
@@ -70,32 +66,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                         .single();
                     setProfile(userProfile || null);
                 } else {
-                    // If user logs out, clear the profile
                     setProfile(null);
                 }
                 
-                // Set loading to false after auth state changes as well
                 setLoading(false);
             }
         );
 
-        // Cleanup the listener on component unmount
         return () => {
             authListener?.subscription?.unsubscribe();
         };
     }, []);
+
+    // --- FIX: Defined the signOut function ---
+    const signOut = () => supabase.auth.signOut();
 
     const value = {
         user,
         profile,
         session,
         loading,
+        signOut, // --- FIX: Exposed the signOut function through the context ---
     };
 
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+    return <AuthContext.Provider value={value}>{children}</Auth.Context.Provider>;
 };
 
-// Custom hook to use the auth context
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (context === null) {
