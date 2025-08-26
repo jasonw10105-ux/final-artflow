@@ -1,3 +1,4 @@
+// App.tsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
@@ -39,13 +40,14 @@ import SalesPage from './pages/dashboard/artist/SalesPage';
 import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
 import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
 
-
+// AuthLoading component remains the same
 const AuthLoading = () => (
     <div className="loading-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <p>Loading Application...</p>
     </div>
 );
 
+// DashboardRedirector remains the same
 const DashboardRedirector = () => {
     const { profile, loading } = useAuth();
     if (loading) return <AuthLoading />;
@@ -55,22 +57,23 @@ const DashboardRedirector = () => {
     return <Navigate to="/login" replace />;
 };
 
-// --- FIX: SIMPLIFIED PROTECTED ROUTE ---
-// This component now only checks for a logged-in user.
+// ProtectedRoute remains the same, ensures user is logged in
 const ProtectedRoute = () => {
     const { user, loading } = useAuth();
     if (loading) return <AuthLoading />;
     if (!user) {
-        return <Navigate to="/login" replace />;
+        // If not logged in, redirect to login with a "from" state
+        return <Navigate to="/login" state={{ from: window.location.pathname }} replace />;
     }
     return <Outlet />;
 };
 
-// --- FIX: NEW COMPONENT FOR PROFILE COMPLETION ---
-// This component handles redirecting users with incomplete profiles.
+// RequireProfileCompleted remains the same, ensures profile is complete
 const RequireProfileCompleted = () => {
     const { profile, loading } = useAuth();
     if (loading) return <AuthLoading />;
+    // If profile is not complete AND user is logged in, redirect to complete profile
+    // Note: ProtectedRoute already ensures user exists here.
     if (profile && !profile.profile_completed) {
         return <Navigate to="/complete-profile" replace />;
     }
@@ -80,45 +83,51 @@ const RequireProfileCompleted = () => {
 const AppRoutes = () => {
   return (
       <Routes>
-        {/* --- Public Routes (No changes here) --- */}
+        {/* --- Public Routes that do NOT use MarketingLayout --- */}
         <Route path="/" element={<WaitlistPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
         
+        {/* --- Public Routes that use MarketingLayout --- */}
+        {/* Ensure MarketingLayout has an <Outlet /> to render its children */}
         <Route element={<MarketingLayout />}>
-            <Route path="/home" element={<MarketingPage />} />
+            {/* Added an explicit index route for /home if that's the main landing page */}
+            <Route index path="/home" element={<MarketingPage />} /> 
             <Route path="/artists" element={<BrowseArtistsPage />} />
             <Route path="/artworks" element={<BrowseArtworksPage />} />
             <Route path="/catalogues" element={<BrowseCataloguesPage />} />
+            {/* Public Profile and Artwork pages */}
             <Route path="/u/:profileSlug" element={<ArtistPortfolioPage />} />
             <Route path="/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
             <Route path="/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
         </Route>
 
-        {/* --- FIX: RESTRUCTURED PROTECTED ROUTES --- */}
+        {/* --- Protected Routes --- */}
         <Route element={<ProtectedRoute />}>
-            {/* This page only requires a user to be logged in */}
+            {/* This page only requires a user to be logged in, not a completed profile */}
             <Route path="/complete-profile" element={<CompleteProfilePage />} />
             
-            {/* All routes inside here require a COMPLETED profile */}
+            {/* All routes inside this <RequireProfileCompleted /> element require a COMPLETED profile */}
             <Route element={<RequireProfileCompleted />}>
+                {/* Redirects to specific dashboard based on role */}
                 <Route path="/dashboard" element={<DashboardRedirector />} />
                 
-                {/* Standalone Wizard/Editor Routes */}
+                {/* Standalone Wizard/Editor Routes (no DashboardLayout) */}
                 <Route path="/artist/artworks/wizard" element={<ArtworkWizardPage />} />
                 <Route path="/artist/catalogues/new" element={<CatalogueWizardPage />} />
                 <Route path="/artist/catalogues/edit/:catalogueId" element={<CatalogueWizardPage />} />
                 <Route path="/artist/artworks/edit/:artworkId" element={<ArtworkEditorPage />} />
-                
-                {/* Main Dashboard Routes with Layout */}
+                <Route path="/artist/contacts/edit/:contactId" element={<ContactEditorPage />} /> {/* Moved here as it might not always need DashboardLayout */}
+
+                {/* Main Dashboard Routes with DashboardLayout */}
+                {/* Ensure DashboardLayout has an <Outlet /> to render its children */}
                 <Route element={<DashboardLayout />}>
                     <Route path="/artist/dashboard" element={<ArtistDashboardPage />} />
                     <Route path="/artist/artworks" element={<ArtworkListPage />} />
                     <Route path="/artist/catalogues" element={<CatalogueListPage />} />
                     <Route path="/artist/contacts" element={<ContactListPage />} />
-                    <Route path="/artist/contacts/edit/:contactId" element={<ContactEditorPage />} />
                     <Route path="/artist/messages" element={<MessagingCenterPage />} />
                     <Route path="/artist/sales" element={<SalesPage />} />
                     <Route path="/artist/insights" element={<ArtistInsightsPage />} />
@@ -131,6 +140,7 @@ const AppRoutes = () => {
             </Route>
         </Route>
 
+        {/* Catch-all for undefined routes */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
   );
