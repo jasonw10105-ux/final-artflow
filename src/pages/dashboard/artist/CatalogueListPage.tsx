@@ -3,9 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
-import { useDebounce } from '@/hooks/useDebounce'; // IMPROVEMENT: Import debounce hook
+import { useDebounce } from '@/hooks/useDebounce';
 import { PlusCircle, ImageOff, CheckCircle, Archive, Lock } from 'lucide-react';
-import { Database } from '@/types/database/types';
+// FIX: Corrected the import path for the database types.
+import { Database } from '@/types/database.types';
 
 type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
     total_count: number; available_count: number; sold_count: number;
@@ -20,7 +21,6 @@ const fetchCataloguesWithStatusCounts = async (userId: string): Promise<Catalogu
     return data || [];
 };
 
-// IMPROVEMENT: Extracted the list item into a memoized component for performance.
 const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWithCounts; profileSlug: string | null | undefined }) => (
     <div style={{
         background: 'var(--card)', borderRadius: 'var(--radius)',
@@ -74,28 +74,28 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
     </div>
 ));
 
-// IMPROVEMENT: Added a skeleton component for a better loading experience.
 const CatalogueListSkeleton = () => (
-    Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', paddingRight: '1.5rem' }}>
-            <div style={{ width: '150px', height: '150px', background: 'var(--input)' }} />
-            <div style={{ flexGrow: 1, padding: '1rem 0' }}>
-                <div style={{ height: '24px', width: '40%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '0.5rem' }} />
-                <div style={{ height: '18px', width: '25%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }} />
-                <div style={{ display: 'flex', gap: '1.5rem' }}>
-                    <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
-                    <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
+    <>
+        {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', paddingRight: '1.5rem' }}>
+                <div style={{ width: '150px', height: '150px', background: 'var(--input)' }} />
+                <div style={{ flexGrow: 1, padding: '1rem 0' }}>
+                    <div style={{ height: '24px', width: '40%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '0.5rem' }} />
+                    <div style={{ height: '18px', width: '25%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }} />
+                    <div style={{ display: 'flex', gap: '1.5rem' }}>
+                        <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
+                        <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
+                    </div>
                 </div>
             </div>
-        </div>
-    ))
+        ))}
+    </>
 );
-
 
 const CatalogueListPage = () => {
     const { user, profile } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
-    const debouncedSearchQuery = useDebounce(searchQuery, 300); // Debounced search
+    const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [sortOption, setSortOption] = useState('created_at-desc');
     const [filterStatus, setFilterStatus] = useState('all');
 
