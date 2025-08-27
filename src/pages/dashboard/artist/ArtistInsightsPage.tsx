@@ -1,39 +1,13 @@
 // src/pages/dashboard/artist/ArtistInsightsPage.tsx
 import React, { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from '../../../contexts/AuthProvider';
 import { supabase } from '../../../lib/supabaseClient';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Eye, MessageSquare, DollarSign, Package, TrendingUp, Users, Share2 } from 'lucide-react';
-
-// --- Data Fetching ---
-const fetchArtistInsights = async (artistId: string) => {
-  // Basic engagement
-  const { count: profileViews } = await supabase
-    .from('profile_views').select('id', { count: 'exact' }).eq('artist_id', artistId);
-
-  const { count: artworkViews } = await supabase
-    .from('artwork_views').select('id', { count: 'exact' }).eq('artist_id', artistId);
-
-  const { count: inquiries } = await supabase
-    .from('conversations').select('id', { count: 'exact' }).eq('artist_id', artistId);
-
-  // Followers
-  const { data: followersData } = await supabase
-    .from('artist_follows').select('created_at').eq('artist_id', artistId);
-
-  // Shares
-  const { data: sharesData } = await supabase
-    .from('artwork_shares').select('artwork_id, platform, created_at').eq('artist_id', artistId);
-
-  // Sales & artworks
-  const { data: salesData } = await supabase
-    .from('artworks')
-    .select('id, title, price, medium, genre, dimensions, created_at, user_id')
-    .eq('user_id', artistId);
-
-  return { profileViews, artworkViews, inquiries, followersData, sharesData, salesData };
-};
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
+import { Eye, MessageSquare, DollarSign, Package, Users, Share2, TrendingUp } from 'lucide-react';
 
 // --- Helper Components ---
 const StatCard = ({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) => (
@@ -46,9 +20,10 @@ const StatCard = ({ title, value, icon }: { title: string, value: string | numbe
   </div>
 );
 
-const InsightSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
+const InsightSection = ({ title, children, suggestion }: { title: string, children: React.ReactNode, suggestion?: string }) => (
   <div style={styles.insightSection}>
     <h2 style={styles.sectionTitle}>{title}</h2>
+    {suggestion && <p style={{ fontStyle: 'italic', color: 'var(--muted-foreground)' }}>{suggestion}</p>}
     {children}
   </div>
 );
@@ -56,102 +31,54 @@ const InsightSection = ({ title, children }: { title: string, children: React.Re
 // --- Main Page ---
 const ArtistInsightsPage = () => {
   const { user } = useAuth();
-  const { data, isLoading } = useQuery({
+
+  const { data, isLoading, error } = useQuery({
     queryKey: ['artistInsights', user?.id],
-    queryFn: () => fetchArtistInsights(user!.id),
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase.rpc('get_artist_insights_full', { artist_uuid: user.id });
+      if (error) throw error;
+      return data;
+    },
     enabled: !!user
   });
 
-  // --- Memoized calculations ---
-  const followersOverTime = useMemo(() => {
-    if (!data?.followersData) return [];
-    const map: { [month: string]: number } = {};
-    data.followersData.forEach(f => {
-      const month = new Date(f.created_at).toLocaleString('default', { month: 'short', year: '2-digit' });
-      map[month] = (map[month] || 0) + 1;
-    });
-    return Object.entries(map).map(([name, count]) => ({ name, count })).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
-  }, [data]);
-
-  const sharesByPlatform = useMemo(() => {
-    if (!data?.sharesData) return [];
-    const map: { [platform: string]: number } = {};
-    data.sharesData.forEach(s => {
-      map[s.platform] = (map[s.platform] || 0) + 1;
-    });
-    return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [data]);
-
-  const salesStats = useMemo(() => {
-    if (!data?.salesData) return { totalRevenue: 0, artworksSold: 0, popularGenres: [], popularMediums: [], popularSizes: [] };
-    const totalRevenue = data.salesData.reduce((acc, art) => acc + (art.price || 0), 0);
-    const artworksSold = data.salesData.length;
-
-    const genreCounts: { [key: string]: number } = {};
-    const mediumCounts: { [key: string]: number } = {};
-    const sizeCounts: { [key: string]: number } = {};
-
-    data.salesData.forEach(art => {
-      const genre = art.genre || 'Uncategorized';
-      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
-
-      const medium = art.medium || 'Uncategorized';
-      mediumCounts[medium] = (mediumCounts[medium] || 0) + 1;
-
-      const size = art.dimensions?.height && art.dimensions?.width
-        ? `${art.dimensions.width}x${art.dimensions.height}`
-        : 'Unknown';
-      sizeCounts[size] = (sizeCounts[size] || 0) + 1;
-    });
-
-    return {
-      totalRevenue,
-      artworksSold,
-      popularGenres: Object.entries(genreCounts).map(([name, value]) => ({ name, value })),
-      popularMediums: Object.entries(mediumCounts).map(([name, value]) => ({ name, value })),
-      popularSizes: Object.entries(sizeCounts).map(([name, value]) => ({ name, value }))
-    };
-  }, [data]);
-
-  const trendingArtworks = useMemo(() => {
-    if (!data?.salesData) return [];
-    // Weight: views + inquiries*2 + sales*5 + shares*1.5
-    return data.salesData
-      .map(art => {
-        const views = data.artworkViews || 0;
-        const inquiries = data.inquiries || 0;
-        const shares = data.sharesData?.filter(s => s.artwork_id === art.id).length || 0;
-        const score = views + inquiries * 2 + (art.price ? 5 : 0) + shares * 1.5;
-        return { ...art, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  }, [data]);
-
   if (isLoading) return <p>Loading insights...</p>;
+  if (error) return <p>Error loading insights: {(error as any).message}</p>;
+  if (!data) return <p>No data available.</p>;
+
+  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#00C49F', '#FFBB28'];
+
+  // --- Derived Metrics ---
+  const repeatCollectorRatio = data.total_followers ? (data.repeat_collectors_count / data.total_followers) : 0;
+  const totalShares = Object.values(data.shares_by_platform || {}).reduce((a,b)=>a+b,0);
 
   return (
     <div>
       <h1>Your Insights</h1>
-      <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Audience engagement, sales, shares, and trending overview.</p>
+      <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Audience engagement, sales, collector trends, and sharing overview.</p>
 
+      {/* KPI Grid */}
       <div style={styles.kpiGrid}>
-        <StatCard title="Profile Views" value={data?.profileViews || 0} icon={<Eye />} />
-        <StatCard title="Artwork Views" value={data?.artworkViews || 0} icon={<Eye />} />
-        <StatCard title="Inquiries" value={data?.inquiries || 0} icon={<MessageSquare />} />
-        <StatCard title="Followers" value={data?.followersData?.length || 0} icon={<Users />} />
-        <StatCard title="Total Revenue" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(salesStats.totalRevenue)} icon={<DollarSign />} />
-        <StatCard title="Artworks Sold" value={salesStats.artworksSold} icon={<Package />} />
-        <StatCard title="Shares" value={data?.sharesData?.length || 0} icon={<Share2 />} />
+        <StatCard title="Profile Views" value={data.profile_views} icon={<Eye />} />
+        <StatCard title="Artwork Views" value={data.artwork_views} icon={<Eye />} />
+        <StatCard title="Total Inquiries" value={data.total_inquiries} icon={<MessageSquare />} />
+        <StatCard title="Total Followers" value={data.total_followers} icon={<Users />} />
+        <StatCard title="Total Revenue" value={new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(data.total_revenue)} icon={<DollarSign />} />
+        <StatCard title="Artworks Sold" value={data.total_sales} icon={<Package />} />
+        <StatCard title="Repeat Collectors" value={data.repeat_collectors_count} icon={<TrendingUp />} />
+        <StatCard title="Shares" value={totalShares} icon={<Share2 />} />
+        <StatCard title="Repeat Collector Ratio" value={`${(repeatCollectorRatio*100).toFixed(1)}%`} icon={<Users />} />
       </div>
 
+      {/* Insights Grid */}
       <div style={styles.insightsGrid}>
-        {/* Followers Over Time */}
-        <InsightSection title="Follower Growth Over Time">
+        {/* Follower Growth */}
+        <InsightSection title="Follower Growth Over Time" suggestion="Track which months gain the most followers. Focus engagement efforts there.">
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={followersOverTime}>
+            <BarChart data={data.followers_over_time}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
+              <XAxis dataKey="month" />
               <YAxis />
               <Tooltip />
               <Bar dataKey="count" fill="var(--primary)" />
@@ -159,43 +86,78 @@ const ArtistInsightsPage = () => {
           </ResponsiveContainer>
         </InsightSection>
 
-        {/* Shares by Platform */}
-        <InsightSection title="Shares by Platform">
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie data={sharesByPlatform} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
-                {sharesByPlatform.map((entry, index) => (
-                  <Cell key={index} fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042'][index % 4]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </InsightSection>
-
-        {/* Popular Genres */}
-        <InsightSection title="Popular Genres (Sales)">
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie data={salesStats.popularGenres} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
-                {salesStats.popularGenres.map((entry, index) => (
-                  <Cell key={index} fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042'][index % 4]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </InsightSection>
-
         {/* Trending Artworks */}
-        <InsightSection title="Trending Artworks">
-          <ul>
-            {trendingArtworks.map(art => (
-              <li key={art.id}>
-                {art.title} — Score: {art.score.toFixed(1)}
-              </li>
-            ))}
-          </ul>
+        <InsightSection title="Top Trending Artworks" suggestion="Focus promotion on artworks with high combined engagement (views, inquiries, sales, shares).">
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={data.top_trending}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="title" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="score" fill="var(--primary)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </InsightSection>
+
+        {/* Demand Trends */}
+        <InsightSection title="Demand Trends by Genre / Medium" suggestion="Consider producing more works in trending genres or media.">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={data.demand_trends}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="monthly_views" fill="#82ca9d" />
+            </BarChart>
+          </ResponsiveContainer>
+        </InsightSection>
+
+        {/* Shares by Platform */}
+        <InsightSection title="Shares by Platform" suggestion="Promote artworks on the platforms your audience shares the most.">
+          <PieChart width={300} height={300}>
+            <Pie
+              data={Object.entries(data.shares_by_platform || {}).map(([platform, count])=>({ name: platform, value: count }))}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={100}
+            >
+              {Object.entries(data.shares_by_platform || {}).map((_, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip />
+          </PieChart>
+        </InsightSection>
+
+        {/* Conversion Rates */}
+        <InsightSection title="Inquiry → Sales Conversion" suggestion="Identify artworks that generate inquiries but no sales and adjust pricing or promotion.">
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={data.conversion_rates}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="artwork_id" />
+              <YAxis />
+              <Tooltip formatter={(value:number) => `${(value*100).toFixed(1)}%`} />
+              <Bar dataKey="conversion_rate" fill="var(--primary)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </InsightSection>
+
+        {/* Engagement per Artwork */}
+        <InsightSection title="Engagement per Artwork" suggestion="See which artworks convert interest into inquiries and sales. Promote high-converting artworks more.">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={data.artwork_engagement}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="title" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="views" stackId="a" fill="#8884d8" />
+              <Bar dataKey="inquiries" stackId="a" fill="#82ca9d" />
+              <Bar dataKey="sales" stackId="a" fill="#ffc658" />
+              <Bar dataKey="shares" stackId="a" fill="#ff8042" />
+            </BarChart>
+          </ResponsiveContainer>
         </InsightSection>
       </div>
     </div>
