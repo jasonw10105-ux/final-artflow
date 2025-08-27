@@ -3,11 +3,15 @@ import React, { useMemo } from 'react';
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from '../../../contexts/AuthProvider';
 import { supabase } from '../../../lib/supabaseClient';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell
-} from 'recharts';
-import { Eye, MessageSquare, DollarSign, Package, Users, Share2, TrendingUp } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { Eye, MessageSquare, DollarSign, Package, Users, Share2 } from 'lucide-react';
+
+// --- Data Fetching ---
+const fetchArtistInsights = async (artistId: string) => {
+  const { data, error } = await supabase.rpc('artist_insights', { artist_uuid: artistId }).single();
+  if (error) throw error;
+  return data;
+};
 
 // --- Helper Components ---
 const StatCard = ({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) => (
@@ -20,10 +24,9 @@ const StatCard = ({ title, value, icon }: { title: string, value: string | numbe
   </div>
 );
 
-const InsightSection = ({ title, children, suggestion }: { title: string, children: React.ReactNode, suggestion?: string }) => (
+const InsightSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
   <div style={styles.insightSection}>
     <h2 style={styles.sectionTitle}>{title}</h2>
-    {suggestion && <p style={{ fontStyle: 'italic', color: 'var(--muted-foreground)' }}>{suggestion}</p>}
     {children}
   </div>
 );
@@ -32,136 +35,127 @@ const InsightSection = ({ title, children, suggestion }: { title: string, childr
 const ArtistInsightsPage = () => {
   const { user } = useAuth();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['artistInsights', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data, error } = await supabase.rpc('get_artist_insights_full', { artist_uuid: user.id });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => fetchArtistInsights(user!.id),
     enabled: !!user
   });
 
+  // --- Memoized Computations ---
+  const followersOverTime = useMemo(() => {
+    if (!data?.followers || data.followers.length === 0) return [];
+    const map: { [month: string]: number } = {};
+    data.followers.forEach((f: any) => {
+      const month = new Date(f.created_at).toLocaleString('default', { month: 'short', year: '2-digit' });
+      map[month] = (map[month] || 0) + 1;
+    });
+    return Object.entries(map).map(([name, count]) => ({ name, count })).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
+  }, [data]);
+
+  const repeatCollectorRatio = useMemo(() => {
+    if (!data?.collectorStats) return 0;
+    const repeat = data.collectorStats.filter((c: any) => c.purchases > 1).length;
+    const total = data.collectorStats.length;
+    return total > 0 ? (repeat / total) * 100 : 0;
+  }, [data]);
+
+  const totalShares = useMemo(() => {
+    if (!data?.shares) return 0;
+    return data.shares.reduce((acc: number, s: any) => acc + s.count, 0);
+  }, [data]);
+
   if (isLoading) return <p>Loading insights...</p>;
-  if (error) return <p>Error loading insights: {(error as any).message}</p>;
-  if (!data) return <p>No data available.</p>;
 
-  const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#00C49F', '#FFBB28'];
-
-  // --- Derived Metrics ---
-  const repeatCollectorRatio = data.total_followers ? (data.repeat_collectors_count / data.total_followers) : 0;
-  const totalShares = Object.values(data.shares_by_platform || {}).reduce((a,b)=>a+b,0);
+  if (!data || Object.keys(data).length < 1) return (
+    <p>We're still gathering data for your profile. Check back soon!</p>
+  );
 
   return (
     <div>
       <h1>Your Insights</h1>
-      <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Audience engagement, sales, collector trends, and sharing overview.</p>
+      <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Audience engagement, sales, and sharing overview.</p>
 
-      {/* KPI Grid */}
       <div style={styles.kpiGrid}>
-        <StatCard title="Profile Views" value={data.profile_views} icon={<Eye />} />
-        <StatCard title="Artwork Views" value={data.artwork_views} icon={<Eye />} />
-        <StatCard title="Total Inquiries" value={data.total_inquiries} icon={<MessageSquare />} />
-        <StatCard title="Total Followers" value={data.total_followers} icon={<Users />} />
-        <StatCard title="Total Revenue" value={new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR' }).format(data.total_revenue)} icon={<DollarSign />} />
-        <StatCard title="Artworks Sold" value={data.total_sales} icon={<Package />} />
-        <StatCard title="Repeat Collectors" value={data.repeat_collectors_count} icon={<TrendingUp />} />
-        <StatCard title="Shares" value={totalShares} icon={<Share2 />} />
-        <StatCard title="Repeat Collector Ratio" value={`${(repeatCollectorRatio*100).toFixed(1)}%`} icon={<Users />} />
+        <StatCard title="Profile Views" value={data.profileViews || 0} icon={<Eye />} />
+        <StatCard title="Artwork Views" value={data.artworkViews || 0} icon={<Eye />} />
+        <StatCard title="Total Inquiries" value={data.inquiries || 0} icon={<MessageSquare />} />
+        <StatCard title="Total Followers" value={data.followers?.length || 0} icon={<Users />} />
+        <StatCard title="Total Revenue" value={data.sales?.reduce((acc: number, s: any) => acc + (s.price || 0), 0) || 0} icon={<DollarSign />} />
+        <StatCard title="Artworks Sold" value={data.sales?.length || 0} icon={<Package />} />
+        <StatCard title="Total Shares" value={totalShares} icon={<Share2 />} />
+        <StatCard title="Repeat Collector Ratio" value={`${repeatCollectorRatio.toFixed(1)}%`} icon={<Users />} />
       </div>
 
-      {/* Insights Grid */}
       <div style={styles.insightsGrid}>
-        {/* Follower Growth */}
-        <InsightSection title="Follower Growth Over Time" suggestion="Track which months gain the most followers. Focus engagement efforts there.">
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={data.followers_over_time}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="var(--primary)" />
-            </BarChart>
-          </ResponsiveContainer>
+        {/* Followers Over Time */}
+        <InsightSection title="Follower Growth Over Time">
+          {followersOverTime.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={followersOverTime}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="var(--primary)" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <p>No follower data yet.</p>}
         </InsightSection>
 
-        {/* Trending Artworks */}
-        <InsightSection title="Top Trending Artworks" suggestion="Focus promotion on artworks with high combined engagement (views, inquiries, sales, shares).">
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={data.top_trending}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="title" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="score" fill="var(--primary)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </InsightSection>
-
-        {/* Demand Trends */}
-        <InsightSection title="Demand Trends by Genre / Medium" suggestion="Consider producing more works in trending genres or media.">
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.demand_trends}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="monthly_views" fill="#82ca9d" />
-            </BarChart>
-          </ResponsiveContainer>
-        </InsightSection>
-
-        {/* Shares by Platform */}
-        <InsightSection title="Shares by Platform" suggestion="Promote artworks on the platforms your audience shares the most.">
-          <PieChart width={300} height={300}>
-            <Pie
-              data={Object.entries(data.shares_by_platform || {}).map(([platform, count])=>({ name: platform, value: count }))}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-            >
-              {Object.entries(data.shares_by_platform || {}).map((_, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+        {/* Top Trending Artworks */}
+        <InsightSection title="Top Trending Artworks">
+          {data.trendingArtworks?.length > 0 ? (
+            <ul>
+              {data.trendingArtworks.map((art: any) => (
+                <li key={art.id}>{art.title} (Score: {art.score})</li>
               ))}
-            </Pie>
-            <Tooltip />
-          </PieChart>
+            </ul>
+          ) : <p>Trending data not available yet.</p>}
         </InsightSection>
 
-        {/* Conversion Rates */}
-        <InsightSection title="Inquiry → Sales Conversion" suggestion="Identify artworks that generate inquiries but no sales and adjust pricing or promotion.">
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={data.conversion_rates}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="artwork_id" />
-              <YAxis />
-              <Tooltip formatter={(value:number) => `${(value*100).toFixed(1)}%`} />
-              <Bar dataKey="conversion_rate" fill="var(--primary)" />
-            </BarChart>
-          </ResponsiveContainer>
+        {/* Repeat Collector Stats */}
+        <InsightSection title="Repeat Collectors">
+          {data.collectorStats?.length > 0 ? (
+            <p>{repeatCollectorRatio.toFixed(1)}% of collectors have purchased more than once.</p>
+          ) : <p>Collector data not available yet.</p>}
         </InsightSection>
 
-        {/* Engagement per Artwork */}
-        <InsightSection title="Engagement per Artwork" suggestion="See which artworks convert interest into inquiries and sales. Promote high-converting artworks more.">
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={data.artwork_engagement}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="title" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="views" stackId="a" fill="#8884d8" />
-              <Bar dataKey="inquiries" stackId="a" fill="#82ca9d" />
-              <Bar dataKey="sales" stackId="a" fill="#ffc658" />
-              <Bar dataKey="shares" stackId="a" fill="#ff8042" />
-            </BarChart>
-          </ResponsiveContainer>
+        {/* Popular Genres */}
+        <InsightSection title="Popular Genres (Sales)">
+          {data.sales?.length > 0 ? (
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={aggregateByField(data.sales, 'genre')}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                >
+                  {aggregateByField(data.sales, 'genre').map((entry, index) => (
+                    <Cell key={index} fill={['#8884d8','#82ca9d','#ffc658','#ff8042'][index % 4]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <p>No sales data yet.</p>}
         </InsightSection>
+
       </div>
     </div>
   );
+};
+
+// --- Utility to aggregate sales by a field ---
+const aggregateByField = (items: any[], field: string) => {
+  const map: { [key: string]: number } = {};
+  items.forEach(item => {
+    const val = item[field] || 'Uncategorized';
+    map[val] = (map[val] || 0) + 1;
+  });
+  return Object.entries(map).map(([name, value]) => ({ name, value }));
 };
 
 // --- Styles ---
