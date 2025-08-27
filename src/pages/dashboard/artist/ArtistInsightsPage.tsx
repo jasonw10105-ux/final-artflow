@@ -1,201 +1,207 @@
 // src/pages/dashboard/artist/ArtistInsightsPage.tsx
-
 import React, { useMemo } from 'react';
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from '../../../contexts/AuthProvider';
 import { supabase } from '../../../lib/supabaseClient';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Legend as PieLegend } from 'recharts';
-import { Eye, MessageSquare, DollarSign, Package, TrendingUp } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Eye, MessageSquare, DollarSign, Package, TrendingUp, Users } from 'lucide-react';
 
 // --- Data Fetching ---
+const fetchArtistInsights = async (artistId: string) => {
+  // Basic Engagement
+  const { count: profileViews } = await supabase.from('profile_views').select('id', { count: 'exact' }).eq('artist_id', artistId);
+  const { count: artworkViews } = await supabase.from('artwork_views').select('id', { count: 'exact' }).eq('artist_id', artistId);
+  const { count: inquiries } = await supabase.from('conversations').select('id', { count: 'exact' }).eq('artist_id', artistId);
 
-// Fetches all necessary data in one go
-const fetchInsightsData = async (artistId: string) => {
-    // 1. Basic engagement stats
-    const { count: profileViews } = await supabase.from('profile_views').select('id', { count: 'exact' }).eq('artist_id', artistId);
-    const { count: artworkViews } = await supabase.from('artwork_views').select('id', { count: 'exact' }).eq('artist_id', artistId);
-    const { count: inquiries } = await supabase.from('conversations').select('id', { count: 'exact' }).eq('artist_id', artistId);
+  // Followers
+  const { data: followersData } = await supabase
+    .from('artist_follows')
+    .select('created_at')
+    .eq('artist_id', artistId);
 
-    // 2. Sales data for financial insights
-    const { data: salesData, error: salesError } = await supabase
-        .from('artworks')
-        .select('title, price, medium, location, created_at') // Use a 'sold_at' timestamp if you add one later
-        .eq('user_id', artistId)
-        .eq('status', 'Sold');
-    
-    if (salesError) throw salesError;
+  const { data: salesData } = await supabase
+    .from('artworks')
+    .select('title, price, medium, genre, dimensions, created_at')
+    .eq('user_id', artistId)
+    .eq('status', 'Sold');
 
-    return {
-        engagement: [
-            { name: 'Profile Views', count: profileViews || 0 },
-            { name: 'Total Artwork Views', count: artworkViews || 0 },
-            { name: 'Total Inquiries', count: inquiries || 0 },
-        ],
-        sales: salesData || []
-    };
+  return { profileViews, artworkViews, inquiries, followersData, salesData };
 };
 
-
 // --- Helper Components ---
-
 const StatCard = ({ title, value, icon }: { title: string, value: string | number, icon: React.ReactNode }) => (
-    <div style={styles.statCard}>
-        <div style={styles.statIcon}>{icon}</div>
-        <div>
-            <h3 style={styles.statValue}>{value}</h3>
-            <p style={styles.statTitle}>{title}</p>
-        </div>
+  <div style={styles.statCard}>
+    <div style={styles.statIcon}>{icon}</div>
+    <div>
+      <h3 style={styles.statValue}>{value}</h3>
+      <p style={styles.statTitle}>{title}</p>
     </div>
+  </div>
 );
 
 const InsightSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
-    <div style={styles.insightSection}>
-        <h2 style={styles.sectionTitle}>{title}</h2>
-        {children}
-    </div>
+  <div style={styles.insightSection}>
+    <h2 style={styles.sectionTitle}>{title}</h2>
+    {children}
+  </div>
 );
 
-
-// --- Main Insights Page ---
-
+// --- Main Page ---
 const ArtistInsightsPage = () => {
-    const { user } = useAuth();
-    
-    const { data, isLoading } = useQuery({
-        queryKey: ['artistInsights', user?.id],
-        queryFn: () => fetchInsightsData(user!.id),
-        enabled: !!user,
+  const { user } = useAuth();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['artistInsights', user?.id],
+    queryFn: () => fetchArtistInsights(user!.id),
+    enabled: !!user
+  });
+
+  // --- Memoized Calculations ---
+  const followersOverTime = useMemo(() => {
+    if (!data?.followersData) return [];
+    const map: { [month: string]: number } = {};
+    data.followersData.forEach(f => {
+      const month = new Date(f.created_at).toLocaleString('default', { month: 'short', year: '2-digit' });
+      map[month] = (map[month] || 0) + 1;
+    });
+    return Object.entries(map).map(([name, count]) => ({ name, count })).sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
+  }, [data]);
+
+  const salesStats = useMemo(() => {
+    if (!data?.salesData) return { totalRevenue: 0, artworksSold: 0, popularGenres: [], popularMediums: [], popularSizes: [] };
+    const totalRevenue = data.salesData.reduce((acc, art) => acc + (art.price || 0), 0);
+    const artworksSold = data.salesData.length;
+
+    const genreCounts: { [key: string]: number } = {};
+    const mediumCounts: { [key: string]: number } = {};
+    const sizeCounts: { [key: string]: number } = {};
+
+    data.salesData.forEach(art => {
+      const genre = art.genre || 'Uncategorized';
+      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+
+      const medium = art.medium || 'Uncategorized';
+      mediumCounts[medium] = (mediumCounts[medium] || 0) + 1;
+
+      const size = art.dimensions?.height && art.dimensions?.width
+        ? `${art.dimensions.width}x${art.dimensions.height}`
+        : 'Unknown';
+      sizeCounts[size] = (sizeCounts[size] || 0) + 1;
     });
 
-    // --- Memoized Data Processing ---
-    const financialKpis = useMemo(() => {
-        if (!data?.sales) return { totalRevenue: 0, artworksSold: 0, averagePrice: 0 };
-        const artworksSold = data.sales.length;
-        const totalRevenue = data.sales.reduce((acc, art) => acc + (art.price || 0), 0);
-        const averagePrice = artworksSold > 0 ? totalRevenue / artworksSold : 0;
-        return { totalRevenue, artworksSold, averagePrice };
-    }, [data]);
+    return {
+      totalRevenue,
+      artworksSold,
+      popularGenres: Object.entries(genreCounts).map(([name, value]) => ({ name, value })),
+      popularMediums: Object.entries(mediumCounts).map(([name, value]) => ({ name, value })),
+      popularSizes: Object.entries(sizeCounts).map(([name, value]) => ({ name, value }))
+    };
+  }, [data]);
 
-    const salesOverTime = useMemo(() => {
-        if (!data?.sales) return [];
-        const monthlySales: { [key: string]: number } = {};
-        data.sales.forEach(sale => {
-            const month = new Date(sale.created_at).toLocaleString('default', { month: 'short', year: '2-digit' });
-            if (!monthlySales[month]) monthlySales[month] = 0;
-            monthlySales[month] += sale.price || 0;
-        });
-        // Format for recharts, and sort by date
-        return Object.entries(monthlySales)
-            .map(([name, sales]) => ({ name, sales }))
-            .sort((a, b) => new Date(a.name) > new Date(b.name) ? 1 : -1);
-    }, [data]);
-    
-    const salesByMedium = useMemo(() => {
-        if (!data?.sales) return [];
-        const mediumCounts: { [key: string]: number } = {};
-        data.sales.forEach(sale => {
-            const medium = sale.medium || 'Uncategorized';
-            if (!mediumCounts[medium]) mediumCounts[medium] = 0;
-            mediumCounts[medium]++;
-        });
-        return Object.entries(mediumCounts).map(([name, value]) => ({ name, value }));
-    }, [data]);
+  if (isLoading) return <p>Loading insights...</p>;
 
+  return (
+    <div>
+      <h1>Your Insights</h1>
+      <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem' }}>Audience engagement and sales overview.</p>
 
-    if (isLoading) return <p>Loading insights...</p>;
+      <div style={styles.kpiGrid}>
+        <StatCard title="Profile Views" value={data?.profileViews || 0} icon={<Eye />} />
+        <StatCard title="Artwork Views" value={data?.artworkViews || 0} icon={<Eye />} />
+        <StatCard title="Total Inquiries" value={data?.inquiries || 0} icon={<MessageSquare />} />
+        <StatCard title="Total Followers" value={data?.followersData?.length || 0} icon={<Users />} />
+        <StatCard title="Total Revenue" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(salesStats.totalRevenue)} icon={<DollarSign />} />
+        <StatCard title="Artworks Sold" value={salesStats.artworksSold} icon={<Package />} />
+      </div>
 
-    return (
-        <div>
-            <h1>Your Insights</h1>
-            <p style={{ color: 'var(--muted-foreground)', marginBottom: '2rem' }}>An overview of your audience engagement and sales performance.</p>
+      <div style={styles.insightsGrid}>
+        {/* Followers Over Time */}
+        <InsightSection title="Follower Growth Over Time">
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={followersOverTime}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="count" fill="var(--primary)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </InsightSection>
 
-            {/* KPI Cards */}
-            <div style={styles.kpiGrid}>
-                <StatCard title="Total Revenue" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(financialKpis.totalRevenue)} icon={<DollarSign />} />
-                <StatCard title="Artworks Sold" value={financialKpis.artworksSold} icon={<Package />} />
-                <StatCard title="Average Sale Price" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(financialKpis.averagePrice)} icon={<TrendingUp />} />
-            </div>
+        {/* Popular Genres */}
+        <InsightSection title="Popular Genres (Sales)">
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie data={salesStats.popularGenres} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                {salesStats.popularGenres.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042'][index % 4]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </InsightSection>
 
-            <div style={styles.insightsGrid}>
-                {/* Sales Trends */}
-                <InsightSection title="Sales Trends Over Time">
-                    <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={salesOverTime}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip formatter={(value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)} />
-                            <Legend />
-                            <Line type="monotone" dataKey="sales" stroke="var(--primary)" strokeWidth={2} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </InsightSection>
-                
-                {/* Sales by Medium */}
-                <InsightSection title="Most In-Demand Mediums">
-                    <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                            <Pie data={salesByMedium} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="var(--primary)">
-                                {salesByMedium.map((entry, index) => <Cell key={`cell-${index}`} fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042'][index % 4]} />)}
-                            </Pie>
-                            <Tooltip formatter={(value: number) => `${value} sale(s)`} />
-                            <PieLegend />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </InsightSection>
+        {/* Popular Mediums */}
+        <InsightSection title="Popular Mediums">
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie data={salesStats.popularMediums} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                {salesStats.popularMediums.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042'][index % 4]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </InsightSection>
 
-                {/* Top Performing Artworks */}
-                <InsightSection title="Fastest Selling Artworks (Most Recent)">
-                     <div style={{maxHeight: 300, overflowY: 'auto'}}>
-                        {data?.sales.slice(0, 5).map(art => (
-                            <div key={art.title} style={styles.listItem}>
-                                <span>{art.title}</span>
-                                <span style={{textAlign: 'right'}}>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(art.price || 0)}</span>
-                            </div>
-                        ))}
-                    </div>
-                </InsightSection>
-                
-                {/* Basic Engagement */}
-                <InsightSection title="Audience Engagement">
-                    <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={data?.engagement}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="count" fill="var(--primary)" />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </InsightSection>
+        {/* Popular Sizes */}
+        <InsightSection title="Popular Sizes">
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie data={salesStats.popularSizes} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                {salesStats.popularSizes.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={['#8884d8', '#82ca9d', '#ffc658', '#ff8042'][index % 4]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </InsightSection>
 
-                {/* Placeholder for Profitability */}
-                <InsightSection title="Profitability (Coming Soon)">
-                    <div style={styles.placeholder}>Track income vs. expenses to understand your true profitability per piece and over time. This requires an expense tracking feature.</div>
-                </InsightSection>
-                
-                {/* Placeholder for Contact Insights */}
-                <InsightSection title="Collector Insights (Coming Soon)">
-                    <div style={styles.placeholder}>Identify repeat collectors and analyze purchasing patterns to build stronger relationships. This requires linking sales to your contact list.</div>
-                </InsightSection>
-            </div>
-        </div>
-    );
+        {/* Engagement Overview */}
+        <InsightSection title="Engagement Overview">
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={[
+              { name: 'Profile Views', count: data?.profileViews || 0 },
+              { name: 'Artwork Views', count: data?.artworkViews || 0 },
+              { name: 'Inquiries', count: data?.inquiries || 0 },
+              { name: 'Followers', count: data?.followersData?.length || 0 }
+            ]}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="count" fill="var(--primary)" />
+            </BarChart>
+          </ResponsiveContainer>
+        </InsightSection>
+      </div>
+    </div>
+  );
 };
 
 // --- Styles ---
 const styles: { [key: string]: React.CSSProperties } = {
-    kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '2rem' },
-    insightsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' },
-    statCard: { display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'var(--card)', padding: '1.5rem', borderRadius: 'var(--radius)' },
-    statIcon: { background: 'var(--primary)', color: 'var(--primary-foreground)', borderRadius: '50%', padding: '0.75rem' },
-    statValue: { fontSize: '2rem', fontWeight: 'bold', margin: 0 },
-    statTitle: { color: 'var(--muted-foreground)', margin: 0 },
-    insightSection: { background: 'var(--card)', padding: '1.5rem', borderRadius: 'var(--radius)' },
-    sectionTitle: { marginTop: 0, marginBottom: '1.5rem' },
-    listItem: { display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid var(--border)' },
-    placeholder: { color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '150px', textAlign: 'center' }
+  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' },
+  insightsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' },
+  statCard: { display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--card)', padding: '1rem', borderRadius: 'var(--radius)' },
+  statIcon: { background: 'var(--primary)', color: 'var(--primary-foreground)', borderRadius: '50%', padding: '0.5rem' },
+  statValue: { fontSize: '1.5rem', fontWeight: 'bold', margin: 0 },
+  statTitle: { color: 'var(--muted-foreground)', margin: 0 },
+  insightSection: { background: 'var(--card)', padding: '1rem', borderRadius: 'var(--radius)' },
+  sectionTitle: { marginTop: 0, marginBottom: '1rem' }
 };
 
 export default ArtistInsightsPage;
