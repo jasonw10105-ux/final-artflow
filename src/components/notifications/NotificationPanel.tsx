@@ -4,10 +4,10 @@ import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { Mail, DollarSign, Bell } from 'lucide-react';
 
-interface Notification {
+export interface Notification {
   id: bigint;
   created_at: string;
-  type: string;
+  type: string; // 'new_inquiry' | 'new_message' | 'new_sale' | 'artwork' | 'artist' | 'catalogue' | 'digest'
   message: string;
   link_url: string | null;
   is_read: boolean;
@@ -34,23 +34,31 @@ const getNotificationIcon = (type: string) => {
       return <Bell size={20} className="text-orange-500" />;
     case 'catalogue':
       return <Bell size={20} className="text-teal-500" />;
+    case 'digest':
+      return <Bell size={20} className="text-indigo-500" />;
     default:
       return <Bell size={20} className="text-gray-500" />;
   }
 };
 
-const NotificationPanel = ({
+const NotificationPanel: React.FC<NotificationPanelProps> = ({
   notifications,
   onMarkAllRead,
   isLoading,
   filter,
   setFilter
-}: NotificationPanelProps) => {
+}) => {
   const hasUnread = notifications.some(n => !n.is_read);
+
+  // Filter notifications based on type
+  const filteredNotifications = notifications.filter(n => {
+    if (filter === 'all') return true;
+    return n.type === filter;
+  });
 
   return (
     <div className="notification-panel">
-      <div className="notification-panel-header">
+      <div className="notification-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h4>Notifications</h4>
         {hasUnread && (
           <button className="button-link" onClick={onMarkAllRead}>
@@ -74,26 +82,33 @@ const NotificationPanel = ({
 
       <ul className="notification-list">
         {isLoading && <li className="notification-list-message">Loading...</li>}
-        {!isLoading && notifications.length === 0 && (
+        {!isLoading && filteredNotifications.length === 0 && (
           <li className="notification-list-message">No notifications to show.</li>
         )}
-        {!isLoading && notifications.map(n => (
-          <li key={n.id} className="notification-list-item">
-            <Link to={n.link_url || '#'} className="notification-link">
-              <div className="notification-content">
-                <div className="notification-icon">{getNotificationIcon(n.type)}</div>
-                <div className="notification-body">
-                  <p className={`notification-message ${!n.is_read ? 'unread' : ''}`}>
-                    {n.message}
-                  </p>
-                  <small className="notification-timestamp">
-                    {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                  </small>
+        {!isLoading && filteredNotifications.map(n => {
+          let link = n.link_url || '#';
+
+          // Special handling for digest notifications to /explore
+          if (n.type === 'digest') link = '/explore';
+
+          return (
+            <li key={n.id} className="notification-list-item">
+              <Link to={link} className="notification-link">
+                <div className="notification-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="notification-icon">{getNotificationIcon(n.type)}</div>
+                  <div className="notification-body">
+                    <p className={`notification-message ${!n.is_read ? 'unread' : ''}`}>
+                      {n.message}
+                    </p>
+                    <small className="notification-timestamp" style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
+                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                    </small>
+                  </div>
                 </div>
-              </div>
-            </Link>
-          </li>
-        ))}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
