@@ -1,159 +1,136 @@
-import React from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Trash2, CheckCircle, RefreshCw } from 'lucide-react';
-import ArtworkEditorForm from '@/components/dashboard/ArtworkEditorForm';
-import toast from 'react-hot-toast';
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabaseClient";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import ArtworkEditorForm from "@/components/dashboard/ArtworkEditorForm";
 
-const ArtworkEditorPage = () => {
-    const navigate = useNavigate();
-    const queryClient = useQueryClient();
-    const { artworkId } = useParams<{ artworkId: string }>();
-
-    if (!artworkId) {
-        // Redirect or show error if artworkId is not present in the URL
-        return (
-            <div style={{ padding: '2rem', textAlign: 'center' }}>
-                <p>No artwork ID provided.</p>
-                <Link to="/artist/artworks" className="button-secondary">Return to Artworks</Link>
-            </div>
-        );
-    }
-
-    const queryKey = ['artwork-editor-page', artworkId];
-    const { data: artworkData, isLoading } = useQuery({
-        queryKey: queryKey,
-        queryFn: async () => {
-            const { data, error } = await supabase.from('artworks').select('image_url, title, status').eq('id', artworkId).single();
-            if (error) throw new Error(error.message);
-            return data;
-        },
-    });
-
-    const deleteMutation = useMutation({
-        mutationFn: async () => {
-            const { error } = await supabase.from('artworks').delete().eq('id', artworkId);
-            if (error) throw error;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['artworks'] });
-            toast.success('Artwork deleted successfully.');
-            navigate('/artist/artworks');
-        },
-        onError: (error: any) => toast.error(`Error deleting artwork: ${error.message}`),
-    });
-
-    const soldMutation = useMutation({
-        mutationFn: async () => {
-            const { data: catalogueList, error: rpcError } = await supabase.rpc('get_catalogues_for_artwork', { p_artwork_id: artworkId });
-            if (rpcError) throw new Error(`Could not check catalogues: ${rpcError.message}`);
-            const { error: updateError } = await supabase.from('artworks').update({ status: 'Sold' }).eq('id', artworkId);
-            if (updateError) throw updateError;
-            return catalogueList || [];
-        },
-        onSuccess: (catalogueList: { title: string }[]) => {
-            queryClient.invalidateQueries({ queryKey: queryKey });
-            queryClient.invalidateQueries({ queryKey: ['artworks'] });
-            queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId]});
-            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts'] });
-            const count = catalogueList.length;
-            let removalMessage = '';
-            if (count === 1) {
-                removalMessage = ` It was also removed from the "${catalogueList[0].title}" catalogue.`;
-            } else if (count > 1) {
-                removalMessage = ` It was also removed from ${count} catalogues.`;
-            }
-            toast.success(`Artwork marked as sold.${removalMessage}`);
-        },
-        onError: (error: any) => toast.error(`Error updating status: ${error.message}`),
-    });
-
-    const availableMutation = useMutation({
-        mutationFn: async () => {
-            const { error } = await supabase.from('artworks').update({ status: 'Available' }).eq('id', artworkId);
-            if (error) throw error;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: queryKey });
-            queryClient.invalidateQueries({ queryKey: ['artworks'] });
-            queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId]});
-            toast.success('Artwork marked as available.');
-        },
-        onError: (error: any) => toast.error(`Error updating status: ${error.message}`),
-    });
-    
-    const handleDelete = () => {
-        if (window.confirm('Are you sure you want to permanently delete this artwork? This action cannot be undone.')) {
-            deleteMutation.mutate();
-        }
-    };
-
-    const handleMarkAsSold = () => {
-        if (window.confirm('Are you sure you want to mark this artwork as sold? This will hide pricing and purchase options.')) {
-            soldMutation.mutate();
-        }
-    };
-
-    const handleMarkAsAvailable = () => {
-        if (window.confirm('Are you sure you want to mark this artwork as available for purchase?')) {
-            availableMutation.mutate();
-        }
-    };
-
-    const handleSaveSuccess = () => {
-        toast.success('Artwork saved successfully! Images may be regenerating in the background.');
-        navigate('/artist/artworks');
-    };
-
-    const FORM_ID = 'artwork-editor-form';
-
-    if (isLoading) return <div style={{padding: '2rem'}}>Loading editor...</div>;
-
-    return (
-        <div style={{ padding: '2rem' }}>
-            <Link to="/artist/artworks" className="button-secondary" style={{ marginBottom: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ArrowLeft size={16} /> Back to Artworks
-            </Link>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '3rem', alignItems: 'start' }}>
-                <aside style={{ position: 'sticky', top: '2rem' }}>
-                    {artworkData?.image_url && (
-                        <img src={artworkData.image_url} alt={artworkData.title || "Artwork"} style={{ width: '100%', height: 'auto', objectFit: 'cover', borderRadius: 'var(--radius)' }} />
-                    )}
-                </aside>
-                
-                <main>
-                    <ArtworkEditorForm
-                        artworkId={artworkId}
-                        formId={FORM_ID}
-                        onSaveSuccess={handleSaveSuccess}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
-                        <button type="button" onClick={handleDelete} className="button button-danger" disabled={deleteMutation.isPending}>
-                            {deleteMutation.isPending ? 'Deleting...' : <><Trash2 size={14} /> Delete Artwork</>}
-                        </button>
-
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            {artworkData?.status === 'Available' && (
-                                <button type="button" onClick={handleMarkAsSold} className="button button-secondary" disabled={soldMutation.isPending}>
-                                    {soldMutation.isPending ? 'Updating...' : <><CheckCircle size={14} /> Mark as Sold</>}
-                                </button>
-                            )}
-                            {(artworkData?.status === 'Sold' || artworkData?.status === 'Pending') && (
-                                <button type="button" onClick={handleMarkAsAvailable} className="button button-secondary" disabled={availableMutation.isPending}>
-                                    {availableMutation.isPending ? 'Updating...' : <><RefreshCw size={14} /> Mark as Available</>}
-                                </button>
-                            )}
-                            <button type="submit" form={FORM_ID} className="button button-primary">
-                                Save Changes
-                            </button>
-                        </div>
-                    </div>
-                </main>
-            </div>
-        </div>
-    );
+// ---------- Types ----------
+type Artwork = {
+  id: string;
+  user_id: string;
+  title: string | null;
+  description: string | null;
+  price: number | null;
+  currency: string | null;
+  is_price_negotiable: boolean | null;
+  min_price: number | null;
+  max_price: number | null;
+  medium: string | null;
+  genre: string | null;
+  dimensions: {
+    width: number | string | null;
+    height: number | string | null;
+    depth?: number | string | null;
+    unit: "cm";
+  } | null;
+  status: string;
+  keywords?: string[] | null;
+  dominant_colors?: string[] | null;
 };
 
-export default ArtworkEditorPage;
+type ArtworkImage = {
+  id: string;
+  artwork_id: string;
+  image_url: string;
+  watermarked_image_url: string | null;
+  visualization_image_url: string | null;
+  position: number;
+};
+
+// ---------- Page Component ----------
+export default function ArtworkEditorPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  // Load artwork (with images)
+  const { data: artwork, isLoading } = useQuery<Artwork & { artwork_images: ArtworkImage[] }>({
+    queryKey: ["artwork", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("artworks")
+        .select(
+          `
+          id, user_id, title, description, price, currency, is_price_negotiable,
+          min_price, max_price, medium, genre, dimensions, status, keywords, dominant_colors,
+          artwork_images ( id, image_url, watermarked_image_url, visualization_image_url, position )
+          `
+        )
+        .eq("id", id)
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data as Artwork & { artwork_images: ArtworkImage[] };
+    },
+    enabled: !!id,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("artworks").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+      return true;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["artworks"] });
+      toast.success("Artwork deleted");
+      navigate("/dashboard/artist/artworks");
+    },
+    onError: (e: any) => {
+      toast.error(e.message ?? "Failed to delete artwork");
+    },
+  });
+
+  if (isLoading) return <p>Loading...</p>;
+
+  return (
+    <div className="page-wrap">
+      <div className="header">
+        <h1>{id ? "Edit Artwork" : "Create New Artwork"}</h1>
+        {id && (
+          <button
+            className="btn-danger"
+            onClick={() => {
+              if (confirm("Are you sure you want to delete this artwork?")) {
+                deleteMutation.mutate();
+              }
+            }}
+          >
+            Delete
+          </button>
+        )}
+      </div>
+
+      <ArtworkEditorForm
+        artworkId={id}
+        onSaved={(newId) => {
+          navigate(`/dashboard/artist/artworks/${newId}`);
+        }}
+      />
+
+      <style jsx>{`
+        .page-wrap {
+          padding: 2rem;
+          max-width: 1000px;
+          margin: 0 auto;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2rem;
+        }
+        .btn-danger {
+          appearance: none;
+          border: none;
+          background: #fee2e2;
+          color: #991b1b;
+          padding: 0.6rem 1rem;
+          border-radius: 10px;
+          cursor: pointer;
+        }
+      `}</style>
+    </div>
+  );
+}

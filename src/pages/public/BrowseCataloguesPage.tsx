@@ -1,61 +1,109 @@
-// src/pages/public/BrowseCataloguesPage.tsx
-
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
+import FiltersSidebar, { ActiveFilters, AvailableFilters } from '../../components/ui/FiltersSidebar';
+
+const ITEMS_PER_PAGE = 12;
 
 interface Catalogue {
-    id: string;
-    title: string;
-    cover_image_url: string;
-    slug: string;
-    profile_full_name: string;
-    profile_slug: string;
+  id: string;
+  title: string;
+  slug: string;
+  profile_full_name: string;
+  profile_slug: string;
+  cover_image_url?: string;
 }
 
-const fetchAllCatalogues = async (): Promise<Catalogue[]> => {
-    const { data, error } = await supabase.rpc('get_all_catalogues');
-    if (error) {
-        console.error("Error fetching catalogues:", error);
-        throw new Error(error.message);
-    }
-    return data || [];
-};
+const BrowseCataloguesPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [page, setPage] = useState(0);
 
-const BrowseCataloguesPage = () => {
-    const { data: catalogues, isLoading, isError } = useQuery({
-        queryKey: ['allCatalogues'],
-        queryFn: fetchAllCatalogues,
-    });
+  const initialFilters: ActiveFilters = useMemo(() => ({
+    search: searchParams.get('search') || '',
+    colors: [],
+    genres: [],
+    artists: [],
+    sizes: [],
+    waysToBuy: [],
+    signed: [],
+    framed: [],
+    minPrice: '',
+    maxPrice: '',
+    sortBy: 'recently_added',
+  }), [searchParams]);
 
-    if (isLoading) return <p style={{ textAlign: 'center', padding: '5rem' }}>Loading catalogues...</p>;
-    if (isError) return <p style={{ textAlign: 'center', padding: '5rem' }}>Could not load catalogues at this time.</p>;
+  const [activeFilters, setActiveFilters] = useState<ActiveFilters>(initialFilters);
+  const [availableFilters, setAvailableFilters] = useState<AvailableFilters>({});
+  const [catalogues, setCatalogues] = useState<Catalogue[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
 
-    return (
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-            <h1 style={{ marginBottom: '3rem' }}>Browse Catalogues</h1>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
-                {catalogues && catalogues.length > 0 ? (
-                    catalogues.map((cat: Catalogue) => (
-                        // --- FIXED: Link updated to the new URL structure ---
-                        <Link to={`/${cat.profile_slug}/catalogue/${cat.slug}`} key={cat.id} style={{ textDecoration: 'none', color: 'inherit' }}>
-                            <div style={{ background: 'var(--card)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-                                <img src={cat.cover_image_url || 'https://placehold.co/600x400'} alt={cat.title} style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover' }} />
-                                <div style={{ padding: '1rem' }}>
-                                    <h4>{cat.title}</h4>
-                                    <p style={{ color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>by {cat.profile_full_name}</p>
-                                </div>
-                            </div>
-                        </Link>
-                    ))
-                ) : (
-                    <p>No public catalogues are available at this time.</p>
-                )}
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (activeFilters.search) params.set('search', activeFilters.search);
+    setSearchParams(params);
+    setPage(0);
+  }, [activeFilters, setSearchParams]);
+
+  const { isLoading } = useQuery({
+    queryKey: ['filteredCatalogues', page, activeFilters],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_filtered_items', {
+        p_type: 'catalogue',
+        p_keywords: activeFilters.search ? [activeFilters.search] : [],
+        p_offset: page * ITEMS_PER_PAGE,
+        p_limit: ITEMS_PER_PAGE
+      });
+      if (error) throw new Error(error.message);
+
+      const resp = data as any;
+      setCatalogues(resp.items || []);
+      setAvailableFilters(resp.filter_counts || {});
+      setTotalCount(resp.items?.length || 0);
+    },
+    keepPreviousData: true
+  });
+
+  return (
+    <div className="browse-page-container">
+      <h1 className="browse-page-title">Browse Catalogues</h1>
+      <div className="main-content-grid">
+        <FiltersSidebar
+          availableFilters={availableFilters}
+          activeFilters={activeFilters}
+          setActiveFilters={setActiveFilters}
+        />
+
+        <div className="artwork-list-area">
+          {isLoading ? <p>Loading catalogues...</p> :
+            catalogues.length ? (
+              <div className="artwork-grid">
+                {catalogues.map(cat => (
+                  <Link key={cat.id} to={`/${cat.profile_slug}/catalogue/${cat.slug}`}>
+                    <div className="artwork-card">
+                      <img src={cat.cover_image_url || ''} alt={cat.title} />
+                      <div className="artwork-card-info">
+                        <h4>{cat.title}</h4>
+                        <p>{cat.profile_full_name}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : <p>No catalogues match your selected filters.</p>
+          }
+
+          {totalCount >= ITEMS_PER_PAGE && (
+            <div className="pagination-controls">
+              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}>Previous</button>
+              <span>Page {page+1}</span>
+              <button onClick={()=>setPage(p=>p+1)}>Next</button>
             </div>
+          )}
         </div>
-    );
+      </div>
+    </div>
+  )
 };
 
 export default BrowseCataloguesPage;

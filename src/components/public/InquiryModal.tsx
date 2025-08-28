@@ -63,13 +63,11 @@ const InquiryModal = ({ artworkId, onClose, previewImageUrl, previewTitle }: Inq
                     <div className="modal-preview-banner">
                         <img src={previewImageUrl} alt={previewTitle} className="modal-preview-image" />
                         <div className="modal-preview-info">
-                            <p>Inquiring about:</p>
-                            <h4>{previewTitle}</h4>
+                            <h4>Inquire about {previewTitle} by </h4>
+                            <p className="modal-subtitle">Your message will be sent directly to the artist.</p>
                         </div>
                     </div>
                 )}
-                <h3>Inquire about this Artwork</h3>
-                <p className="modal-subtitle">Your message will be sent directly to the artist.</p>
                 
                 <form onSubmit={handleSubmit} className="modal-form">
                     {!isLoggedIn && (

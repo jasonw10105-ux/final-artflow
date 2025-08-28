@@ -4,23 +4,32 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { Menu, X } from 'lucide-react';
 
 const Header = () => {
-    // This component now gets the session state directly from the context.
-    const { session, signOut } = useAuth();
+    const { session, profile, signOut } = useAuth();
     const navigate = useNavigate();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const handleLogout = async () => {
         await signOut();
-        setIsMenuOpen(false); // Close menu on logout
+        setIsMenuOpen(false);
         navigate('/login', { replace: true });
     };
+
+    // Determine dashboard path based on role
+    const dashboardPath = (() => {
+        if (!profile) return "/dashboard";
+        if (profile.role === "artist") return "/artist/dashboard";
+        if (profile.role === "collector") return "/collector/dashboard";
+        if (profile.role === "both") return "/artist/dashboard"; // or "/dashboard" if you create that route
+        return "/dashboard";
+    })();
 
     const LoggedInNav = () => (
         <>
             <NavLink to="/artworks" className="nav-item">Browse Art</NavLink>
             <NavLink to="/artists" className="nav-item">Browse Artists</NavLink>
+            <NavLink to="/catalogues" className="nav-item">Browse Catalogues</NavLink>
             <div className="nav-divider" />
-            <NavLink to="/dashboard" className="button secondary">My Dashboard</NavLink>
+            <NavLink to={dashboardPath} className="button secondary">My Dashboard</NavLink>
             <button onClick={handleLogout} className="button primary">Logout</button>
         </>
     );
@@ -29,6 +38,7 @@ const Header = () => {
         <>
             <NavLink to="/artworks" className="nav-item">Browse Art</NavLink>
             <NavLink to="/artists" className="nav-item">Browse Artists</NavLink>
+            <NavLink to="/catalogues" className="nav-item">Browse Catalogues</NavLink>
             <NavLink to="/login" className="button secondary">Login</NavLink>
             <NavLink to="/register" className="button primary">Register</NavLink>
         </>
@@ -37,8 +47,8 @@ const Header = () => {
     return (
         <>
             <header className="main-header">
-                <Link to={session ? "/dashboard" : "/home"} className="header-logo">
-                    <img src="/logo.svg" alt="Artflow" style={{ height: '32px' }} />
+                <Link to={session ? dashboardPath : "/home"} className="header-logo">
+                    <img src="/logo.svg" alt="Artflow" style={{ height: '50px' }} />
                 </Link>
 
                 <nav className="desktop-nav">
@@ -55,8 +65,8 @@ const Header = () => {
                     <div className="offcanvas-menu-backdrop" onClick={() => setIsMenuOpen(false)}></div>
                     <div className={`offcanvas-menu ${isMenuOpen ? 'open' : ''}`}>
                         <div className="offcanvas-header">
-                            <Link to={session ? "/dashboard" : "/home"} className="header-logo" onClick={() => setIsMenuOpen(false)}>
-                                <img src="/logo.svg" alt="Artflow" style={{ height: '32px' }}/>
+                            <Link to={session ? dashboardPath : "/home"} className="header-logo" onClick={() => setIsMenuOpen(false)}>
+                                <img src="/logo.svg" alt="Artflow" style={{ height: '50px' }}/>
                             </Link>
                             <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(false)}>
                                 <X size={28} />

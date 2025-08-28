@@ -1,10 +1,8 @@
-// src/pages/dashboard/collector/CollectorSettingsPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
-import { Switch } from '@/components/ui/Switch'; // assume a reusable Switch component
-import NotificationPanel from '@/components/ui/NotificationPanel';
+import Toggle from '@/components/ui/Toggle';
 
 interface LearnedPreferences {
   [key: string]: any;
@@ -27,14 +25,12 @@ const CollectorSettingsPage = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'account' | 'notifications' | 'preferences'>('account');
 
-  // Preferences state
   const [preferredMediums, setPreferredMediums] = useState('');
   const [preferredStyles, setPreferredStyles] = useState('');
   const [useLearnedBudget, setUseLearnedBudget] = useState(false);
   const [minBudget, setMinBudget] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
 
-  // Notification toggles
   const [realTime, setRealTime] = useState({ artwork: true, artist: true, catalogue: true });
   const [daily, setDaily] = useState({ artwork: true, artist: true, catalogue: true });
   const [weekly, setWeekly] = useState({ artwork: true, artist: true, catalogue: true });
@@ -54,7 +50,6 @@ const CollectorSettingsPage = () => {
     enabled: !!user,
   });
 
-  // populate states
   useEffect(() => {
     if (preferences) {
       setPreferredMediums((preferences.preferred_mediums || []).join(', '));
@@ -62,7 +57,6 @@ const CollectorSettingsPage = () => {
       setMinBudget(preferences.min_budget || '');
       setMaxBudget(preferences.max_budget || '');
       setUseLearnedBudget(preferences.use_learned_budget || false);
-
       setRealTime(preferences.notification_real_time || { artwork: true, artist: true, catalogue: true });
       setDaily(preferences.notification_daily || { artwork: true, artist: true, catalogue: true });
       setWeekly(preferences.notification_weekly || { artwork: true, artist: true, catalogue: true });
@@ -112,7 +106,6 @@ const CollectorSettingsPage = () => {
 
   const learnedBudget = preferences?.learned_preferences?.budget_range || null;
 
-  // Example notifications for settings UI
   const exampleNotifications = {
     artwork: 'New oil painting by a rising artist in your preferred color palette',
     artist: 'Your followed artist uploaded a new artwork',
@@ -128,7 +121,6 @@ const CollectorSettingsPage = () => {
         Manage your account, notifications, and preferences for better recommendations.
       </p>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
         <button
           className={`button ${activeTab === 'account' ? 'button-primary' : ''}`}
@@ -150,7 +142,6 @@ const CollectorSettingsPage = () => {
         </button>
       </div>
 
-      {/* Account Tab */}
       {activeTab === 'account' && (
         <div className="widget">
           <h3>Account Settings</h3>
@@ -158,23 +149,21 @@ const CollectorSettingsPage = () => {
         </div>
       )}
 
-      {/* Notifications Tab */}
       {activeTab === 'notifications' && (
         <div className="widget" style={{ padding: '1.5rem', borderRadius: 'var(--radius)' }}>
           <h3>Notification Settings</h3>
-          <p>Toggle how and when you want to receive notifications. Example:</p>
+          <p>Toggle how and when you want to receive notifications.</p>
           <ul>
             <li><strong>Artwork:</strong> {exampleNotifications.artwork}</li>
             <li><strong>Artist:</strong> {exampleNotifications.artist}</li>
             <li><strong>Catalogue:</strong> {exampleNotifications.catalogue}</li>
           </ul>
 
-          {/* Notification toggles */}
           <div style={{ marginTop: '1rem' }}>
             <h4>Real-Time Notifications</h4>
             {['artwork', 'artist', 'catalogue'].map(key => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', gap: '0.5rem' }}>
-                <Switch
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <Toggle
                   checked={realTime[key as keyof typeof realTime]}
                   onChange={(val) => setRealTime(prev => ({ ...prev, [key]: val }))}
                 />
@@ -184,8 +173,8 @@ const CollectorSettingsPage = () => {
 
             <h4 style={{ marginTop: '1rem' }}>Daily Digest</h4>
             {['artwork', 'artist', 'catalogue'].map(key => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', gap: '0.5rem' }}>
-                <Switch
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <Toggle
                   checked={daily[key as keyof typeof daily]}
                   onChange={(val) => setDaily(prev => ({ ...prev, [key]: val }))}
                 />
@@ -195,8 +184,8 @@ const CollectorSettingsPage = () => {
 
             <h4 style={{ marginTop: '1rem' }}>Weekly Digest</h4>
             {['artwork', 'artist', 'catalogue'].map(key => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', gap: '0.5rem' }}>
-                <Switch
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <Toggle
                   checked={weekly[key as keyof typeof weekly]}
                   onChange={(val) => setWeekly(prev => ({ ...prev, [key]: val }))}
                 />
@@ -207,92 +196,63 @@ const CollectorSettingsPage = () => {
         </div>
       )}
 
-      {/* Preferences Tab */}
       {activeTab === 'preferences' && (
         <>
-          {/* Preferences Form */}
           <div className="widget" style={{ marginBottom: '2rem', padding: '1.5rem', borderRadius: 'var(--radius)' }}>
             <h3>Your Preferences</h3>
             <div style={{ marginTop: '1rem' }}>
-              <label>Preferred Mediums</label>
+              <label>Preferred Mediums (comma-separated)</label>
               <input
                 type="text"
                 value={preferredMediums}
                 onChange={(e) => setPreferredMediums(e.target.value)}
-                className="input"
               />
             </div>
+
             <div style={{ marginTop: '1rem' }}>
-              <label>Preferred Styles / Genres</label>
+              <label>Preferred Styles (comma-separated)</label>
               <input
                 type="text"
                 value={preferredStyles}
                 onChange={(e) => setPreferredStyles(e.target.value)}
-                className="input"
               />
             </div>
 
             <div style={{ marginTop: '1rem' }}>
-              <label>Artwork Budget</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <Switch checked={useLearnedBudget} onChange={(val) => setUseLearnedBudget(val)} />
-                <span>Use Learned Budget</span>
-              </div>
-
-              {useLearnedBudget ? (
-                learnedBudget ? (
-                  <p style={{ marginTop: '0.5rem', color: 'var(--muted-foreground)' }}>
-                    System-estimated range: ${learnedBudget[0]} – ${learnedBudget[1]}
-                  </p>
-                ) : (
-                  <p style={{ marginTop: '0.5rem', color: 'var(--muted-foreground)' }}>
-                    System has not learned your budget yet.
-                  </p>
-                )
-              ) : (
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                  <input
-                    type="number"
-                    placeholder="Min Budget"
-                    value={minBudget}
-                    onChange={(e) => setMinBudget(e.target.value)}
-                    className="input"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max Budget"
-                    value={maxBudget}
-                    onChange={(e) => setMaxBudget(e.target.value)}
-                    className="input"
-                  />
-                </div>
+              <label>Use Learned Budget</label>
+              <Toggle checked={useLearnedBudget} onChange={setUseLearnedBudget} />
+              {useLearnedBudget && learnedBudget && (
+                <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                  Based on your behavior, your estimated budget range is ${learnedBudget.min} - ${learnedBudget.max}.
+                </p>
               )}
             </div>
 
-            <button
-              onClick={handleSavePreferences}
-              disabled={mutation.isPending}
-              className="button button-primary"
-              style={{ marginTop: '1.5rem' }}
-            >
-              {mutation.isPending ? 'Saving...' : 'Save Preferences'}
-            </button>
-          </div>
+            {!useLearnedBudget && (
+              <>
+                <div style={{ marginTop: '1rem' }}>
+                  <label>Minimum Budget</label>
+                  <input
+                    type="number"
+                    value={minBudget}
+                    onChange={(e) => setMinBudget(e.target.value)}
+                  />
+                </div>
 
-          {/* Learned Behavior */}
-          <div className="widget" style={{ padding: '1.5rem', borderRadius: 'var(--radius)' }}>
-            <h3>Learned Behavior</h3>
-            {preferences?.learned_preferences ? (
-              <ul>
-                {Object.entries(preferences.learned_preferences).map(([key, value]) => (
-                  <li key={key}>
-                    <strong>{key}:</strong> {JSON.stringify(value)}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>No learned preferences to show yet.</p>
+                <div style={{ marginTop: '1rem' }}>
+                  <label>Maximum Budget</label>
+                  <input
+                    type="number"
+                    value={maxBudget}
+                    onChange={(e) => setMaxBudget(e.target.value)}
+                  />
+                </div>
+              </>
             )}
+
+            <button onClick={handleSavePreferences} className="button button-primary" style={{ marginTop: '2rem' }}>
+              Save Preferences
+            </button>
           </div>
         </>
       )}

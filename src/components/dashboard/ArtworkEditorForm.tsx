@@ -1,441 +1,563 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { useAuth } from '@/contexts/AuthProvider';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Database } from '@/types/database.types';
-import Autocomplete from '@mui/material/Autocomplete';
-import TextField from '@mui/material/TextField';
-import Chip from '@mui/material/Chip';
-import Select, { SelectChangeEvent } from '@mui/material/Select';
-import MenuItem from '@mui/material/MenuItem';
-import InputLabel from '@mui/material/InputLabel';
-import FormControl from '@mui/material/FormControl';
-import FormControlLabel from '@mui/material/FormControlLabel';
-import Checkbox from '@mui/material/Checkbox';
-import Grid from '@mui/material/Grid';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import CircularProgress from '@mui/material/CircularProgress';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+import { useAuth } from "@/contexts/AuthProvider";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { v4 as uuidv4 } from "uuid";
+import { useDropzone } from "react-dropzone";
+import {
+  DndContext,
+  closestCenter,
+  DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { X } from "lucide-react";
 
-type Artwork = Database['public']['Tables']['artworks']['Row'] & {
-    artist: { full_name: string | null } | null;
-};
-type Catalogue = Database['public']['Tables']['catalogues']['Row'];
-type PricingModel = 'fixed' | 'negotiable' | 'on_request';
+// ------ Types ------
 
-interface EditionInfo {
-    is_edition?: boolean;
-    numeric_size?: number;
-    ap_size?: number;
-    sold_editions?: string[];
-}
-
-interface ArtworkEditorFormProps {
-  artworkId: string;
-  formId: string;
-  onSaveSuccess: () => void;
-  onTitleChange?: (newTitle: string) => void;
-}
-
-const mediaTaxonomy: Record<string, string[]> = {
-    'Drawing': ['Graphite (pencil, powder, mechanical)', 'Charcoal (vine, compressed)', 'Chalk (red/white/black, sanguine)', 'Conté (sticks, pencils)', 'Pastel (soft, hard, oil, pan)', 'Ink (India, sumi, iron-gall; brush/pen; wash)', 'Markers (alcohol/water/paint)', 'Silverpoint/metalpoint', 'Colored pencil (wax/oil/water-soluble)'],
-    'Painting': ['Oil (alla prima, glazing, impasto, grisaille)', 'Acrylic (impasto, pouring, airbrush, glazing)', 'Watercolor (transparent, wet-on-wet, drybrush)', 'Gouache (opaque watercolor)', 'Tempera (egg tempera, casein)', 'Encaustic (hot wax)', 'Fresco (buon fresco, fresco secco)', 'Ink painting (sumi-e)', 'Spray/Aerosol (stencil, freehand)', 'Vitreous enamel'],
-    'Printmaking': ['Relief (woodcut, linocut, wood engraving)', 'Intaglio (engraving, etching, drypoint, aquint, mezzotint, photogravure)', 'Planographic (lithography)', 'Stencil (screenprint/serigraph, pochoir)', 'Monotype/monoprint', 'Collagraph', 'Digital print (inkjet/pigment/giclée, UV flatbed)', 'Risograph'],
-    'Sculpture': ['Stone (carving)', 'Wood (carving, turning)', 'Metal (lost-wax bronze, sand casting, forging, fabrication/welding)', 'Clay/Terracotta (modeling, casting)', 'Plaster (modeling, molds)', 'Resin & plastics (casting, vacuum forming, 3D printing)', 'Found-object/assemblage', 'Kinetic', 'Soft sculpture'],
-    'Ceramics & Glass': ['Ceramics (earthenware, stoneware, porcelain, raku, terra sigillata; wheel-thrown, handbuilt/coil/slab, slip-cast; sgraffito, inlay/mishima; glaze/underglaze)', 'Glass (blown, cast, kiln-formed/fused, stained, lampworking)'],
-    'Textile / Fiber': ['Weaving (tapestry)', 'Knitting', 'Crochet', 'Embroidery (including culturally specific forms like tatreez)', 'Quilting (patchwork, appliqué)', 'Felting (wet/needle/nuno)', 'Macramé', 'Resist dyeing (batik, shibori, tie-dye, ikat)'],
-    'Photography': ['Analog: daguerreotype, ambrotype, tintype/ferrotype', 'Digital: pigment inkjet'],
-    'Time-based Media (Film/Video/Animation/Sound)': ['Film (8mm/Super 8, 16mm, 35mm)', 'Video (single-channel, multichannel installation)'],
-    'Digital / Computational / New Media': ['Digital painting (raster/vector)', 'Generative/code art (algorithmic, Processing/p5.js)'],
-    'Book & Text Arts': ['Artist’s books, zines, altered books', 'Letterpress'],
-    'Street / Public / Environmental': ['Street art (graffiti, stencil, murals)', 'Public art (monumental sculpture)'],
-    'Mixed / Hybrid & Non-traditional / Experimental': ['Collage (paper/photo/digital)', 'Assemblage (found materials)']
+type Artwork = {
+  id: string;
+  user_id: string;
+  title: string | null;
+  description: string | null;
+  price: number | null;
+  currency: string | null;
+  is_price_negotiable: boolean | null;
+  min_price: number | null;
+  max_price: number | null;
+  medium: string | null;
+  genre: string | null;
+  dimensions: {
+    width: number | string | null;
+    height: number | string | null;
+    depth?: number | string | null;
+    unit: "cm";
+  } | null;
+  status: string;
+  keywords?: string[] | null;
+  dominant_colors?: string[] | null;
 };
 
-const fetchArtworkAndCatalogues = async (artworkId: string, userId: string): Promise<{ artworkData: Artwork, allUserCatalogues: Catalogue[], assignedCatalogues: Catalogue[] }> => {
-    const { data: artworkData, error: artworkError } = await supabase.from('artworks').select('*, artist:profiles!user_id(full_name)').eq('id', artworkId).single();
-    if (artworkError) throw new Error(`Artwork not found: ${artworkError.message}`);
-    const { data: allUserCatalogues, error: allCatError } = await supabase.from('catalogues').select('*').eq('user_id', userId);
-    if (allCatError) throw new Error(`Could not fetch catalogues: ${allCatError.message}`);
-    const { data: assignedJunctions, error: junctionError } = await supabase.from('artwork_catalogue_junction').select('catalogue_id').eq('artwork_id', artworkId);
-    if (junctionError) throw new Error(`Could not fetch assignments: ${junctionError.message}`);
-    const assignedCatalogueIds = new Set(assignedJunctions.map(j => j.catalogue_id));
-    const assignedCatalogues = allUserCatalogues.filter(cat => assignedCatalogueIds.has(cat.id));
-    return { artworkData, allUserCatalogues, assignedCatalogues };
+type ArtworkImage = {
+  id: string;
+  artwork_id: string;
+  image_url: string;
+  watermarked_image_url: string | null;
+  visualization_image_url: string | null;
+  position: number;
 };
 
-const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: string, identifier: string, isSold: boolean }) => {
-    const { error } = await supabase.rpc('update_artwork_edition_sale', { p_artwork_id: artworkId, p_edition_identifier: identifier, p_is_sold: isSold });
-    if (error) throw error;
+// ------ Helpers ------
+
+const coerceDimValue = (v: string): number | string | null => {
+  const trimmed = v.trim();
+  if (!trimmed) return null;
+  if (/^var(iable)?$/i.test(trimmed)) return "variable";
+  const n = Number(trimmed.replace(",", "."));
+  return Number.isFinite(n) ? n : "variable";
 };
 
-const triggerImageGeneration = async (artworkId: string, flags: { forceWatermark?: boolean, forceVisualization?: boolean } = {}) => {
-    try {
-        const { error } = await supabase.functions.invoke('generate-images', {
-            body: { artworkId, forceWatermarkUpdate: !!flags.forceWatermark, forceVisualizationUpdate: !!flags.forceVisualization },
-        });
-        if (error) throw error;
-    } catch (err) {
-        console.error("Background image generation failed:", (err as Error).message);
-    }
-};
+// ------ Sortable Image Item ------
 
-const haveDimensionsChanged = (oldDim: any, newDim: any): boolean => {
-    if (!oldDim || !newDim) return false;
-    return oldDim.width !== newDim.width || oldDim.height !== newDim.height || oldDim.unit !== newDim.unit;
-};
-
-const ArtworkEditorForm = ({ artworkId, formId, onSaveSuccess, onTitleChange }: ArtworkEditorFormProps) => {
-    const { user, profile } = useAuth();
-    const queryClient = useQueryClient();
-    const [artwork, setArtwork] = useState<Partial<Artwork>>({});
-    const [originalTitle, setOriginalTitle] = useState('');
-    const [allCatalogues, setAllCatalogues] = useState<Catalogue[]>([]);
-    const [selectedCatalogues, setSelectedCatalogues] = useState<Catalogue[]>([]);
-
-    const queryKey = ['artwork-editor-data', artworkId];
-    
-    const { data, isLoading, isError, error } = useQuery({
-        queryKey,
-        queryFn: () => fetchArtworkAndCatalogues(artworkId, user!.id),
-        enabled: !!user,
-    });
-
-    useEffect(() => {
-        if (data) {
-            const { artworkData, allUserCatalogues, assignedCatalogues } = data;
-            setArtwork(artworkData);
-            setOriginalTitle(artworkData.title || '');
-            setAllCatalogues(allUserCatalogues);
-            const systemCatalogue = allUserCatalogues.find(cat => cat.is_system_catalogue);
-            if (assignedCatalogues.length === 0 && systemCatalogue && artworkData.status === 'Available') {
-                setSelectedCatalogues([systemCatalogue]);
-            } else {
-                setSelectedCatalogues(assignedCatalogues);
-            }
+function SortableImageItem({
+  item,
+  onRemove,
+}: {
+  item: ArtworkImage;
+  onRemove: (id: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: item.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className="img-item">
+      <div className="thumb" {...attributes} {...listeners} title="Drag to reorder">
+        <img src={item.image_url} alt="" />
+      </div>
+      <div className="thumb-actions">
+        <button
+          type="button"
+          className="remove-btn"
+          onClick={() => onRemove(item.id)}
+          aria-label="Remove image"
+        >
+          <X size={16} />
+        </button>
+        {item.watermarked_image_url && <span className="badge">WM ✓</span>}
+        {item.visualization_image_url && <span className="badge">Viz ✓</span>}
+      </div>
+      <style jsx>{`
+        .img-item {
+          display: grid;
+          grid-template-columns: 96px 1fr;
+          gap: 0.75rem;
+          align-items: center;
+          padding: 0.5rem;
+          border: 1px solid var(--border, #e5e7eb);
+          border-radius: 12px;
+          background: #fff;
         }
-    }, [data]);
+        .thumb {
+          width: 96px;
+          height: 96px;
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+          cursor: grab;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #fafafa;
+        }
+        .thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .thumb-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .remove-btn {
+          appearance: none;
+          border: none;
+          background: #fee2e2;
+          color: #991b1b;
+          padding: 0.35rem 0.5rem;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+        .badge {
+          background: #ecfeff;
+          color: #0e7490;
+          font-size: 12px;
+          padding: 0.1rem 0.4rem;
+          border-radius: 6px;
+        }
+      `}</style>
+    </div>
+  );
+}
 
-    const updateMutation = useMutation({
-        mutationFn: async ({ formData, finalCatalogueIds }: { formData: Partial<Artwork>, finalCatalogueIds: string[] }) => {
-            if (!profile || !user) throw new Error("You must be logged in.");
-            if (!formData.title) throw new Error("Title is required.");
-            let finalSlug = formData.slug;
-            if (formData.title !== originalTitle) {
-                const { data: slugData } = await supabase.rpc('generate_unique_slug', { input_text: formData.title, table_name: 'artworks' });
-                finalSlug = slugData;
-            }
-            const { artist, ...dataToUpdate } = formData;
-            const payload = { ...dataToUpdate, slug: finalSlug };
-            const { error: artworkUpdateError } = await supabase.from('artworks').update(payload).eq('id', artworkId);
-            if (artworkUpdateError) throw artworkUpdateError;
-            await supabase.from('artwork_catalogue_junction').delete().eq('artwork_id', artworkId);
-            if (finalCatalogueIds.length > 0) {
-                const newJunctions = finalCatalogueIds.map(catId => ({ artwork_id: artworkId, catalogue_id: catId }));
-                const { error: insertError } = await supabase.from('artwork_catalogue_junction').insert(newJunctions);
-                if (insertError) throw insertError;
-            }
-            return formData; 
+// ------ Main Component ------
+
+export default function ArtworkEditorForm({
+  artworkId,
+  onSaved,
+}: {
+  artworkId?: string;
+  onSaved?: (id: string) => void;
+}) {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Form state
+  const [title, setTitle] = useState("");
+  const [mediumParent, setMediumParent] = useState("");
+  const [mediumChild, setMediumChild] = useState("");
+  const medium = useMemo(() => {
+    if (!mediumParent) return "";
+    return mediumChild ? `${mediumParent} · ${mediumChild}` : mediumParent;
+  }, [mediumParent, mediumChild]);
+
+  const [description, setDescription] = useState("");
+  const [price, setPrice] = useState<string>("");
+  const [currency, setCurrency] = useState("ZAR");
+  const [isNegotiable, setIsNegotiable] = useState(false);
+  const [minPrice, setMinPrice] = useState<string>("");
+  const [maxPrice, setMaxPrice] = useState<string>("");
+
+  const [width, setWidth] = useState<string>("");
+  const [height, setHeight] = useState<string>("");
+  const [depth, setDepth] = useState<string>("");
+
+  const [images, setImages] = useState<ArtworkImage[]>([]);
+  const [toDelete, setToDelete] = useState<Set<string>>(new Set());
+
+  const [genre, setGenre] = useState("");
+  const [keywords, setKeywords] = useState<string>("");
+
+  // Load existing artwork
+  useEffect(() => {
+    if (!artworkId) return;
+    (async () => {
+      const { data, error } = await supabase.from("artworks").select("*").eq("id", artworkId).single();
+      if (error) {
+        toast.error(`Failed to load artwork: ${error.message}`);
+        return;
+      }
+      if (data.title) setTitle(data.title);
+      if (data.description) setDescription(data.description);
+      if (data.medium) {
+        const [p, c] = String(data.medium).split("·").map((s) => s.trim());
+        setMediumParent(p ?? "");
+        setMediumChild(c ?? "");
+      }
+      if (data.currency) setCurrency(data.currency);
+      if (data.is_price_negotiable) setIsNegotiable(true);
+      if (data.price != null) setPrice(String(data.price));
+      if (data.min_price != null) setMinPrice(String(data.min_price));
+      if (data.max_price != null) setMaxPrice(String(data.max_price));
+      if (data.genre) setGenre(data.genre);
+      if (data.keywords) setKeywords(data.keywords.join(", "));
+
+      const dims = data.dimensions ?? null;
+      if (dims) {
+        setWidth(dims.width != null ? String(dims.width) : "");
+        setHeight(dims.height != null ? String(dims.height) : "");
+        setDepth(dims.depth != null ? String(dims.depth) : "");
+      }
+
+      const { data: imgs, error: imgErr } = await supabase
+        .from("artwork_images")
+        .select("*")
+        .eq("artwork_id", data.id)
+        .order("position", { ascending: true });
+      if (imgErr) {
+        toast.error(`Failed to load images: ${imgErr.message}`);
+      } else {
+        setImages((imgs ?? []) as ArtworkImage[]);
+      }
+    })();
+  }, [artworkId]);
+
+  // Dropzone
+  const onDrop = useCallback(
+    async (accepted: File[]) => {
+      if (!user) {
+        toast.error("You must be signed in to upload images.");
+        return;
+      }
+      if (!accepted.length) return;
+
+      const newItems: ArtworkImage[] = [];
+      const parentId = artworkId ?? `draft-${uuidv4()}`;
+
+      for (const file of accepted) {
+        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const id = uuidv4();
+        const storagePath = `originals/${user.id}/${parentId}/${id}.${ext}`;
+
+        const arrayBuffer = await file.arrayBuffer();
+        const { error: upErr } = await supabase.storage
+          .from("artworks")
+          .upload(storagePath, arrayBuffer, {
+            contentType: file.type || "image/jpeg",
+            upsert: true,
+          });
+
+        if (upErr) {
+          toast.error(`Upload failed: ${upErr.message}`);
+          continue;
+        }
+
+        const { data: pub } = supabase.storage.from("artworks").getPublicUrl(storagePath);
+
+        newItems.push({
+          id,
+          artwork_id: artworkId ?? "",
+          image_url: pub.publicUrl,
+          watermarked_image_url: null,
+          visualization_image_url: null,
+          position: images.length + newItems.length,
+        });
+      }
+
+      setImages((prev) => [...prev, ...newItems]);
+      toast.success(`${newItems.length} image(s) added`);
+    },
+    [artworkId, images.length, user]
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: { "image/*": [] },
+    multiple: true,
+    onDrop,
+  });
+
+  // Drag & drop reorder
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = images.findIndex((i) => i.id === active.id);
+    const newIndex = images.findIndex((i) => i.id === over.id);
+    const reordered = arrayMove(images, oldIndex, newIndex).map((img, idx) => ({
+      ...img,
+      position: idx,
+    }));
+    setImages(reordered);
+  };
+
+  const removeImage = (id: string) => {
+    setImages((prev) => prev.filter((i) => i.id !== id));
+    if (!id.includes("-")) setToDelete((s) => new Set([...s, id]));
+  };
+
+  // Save mutation
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
+
+      const payload: Partial<Artwork> = {
+        user_id: user.id,
+        title: title.trim(),
+        description: description.trim() || null,
+        medium: medium || null,
+        price: price ? Number(price) : null,
+        currency,
+        is_price_negotiable: isNegotiable,
+        min_price: isNegotiable && minPrice ? Number(minPrice) : null,
+        max_price: isNegotiable && maxPrice ? Number(maxPrice) : null,
+        dimensions: {
+          width: coerceDimValue(width),
+          height: coerceDimValue(height),
+          depth: depth ? coerceDimValue(depth) : null,
+          unit: "cm",
         },
-        onSuccess: (savedData) => {
-            queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
-            queryClient.invalidateQueries({ queryKey: ['cataloguesWithStatusCounts', user?.id] });
-            queryClient.invalidateQueries({ queryKey });
-            const isInitialCreation = !data?.artworkData?.watermarked_image_url || !data?.artworkData?.visualization_image_url;
-            if (isInitialCreation) {
-                triggerImageGeneration(artworkId, { forceWatermark: true, forceVisualization: true });
-            } else {
-                const forceVisualization = haveDimensionsChanged(data?.artworkData?.dimensions, savedData.dimensions);
-                const originalArtistName = data?.artworkData?.artist?.full_name;
-                const currentArtistName = profile?.full_name;
-                const hasArtistNameChanged = !!(originalArtistName && currentArtistName && originalArtistName !== currentArtistName);
-                if (forceVisualization || hasArtistNameChanged) {
-                    triggerImageGeneration(artworkId, { forceVisualization, forceWatermark: hasArtistNameChanged });
-                }
-            }
-            onSaveSuccess();
-        },
-        onError: (e: Error) => {
-            console.error(`Error saving artwork: ${e.message}`);
-        },
-    });
-    
-    const { parentMedium, childMedium } = useMemo(() => {
-        const mediumStr = artwork.medium || '';
-        const [parent, ...childParts] = mediumStr.split(': ');
-        const child = childParts.join(': ');
-        if (parent && Object.keys(mediaTaxonomy).includes(parent)) return { parentMedium: parent, childMedium: child || '' };
-        return { parentMedium: '', childMedium: mediumStr };
-    }, [artwork.medium]);
+        status: "Pending",
+        genre: genre.trim() || null,
+        keywords: keywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean),
+      };
 
-    const handleMediumChange = (type: 'parent' | 'child', newValue: string | null) => {
-        let newParent = parentMedium;
-        let newChild = childMedium;
-        if (type === 'parent') { newParent = newValue || ''; newChild = ''; } 
-        else { newChild = newValue || ''; }
-        const combinedMedium = newParent ? (newChild ? `${newParent}: ${newChild}` : newParent) : '';
-        setArtwork(prev => ({ ...prev, medium: combinedMedium }));
-    };
+      let id = artworkId;
+      if (id) {
+        const { error: upErr } = await supabase.from("artworks").update(payload).eq("id", id);
+        if (upErr) throw new Error(`Update failed: ${upErr.message}`);
+      } else {
+        const { data, error: insErr } = await supabase.from("artworks").insert(payload).select("id").single();
+        if (insErr) throw new Error(`Create failed: ${insErr.message}`);
+        id = data.id;
+      }
 
-    const primaryMediumOptions = Object.keys(mediaTaxonomy);
-    const secondaryMediumOptions = useMemo(() => {
-        return parentMedium && mediaTaxonomy[parentMedium] ? mediaTaxonomy[parentMedium] : [];
-    }, [parentMedium]);
+      const existing = await supabase.from("artwork_images").select("id").eq("artwork_id", id!);
+      const existingIds = new Set((existing.data ?? []).map((r) => r.id));
 
-    const handleJsonChange = (parentKey: keyof Artwork, field: string, value: any) => {
-        const oldParentState = (artwork as any)[parentKey] || {};
-        const parsedValue = typeof value === 'string' && /^\d+$/.test(value) ? parseInt(value, 10) : value;
+      for (const delId of toDelete) {
+        if (existingIds.has(delId)) {
+          await supabase.from("artwork_images").delete().eq("id", delId);
+        }
+      }
 
-        if (parentKey === 'edition_info' && field === 'is_edition') {
-            const isEdition = Boolean(value);
-            const currentEditionInfo = (artwork.edition_info || {}) as EditionInfo;
-            if (!isEdition) {
-                setArtwork(prev => ({ ...prev, edition_info: { ...currentEditionInfo, is_edition: false, numeric_size: undefined, ap_size: undefined, sold_editions: [] } }));
-            } else {
-                setArtwork(prev => ({ ...prev, edition_info: { ...currentEditionInfo, is_edition: true } }));
-            }
+      for (const img of images) {
+        if (existingIds.has(img.id)) {
+          await supabase.from("artwork_images").update({ position: img.position }).eq("id", img.id);
         } else {
-            setArtwork(prev => ({ ...prev, [parentKey]: { ...oldParentState, [field]: parsedValue } }));
+          const row = {
+            id: img.id,
+            artwork_id: id!,
+            image_url: img.image_url,
+            position: img.position,
+          };
+          await supabase.from("artwork_images").insert(row);
         }
-    };
-    
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value, type } = e.target;
-        const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
-        setArtwork(prev => ({ ...prev, [name]: checked !== undefined ? checked : value }));
-        if (name === 'title' && onTitleChange) onTitleChange(value);
-    };
+      }
 
-    const { saleMutation, handleEditionSaleChange, allEditions, localSoldEditions } = useEditionManagement(artwork, artworkId);
+      await fetch(`${supabase.functionsUrl}/process-artwork-images`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artworkId: id, force: false }),
+      });
 
-    const handleSubmit = (e: React.FormEvent) => {
+      return id!;
+    },
+    onSuccess: (id) => {
+      qc.invalidateQueries({ queryKey: ["artwork", id] });
+      qc.invalidateQueries({ queryKey: ["artwork_images", id] });
+      toast.success("Artwork saved");
+      onSaved?.(id);
+    },
+    onError: (e: any) => {
+      toast.error(e.message ?? "Failed to save");
+    },
+  });
+
+  return (
+    <form
+      onSubmit={(e) => {
         e.preventDefault();
-        const systemCatalogue = allCatalogues.find(cat => cat.is_system_catalogue);
-        let finalCatalogueSelection = new Set(selectedCatalogues.map(cat => cat.id));
-        if (systemCatalogue) {
-            if (artwork.status === 'Available') {
-                finalCatalogueSelection.add(systemCatalogue.id);
-            } else {
-                finalCatalogueSelection.delete(systemCatalogue.id);
-            }
+        saveMutation.mutate();
+      }}
+      className="form-wrap"
+    >
+      <h2>Artwork Editor</h2>
+      <div className="grid">
+        <label className="field">
+          <span>Title *</span>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Parent Medium *</span>
+          <input value={mediumParent} onChange={(e) => setMediumParent(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Medium (child / technique)</span>
+          <input value={mediumChild} onChange={(e) => setMediumChild(e.target.value)} />
+        </label>
+        <label className="field col-span-2">
+          <span>Description</span>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
+        </label>
+        <label className="field">
+          <span>Genre</span>
+          <input value={genre} onChange={(e) => setGenre(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Keywords (comma separated)</span>
+          <input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
+        </label>
+        <div className="field">
+          <span>Price *</span>
+          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} />
+        </div>
+        <div className="field">
+          <span>Currency</span>
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <option value="ZAR">ZAR</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+        <label className="check field">
+          <input type="checkbox" checked={isNegotiable} onChange={(e) => setIsNegotiable(e.target.checked)} />
+          <span>Price is negotiable</span>
+        </label>
+        {isNegotiable && (
+          <>
+            <div className="field">
+              <span>Min Price *</span>
+              <input type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+            </div>
+            <div className="field">
+              <span>Max Price *</span>
+              <input type="number" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+            </div>
+          </>
+        )}
+        <div className="dim col-span-2">
+          <label className="field">
+            <span>Width *</span>
+            <input value={width} onChange={(e) => setWidth(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Height *</span>
+            <input value={height} onChange={(e) => setHeight(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>Depth</span>
+            <input value={depth} onChange={(e) => setDepth(e.target.value)} />
+          </label>
+        </div>
+        <div className="col-span-2">
+          <div {...getRootProps({ className: "dropzone" })}>
+            <input {...getInputProps()} />
+            {isDragActive ? <p>Drop images here…</p> : <p>Drag & drop or click to select</p>}
+          </div>
+          {images.length > 0 && (
+            <div className="images-list">
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                <SortableContext items={images.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                  <div className="list">
+                    {images.map((img) => (
+                      <SortableImageItem key={img.id} item={img} onRemove={removeImage} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+          )}
+        </div>
+      </div>
+            <div className="actions">
+        <button type="submit" disabled={saveMutation.isLoading}>
+          {saveMutation.isLoading ? "Saving..." : "Save Artwork"}
+        </button>
+      </div>
+
+      <style jsx>{`
+        .form-wrap {
+          display: grid;
+          gap: 1.5rem;
+          max-width: 900px;
+          margin: 0 auto;
         }
-        const finalCatalogueIds = Array.from(finalCatalogueSelection);
-        
-        const { status, ...formData } = artwork;
-        const payload: Partial<Artwork> = {
-            ...formData,
-            price: formData.price ? parseFloat(String(formData.price)) : null,
-            min_price: formData.min_price ? parseFloat(String(formData.min_price)) : null,
-            max_price: formData.max_price ? parseFloat(String(formData.max_price)) : null,
-        };
-        if (data?.artworkData?.status === 'Pending') {
-            payload.status = 'Available';
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1rem 1.5rem;
         }
-        
-        updateMutation.mutate({ formData: payload, finalCatalogueIds });
-    };
-    
-    const pricingModel: PricingModel = useMemo(() => {
-        if (artwork.is_price_negotiable) return 'negotiable';
-        if (artwork.price != null) return 'fixed';
-        return 'on_request';
-    }, [artwork.is_price_negotiable, artwork.price]);
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+        }
+        .field input,
+        .field textarea,
+        .field select {
+          border: 1px solid var(--border, #e5e7eb);
+          border-radius: 8px;
+          padding: 0.5rem 0.75rem;
+          font-size: 14px;
+        }
+        .check {
+          flex-direction: row;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .dim {
+          display: flex;
+          gap: 1rem;
+        }
+        .dropzone {
+          border: 2px dashed #94a3b8;
+          padding: 1rem;
+          text-align: center;
+          border-radius: 12px;
+          color: #475569;
+          cursor: pointer;
+          background: #f8fafc;
+        }
+        .images-list {
+          margin-top: 1rem;
+        }
+        .list {
+          display: grid;
+          gap: 0.75rem;
+        }
+        .actions {
+          display: flex;
+          justify-content: flex-end;
+        }
+        .actions button {
+          padding: 0.6rem 1.2rem;
+          background: #2563eb;
+          color: #fff;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+        }
+        .actions button[disabled] {
+          background: #94a3b8;
+          cursor: not-allowed;
+        }
+      `}</style>
+    </form>
+  );
+}
 
-    const handlePricingModelChange = (event: SelectChangeEvent<PricingModel>) => {
-        const newModel = event.target.value as PricingModel;
-        setArtwork(prev => {
-            const newArtwork: Partial<Artwork> = { ...prev };
-            if (newModel === 'fixed') {
-                newArtwork.is_price_negotiable = false;
-                newArtwork.min_price = null;
-                newArtwork.max_price = null;
-            } else if (newModel === 'negotiable') {
-                newArtwork.is_price_negotiable = true;
-                newArtwork.price = null;
-            } else if (newModel === 'on_request') {
-                newArtwork.is_price_negotiable = false;
-                newArtwork.price = null;
-                newArtwork.min_price = null;
-                newArtwork.max_price = null;
-            }
-            return newArtwork;
-        });
-    };
-
-    if (isLoading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
-    if (isError) return <Typography color="error">Error loading artwork: {error.message}</Typography>;
-
-    const userSelectableCatalogues = allCatalogues.filter(cat => !cat.is_system_catalogue);
-    const currentEditionInfo = artwork.edition_info as EditionInfo | null;
-
-    return (
-        <form id={formId} onSubmit={handleSubmit}>
-            <Grid container spacing={4}>
-                <Grid item xs={12}>
-                    <TextField fullWidth label="Artwork Title" name="title" value={artwork.title || ''} onChange={handleFormChange} required />
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                        <InputLabel>Status</InputLabel>
-                        <Select name="status" label="Status" value={artwork.status || 'Available'} onChange={(e) => setArtwork(prev => ({...prev, status: e.target.value as Artwork['status']}))}>
-                            <MenuItem value="Available">Available</MenuItem>
-                            <MenuItem value="Sold">Sold</MenuItem>
-                            <MenuItem value="On Hold">On Hold</MenuItem>
-                            <MenuItem value="Private">Private</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                    <Autocomplete
-                        multiple
-                        options={userSelectableCatalogues}
-                        getOptionLabel={(option) => option.title || ''}
-                        value={selectedCatalogues.filter(c => !c.is_system_catalogue)}
-                        onChange={(_, newValue) => setSelectedCatalogues(newValue)}
-                        renderTags={(value, getTagProps) => value.map((option, index) => (<Chip label={option.title} {...getTagProps({ index })} />))}
-                        renderInput={(params) => (<TextField {...params} label="Catalogues" />)}
-                    />
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                     <Autocomplete
-                        options={primaryMediumOptions}
-                        value={parentMedium}
-                        onChange={(_, newValue) => handleMediumChange('parent', newValue)}
-                        renderInput={(params) => <TextField {...params} label="Primary Medium" />}
-                     />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                    <Autocomplete
-                        options={secondaryMediumOptions}
-                        value={childMedium}
-                        onChange={(_, newValue) => handleMediumChange('child', newValue)}
-                        disabled={!parentMedium}
-                        renderInput={(params) => <TextField {...params} label="Secondary Medium" />}
-                    />
-                </Grid>
-
-                <Grid item xs={12}> <Typography variant="h6" mt={2}>Dimensions</Typography> </Grid>
-                <Grid item xs={12} sm={4}>
-                    <TextField fullWidth label="Width" type="number" value={(artwork.dimensions as any)?.width || ''} onChange={(e) => handleJsonChange('dimensions', 'width', e.target.value)} />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                    <TextField fullWidth label="Height" type="number" value={(artwork.dimensions as any)?.height || ''} onChange={(e) => handleJsonChange('dimensions', 'height', e.target.value)} />
-                </Grid>
-                <Grid item xs={12} sm={4}>
-                    <FormControl fullWidth>
-                        <InputLabel>Unit</InputLabel>
-                        <Select label="Unit" value={(artwork.dimensions as any)?.unit || 'in'} onChange={(e) => handleJsonChange('dimensions', 'unit', e.target.value)}>
-                            <MenuItem value="in">in</MenuItem>
-                            <MenuItem value="cm">cm</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Grid>
-
-                <Grid item xs={12}> <Typography variant="h6" mt={2}>Pricing</Typography> </Grid>
-                <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth>
-                        <InputLabel>Pricing Model</InputLabel>
-                        <Select label="Pricing Model" value={pricingModel} onChange={handlePricingModelChange}>
-                            <MenuItem value="fixed">Fixed Price</MenuItem>
-                            <MenuItem value="negotiable">Negotiable Range</MenuItem>
-                            <MenuItem value="on_request">Price on Request</MenuItem>
-                        </Select>
-                    </FormControl>
-                </Grid>
-
-                {pricingModel === 'fixed' && (
-                    <Grid item xs={12} sm={6}>
-                        <TextField fullWidth label="Price" type="number" name="price" value={artwork.price || ''} onChange={handleFormChange} />
-                    </Grid>
-                )}
-                {pricingModel === 'negotiable' && (
-                    <>
-                        <Grid item xs={12} sm={3}>
-                            <TextField fullWidth label="Minimum Price" type="number" name="min_price" value={artwork.min_price || ''} onChange={handleFormChange} />
-                        </Grid>
-                        <Grid item xs={12} sm={3}>
-                            <TextField fullWidth label="Maximum Price" type="number" name="max_price" value={artwork.max_price || ''} onChange={handleFormChange} />
-                        </Grid>
-                    </>
-                )}
-
-                <Grid item xs={12}> <Typography variant="h6" mt={2}>Edition Details</Typography> </Grid>
-                <Grid item xs={12}>
-                    <FormControlLabel control={<Checkbox checked={currentEditionInfo?.is_edition || false} onChange={(e) => handleJsonChange('edition_info', 'is_edition', e.target.checked)}/>} label="This artwork is part of an edition" />
-                </Grid>
-
-                {currentEditionInfo?.is_edition && (
-                    <>
-                        <Grid item xs={12} sm={6}>
-                            <TextField fullWidth label="Numeric Edition Size" type="number" value={currentEditionInfo.numeric_size || ''} onChange={(e) => handleJsonChange('edition_info', 'numeric_size', e.target.value)} />
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                            <TextField fullWidth label="Artist's Proof (AP) Size" type="number" value={currentEditionInfo.ap_size || ''} onChange={(e) => handleJsonChange('edition_info', 'ap_size', e.target.value)} />
-                        </Grid>
-                        <Grid item xs={12}>
-                            <Typography variant="subtitle1" mt={1}>Manage Edition Sales</Typography>
-                            <Box sx={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #ccc', borderRadius: '4px', p: 2, mt: 1 }}>
-                                {allEditions.length > 0 ? allEditions.map(identifier => (
-                                    <FormControlLabel key={identifier} control={
-                                        <Checkbox
-                                            checked={localSoldEditions.has(identifier)}
-                                            onChange={(e) => handleEditionSaleChange(identifier, e.target.checked)}
-                                        />}
-                                        label={identifier}
-                                    />
-                                )) : <Typography>No editions defined. Enter sizes above.</Typography>}
-                            </Box>
-                        </Grid>
-                    </>
-                )}
-            </Grid>
-        </form>
-    );
-};
-
-const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
-    const queryClient = useQueryClient();
-    const currentEditionInfo = artwork.edition_info as EditionInfo | null;
-    const [localSoldEditions, setLocalSoldEditions] = useState(new Set(currentEditionInfo?.sold_editions || []));
-
-    useEffect(() => {
-        const soldEditions = (artwork.edition_info as EditionInfo | null)?.sold_editions || [];
-        setLocalSoldEditions(new Set(soldEditions));
-    }, [artwork.edition_info]);
-
-    const saleMutation = useMutation({
-        mutationFn: updateSaleStatus,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId] });
-            queryClient.invalidateQueries({ queryKey: ['artworks'] });
-        },
-        onError: (error: Error) => {
-            console.error(`Error updating sale status: ${error.message}`);
-        },
-    });
-
-    const allEditions = useMemo(() => {
-        const editions: string[] = [];
-        const info = artwork.edition_info as EditionInfo | null;
-        const numericSize = info?.numeric_size || 0;
-        const apSize = info?.ap_size || 0;
-        for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`);
-        for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`);
-        return editions;
-    }, [artwork.edition_info]);
-
-    const handleEditionSaleChange = (identifier: string, isChecked: boolean) => {
-        const newSet = new Set(localSoldEditions);
-        if (isChecked) newSet.add(identifier);
-        else newSet.delete(identifier);
-        setLocalSoldEditions(newSet);
-        saleMutation.mutate({ artworkId, identifier, isSold: isChecked });
-    };
-
-    return { saleMutation, handleEditionSaleChange, allEditions, localSoldEditions };
-};
-
-export default ArtworkEditorForm;

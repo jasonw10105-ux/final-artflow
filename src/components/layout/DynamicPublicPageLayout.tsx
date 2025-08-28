@@ -1,18 +1,18 @@
 // src/components/layout/DynamicPublicPageLayout.tsx
-
 import React from 'react';
 import MarketingLayout from './MarketingLayout';
-import { useAuth } from '../../contexts/AuthProvider';
+import { useAuth } from '@/contexts/AuthProvider';
 
-const DynamicPublicPageLayout = () => {
-    const { loading } = useAuth();
+const DynamicPublicPageLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+  const { loading } = useAuth();
 
-    if (loading) {
-        return <div style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>Loading...</div>;
-    }
+  if (loading) return (
+    <div className="loading-screen">
+      Loading...
+    </div>
+  );
 
-    // This correctly uses the MarketingLayout, which is now auth-aware via its Header.
-    return <MarketingLayout />;
+  return <MarketingLayout>{children}</MarketingLayout>;
 };
 
 export default DynamicPublicPageLayout;

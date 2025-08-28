@@ -28,7 +28,9 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
         border: '1px solid var(--border)', overflow: 'hidden'
     }}>
         {cat.cover_image_url ? (
-            <img src={cat.cover_image_url} alt={cat.title} style={{ width: '150px', height: '150px', objectFit: 'cover' }}/>
+            <div className="artwork_preview">
+                <img src={cat.cover_image_url} alt={cat.title} style={{ width: '150px', height: '150px', objectFit: 'cover' }}/>
+            </div>
         ) : (
             <div style={{
                 width: '150px', height: '150px', display: 'flex', alignItems: 'center', 
@@ -38,8 +40,8 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
             </div>
         )}
         <div style={{ flexGrow: 1, padding: '1rem 0' }}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem'}}>
-               <h3 style={{ margin: 0 }}>{cat.title}</h3>
+            <div className="card">
+               <h3>{cat.title}</h3>
                 {cat.is_system_catalogue && (
                     <span title="This system catalogue's details cannot be edited, but you can manage its artworks." style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', background: 'var(--muted)', color: 'var(--muted-foreground)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>
                         <Lock size={12} /> System
@@ -49,7 +51,7 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
                     <span style={{ fontSize: '0.75rem', background: 'var(--secondary)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>Draft</span>
                 )}
             </div>
-            <p style={{ color: 'var(--muted-foreground)', margin: '0 0 1rem 0', fontSize: '0.9rem' }}>
+            <p>
                 Total of {cat.total_count || 0} artwork(s)
             </p>
             <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem' }}>
