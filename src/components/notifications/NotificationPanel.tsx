@@ -1,7 +1,8 @@
+// src/components/ui/NotificationPanel.tsx
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
-import { Mail, DollarSign, Bell, Calendar } from 'lucide-react';
+import { Mail, DollarSign, Bell } from 'lucide-react';
 
 interface Notification {
   id: bigint;
@@ -16,6 +17,8 @@ interface NotificationPanelProps {
   notifications: Notification[];
   onMarkAllRead: () => void;
   isLoading: boolean;
+  filter: 'all' | 'artwork' | 'artist' | 'catalogue';
+  setFilter: (filter: 'all' | 'artwork' | 'artist' | 'catalogue') => void;
 }
 
 const getNotificationIcon = (type: string) => {
@@ -25,16 +28,24 @@ const getNotificationIcon = (type: string) => {
       return <Mail size={20} className="text-blue-500" />;
     case 'new_sale':
       return <DollarSign size={20} className="text-green-500" />;
-    case 'daily_digest':
-      return <Calendar size={20} className="text-purple-500" />;
-    case 'weekly_digest':
-      return <Calendar size={20} className="text-pink-500" />;
+    case 'artwork':
+      return <Bell size={20} className="text-purple-500" />;
+    case 'artist':
+      return <Bell size={20} className="text-orange-500" />;
+    case 'catalogue':
+      return <Bell size={20} className="text-teal-500" />;
     default:
       return <Bell size={20} className="text-gray-500" />;
   }
 };
 
-const NotificationPanel = ({ notifications, onMarkAllRead, isLoading }: NotificationPanelProps) => {
+const NotificationPanel = ({
+  notifications,
+  onMarkAllRead,
+  isLoading,
+  filter,
+  setFilter
+}: NotificationPanelProps) => {
   const hasUnread = notifications.some(n => !n.is_read);
 
   return (
@@ -47,10 +58,24 @@ const NotificationPanel = ({ notifications, onMarkAllRead, isLoading }: Notifica
           </button>
         )}
       </div>
+
+      {/* Filters */}
+      <div className="notification-filters" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        {['all','artwork','artist','catalogue'].map(f => (
+          <button
+            key={f}
+            className={`button ${filter === f ? 'button-primary' : ''}`}
+            onClick={() => setFilter(f as 'all' | 'artwork' | 'artist' | 'catalogue')}
+          >
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+
       <ul className="notification-list">
         {isLoading && <li className="notification-list-message">Loading...</li>}
         {!isLoading && notifications.length === 0 && (
-          <li className="notification-list-message">You're all caught up!</li>
+          <li className="notification-list-message">No notifications to show.</li>
         )}
         {!isLoading && notifications.map(n => (
           <li key={n.id} className="notification-list-item">
