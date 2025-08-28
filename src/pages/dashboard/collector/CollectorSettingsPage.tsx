@@ -77,4 +77,128 @@ const CollectorSettingsPage = () => {
         )
         .select()
         .single();
-      if (error) throw
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      alert('Preferences saved successfully!');
+      queryClient.invalidateQueries({ queryKey: ['userPreferences', user?.id] });
+    },
+    onError: (error: any) => {
+      alert(`Error saving preferences: ${error.message}`);
+    },
+  });
+
+  const handleSavePreferences = () => {
+    mutation.mutate({
+      preferred_mediums: preferredMediums.split(',').map(s => s.trim()).filter(Boolean),
+      preferred_styles: preferredStyles.split(',').map(s => s.trim()).filter(Boolean),
+      min_budget: useLearnedBudget ? null : (minBudget ? parseFloat(minBudget) : null),
+      max_budget: useLearnedBudget ? null : (maxBudget ? parseFloat(maxBudget) : null),
+      use_learned_budget: useLearnedBudget,
+      ...notificationPrefs
+    });
+  };
+
+  const learnedBudget = preferences?.learned_preferences?.budget_range || null;
+
+  return (
+    <div>
+      <h1>Collector Settings</h1>
+      <p style={{ color: 'var(--muted-foreground)', marginTop: '-0.5rem', marginBottom: '2rem' }}>
+        Manage your account, notifications, and preferences for better recommendations.
+      </p>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+        <button className={`button ${activeTab === 'account' ? 'button-primary' : ''}`} onClick={() => setActiveTab('account')}>Account Settings</button>
+        <button className={`button ${activeTab === 'notifications' ? 'button-primary' : ''}`} onClick={() => setActiveTab('notifications')}>Notification Settings</button>
+        <button className={`button ${activeTab === 'preferences' ? 'button-primary' : ''}`} onClick={() => setActiveTab('preferences')}>Preferences & Learned Behavior</button>
+      </div>
+
+      {activeTab === 'account' && (
+        <div className="widget">
+          <h3>Account Settings</h3>
+          <p>Email, password, profile details, etc.</p>
+        </div>
+      )}
+
+      {activeTab === 'notifications' && (
+        <div className="widget">
+          <h3>Notification Settings</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {['artwork','artist','catalogue','digest'].map(key => (
+              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{key.charAt(0).toUpperCase() + key.slice(1)} notifications example</span>
+                <Switch
+                  checked={notificationPrefs[key as keyof typeof notificationPrefs]}
+                  onChange={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
+                />
+              </div>
+            ))}
+            <hr />
+            {['realTime','daily','weekly'].map(key => (
+              <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{key.charAt(0).toUpperCase() + key.slice(1)} updates example</span>
+                <Switch
+                  checked={notificationPrefs[key as keyof typeof notificationPrefs]}
+                  onChange={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'preferences' && (
+        <>
+          <div className="widget" style={{ marginBottom: '2rem' }}>
+            <h3>Your Preferences</h3>
+            <div>
+              <label>Preferred Mediums</label>
+              <input type="text" value={preferredMediums} onChange={(e) => setPreferredMediums(e.target.value)} className="input"/>
+            </div>
+            <div>
+              <label>Preferred Styles / Genres</label>
+              <input type="text" value={preferredStyles} onChange={(e) => setPreferredStyles(e.target.value)} className="input"/>
+            </div>
+            <div>
+              <label>Artwork Budget</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <Switch checked={useLearnedBudget} onChange={() => setUseLearnedBudget(!useLearnedBudget)}/>
+                <span>Use Learned Budget</span>
+              </div>
+              {useLearnedBudget ? (
+                learnedBudget ? <p style={{ color:'var(--muted-foreground)' }}>System-estimated range: ${learnedBudget[0]} – ${learnedBudget[1]}</p>
+                : <p style={{ color:'var(--muted-foreground)' }}>System has not learned your budget yet.</p>
+              ) : (
+                <div style={{ display:'flex', gap:'1rem', marginTop:'0.5rem' }}>
+                  <input type="number" placeholder="Min Budget" value={minBudget} onChange={e=>setMinBudget(e.target.value)} className="input"/>
+                  <input type="number" placeholder="Max Budget" value={maxBudget} onChange={e=>setMaxBudget(e.target.value)} className="input"/>
+                </div>
+              )}
+            </div>
+            <button onClick={handleSavePreferences} disabled={mutation.isPending} className="button button-primary" style={{ marginTop:'1rem' }}>
+              {mutation.isPending ? 'Saving...' : 'Save Preferences'}
+            </button>
+          </div>
+
+          <div className="widget">
+            <h3>Learned Behavior</h3>
+            {preferences?.learned_preferences ? (
+              <ul>
+                {Object.entries(preferences.learned_preferences as object).map(([key, value]) => (
+                  <li key={key}>{`${key}: ${JSON.stringify(value)}`}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No learned preferences to show yet.</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default CollectorSettingsPage;
