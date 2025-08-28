@@ -11,7 +11,7 @@ interface Notification {
   message: string;
   link_url: string | null;
   is_read: boolean;
-  digest_id?: bigint; // optional, used for digest notifications
+  digest_id?: bigint; // optional
 }
 
 interface NotificationPanelProps {
@@ -30,20 +30,13 @@ interface NotificationPanelProps {
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
-    case 'new_message':
-      return <Mail size={20} className="text-blue-500" />;
-    case 'new_sale':
-      return <DollarSign size={20} className="text-green-500" />;
-    case 'artwork':
-      return <Bell size={20} className="text-purple-500" />;
-    case 'artist':
-      return <Bell size={20} className="text-orange-500" />;
-    case 'catalogue':
-      return <Bell size={20} className="text-teal-500" />;
-    case 'digest':
-      return <Bell size={20} className="text-indigo-500" />;
-    default:
-      return <Bell size={20} className="text-gray-500" />;
+    case 'new_message': return <Mail size={20} className="text-blue-500" />;
+    case 'new_sale': return <DollarSign size={20} className="text-green-500" />;
+    case 'artwork': return <Bell size={20} className="text-purple-500" />;
+    case 'artist': return <Bell size={20} className="text-orange-500" />;
+    case 'catalogue': return <Bell size={20} className="text-teal-500" />;
+    case 'digest': return <Bell size={20} className="text-indigo-500" />;
+    default: return <Bell size={20} className="text-gray-500" />;
   }
 };
 
@@ -57,7 +50,6 @@ const NotificationPanel = ({
 }: NotificationPanelProps) => {
   const navigate = useNavigate();
 
-  // Filter notifications by type and user preferences
   const filteredNotifications = notifications.filter(n => {
     if (filter !== 'all' && n.type !== filter) return false;
     if (!userPreferences[n.type as keyof typeof userPreferences]) return false;
