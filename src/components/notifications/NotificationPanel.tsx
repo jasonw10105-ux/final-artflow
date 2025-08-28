@@ -1,29 +1,35 @@
 // src/components/ui/NotificationPanel.tsx
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { Mail, DollarSign, Bell } from 'lucide-react';
 
-export interface Notification {
+interface Notification {
   id: bigint;
   created_at: string;
-  type: string; // 'new_inquiry' | 'new_message' | 'new_sale' | 'artwork' | 'artist' | 'catalogue' | 'digest'
+  type: 'artwork' | 'artist' | 'catalogue' | 'digest' | 'new_message' | 'new_sale';
   message: string;
   link_url: string | null;
   is_read: boolean;
+  digest_id?: bigint; // optional, used for digest notifications
 }
 
 interface NotificationPanelProps {
   notifications: Notification[];
   onMarkAllRead: () => void;
   isLoading: boolean;
-  filter: 'all' | 'artwork' | 'artist' | 'catalogue';
-  setFilter: (filter: 'all' | 'artwork' | 'artist' | 'catalogue') => void;
+  filter: 'all' | 'artwork' | 'artist' | 'catalogue' | 'digest';
+  setFilter: (filter: 'all' | 'artwork' | 'artist' | 'catalogue' | 'digest') => void;
+  userPreferences: {
+    artwork: boolean;
+    artist: boolean;
+    catalogue: boolean;
+    digest: boolean;
+  };
 }
 
 const getNotificationIcon = (type: string) => {
   switch (type) {
-    case 'new_inquiry':
     case 'new_message':
       return <Mail size={20} className="text-blue-500" />;
     case 'new_sale':
@@ -41,24 +47,32 @@ const getNotificationIcon = (type: string) => {
   }
 };
 
-const NotificationPanel: React.FC<NotificationPanelProps> = ({
+const NotificationPanel = ({
   notifications,
   onMarkAllRead,
   isLoading,
   filter,
-  setFilter
-}) => {
-  const hasUnread = notifications.some(n => !n.is_read);
+  setFilter,
+  userPreferences
+}: NotificationPanelProps) => {
+  const navigate = useNavigate();
 
-  // Filter notifications based on type
+  // Filter notifications by type and user preferences
   const filteredNotifications = notifications.filter(n => {
-    if (filter === 'all') return true;
-    return n.type === filter;
+    if (filter !== 'all' && n.type !== filter) return false;
+    if (!userPreferences[n.type as keyof typeof userPreferences]) return false;
+    return true;
   });
+
+  const hasUnread = filteredNotifications.some(n => !n.is_read);
+
+  const handleDigestClick = (digestId: bigint) => {
+    navigate(`/explore?digest=${digestId}`);
+  };
 
   return (
     <div className="notification-panel">
-      <div className="notification-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="notification-panel-header">
         <h4>Notifications</h4>
         {hasUnread && (
           <button className="button-link" onClick={onMarkAllRead}>
@@ -69,11 +83,11 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
 
       {/* Filters */}
       <div className="notification-filters" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        {['all','artwork','artist','catalogue'].map(f => (
+        {['all', 'artwork', 'artist', 'catalogue', 'digest'].map(f => (
           <button
             key={f}
             className={`button ${filter === f ? 'button-primary' : ''}`}
-            onClick={() => setFilter(f as 'all' | 'artwork' | 'artist' | 'catalogue')}
+            onClick={() => setFilter(f as 'all' | 'artwork' | 'artist' | 'catalogue' | 'digest')}
           >
             {f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
@@ -85,30 +99,43 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
         {!isLoading && filteredNotifications.length === 0 && (
           <li className="notification-list-message">No notifications to show.</li>
         )}
-        {!isLoading && filteredNotifications.map(n => {
-          let link = n.link_url || '#';
-
-          // Special handling for digest notifications to /explore
-          if (n.type === 'digest') link = '/explore';
-
-          return (
-            <li key={n.id} className="notification-list-item">
-              <Link to={link} className="notification-link">
-                <div className="notification-content" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {!isLoading && filteredNotifications.map(n => (
+          <li key={n.id} className="notification-list-item">
+            {n.type === 'digest' && n.digest_id ? (
+              <button
+                className="notification-link"
+                onClick={() => handleDigestClick(n.digest_id!)}
+                style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0 }}
+              >
+                <div className="notification-content">
                   <div className="notification-icon">{getNotificationIcon(n.type)}</div>
                   <div className="notification-body">
                     <p className={`notification-message ${!n.is_read ? 'unread' : ''}`}>
                       {n.message}
                     </p>
-                    <small className="notification-timestamp" style={{ color: 'var(--muted-foreground)', fontSize: '0.75rem' }}>
+                    <small className="notification-timestamp">
+                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                    </small>
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <Link to={n.link_url || '#'} className="notification-link">
+                <div className="notification-content">
+                  <div className="notification-icon">{getNotificationIcon(n.type)}</div>
+                  <div className="notification-body">
+                    <p className={`notification-message ${!n.is_read ? 'unread' : ''}`}>
+                      {n.message}
+                    </p>
+                    <small className="notification-timestamp">
                       {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
                     </small>
                   </div>
                 </div>
               </Link>
-            </li>
-          );
-        })}
+            )}
+          </li>
+        ))}
       </ul>
     </div>
   );
