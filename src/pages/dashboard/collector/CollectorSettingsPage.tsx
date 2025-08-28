@@ -15,7 +15,10 @@ const CollectorSettingsPage = () => {
   const [minBudget, setMinBudget] = useState('');
   const [maxBudget, setMaxBudget] = useState('');
 
-  const { data: preferences, isLoading } = useQuery({
+  // --------------------------
+  // FETCH USER PREFERENCES
+  // --------------------------
+  const { data: preferences } = useQuery({
     queryKey: ['userPreferences', user?.id],
     queryFn: async () => {
       if (!user) return null;
@@ -40,7 +43,10 @@ const CollectorSettingsPage = () => {
     }
   }, [preferences]);
 
-  const mutation = useMutation({
+  // --------------------------
+  // SAVE USER PREFERENCES
+  // --------------------------
+  const preferencesMutation = useMutation({
     mutationFn: async (updatedPrefs: {
       preferred_mediums: string[];
       preferred_styles: string[];
@@ -77,7 +83,7 @@ const CollectorSettingsPage = () => {
     const mediums = preferredMediums.split(',').map((s) => s.trim()).filter(Boolean);
     const styles = preferredStyles.split(',').map((s) => s.trim()).filter(Boolean);
 
-    mutation.mutate({
+    preferencesMutation.mutate({
       preferred_mediums: mediums,
       preferred_styles: styles,
       min_budget: useLearnedBudget ? null : (minBudget ? parseFloat(minBudget) : null),
@@ -88,6 +94,93 @@ const CollectorSettingsPage = () => {
 
   const learnedBudget = preferences?.learned_preferences?.budget_range || null;
 
+  // --------------------------
+  // FETCH NOTIFICATION PREFS
+  // --------------------------
+  const { data: notificationPrefs } = useQuery({
+    queryKey: ['notificationPreferences', user?.id],
+    queryFn: async () => {
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // --------------------------
+  // SAVE NOTIFICATION PREFS
+  // --------------------------
+  const notificationMutation = useMutation({
+    mutationFn: async (updatedPrefs: {
+      notify_realtime_artworks: boolean;
+      notify_realtime_catalogues: boolean;
+      notify_realtime_artists: boolean;
+      notify_daily: boolean;
+      notify_weekly: boolean;
+      preferred_digest_time: string;
+    }) => {
+      if (!user) throw new Error("User not found");
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .upsert(
+          {
+            user_id: user.id,
+            ...updatedPrefs,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        )
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      alert('Notification settings saved!');
+      queryClient.invalidateQueries({ queryKey: ['notificationPreferences', user?.id] });
+    },
+    onError: (error: any) => {
+      alert(`Error saving notification preferences: ${error.message}`);
+    },
+  });
+
+  const [notifyRealtimeArtworks, setNotifyRealtimeArtworks] = useState(false);
+  const [notifyRealtimeCatalogues, setNotifyRealtimeCatalogues] = useState(false);
+  const [notifyRealtimeArtists, setNotifyRealtimeArtists] = useState(false);
+  const [notifyDaily, setNotifyDaily] = useState(false);
+  const [notifyWeekly, setNotifyWeekly] = useState(false);
+  const [digestTime, setDigestTime] = useState("08:00");
+
+  useEffect(() => {
+    if (notificationPrefs) {
+      setNotifyRealtimeArtworks(notificationPrefs.notify_realtime_artworks);
+      setNotifyRealtimeCatalogues(notificationPrefs.notify_realtime_catalogues);
+      setNotifyRealtimeArtists(notificationPrefs.notify_realtime_artists);
+      setNotifyDaily(notificationPrefs.notify_daily);
+      setNotifyWeekly(notificationPrefs.notify_weekly);
+      setDigestTime(notificationPrefs.preferred_digest_time || "08:00");
+    }
+  }, [notificationPrefs]);
+
+  const handleSaveNotifications = () => {
+    notificationMutation.mutate({
+      notify_realtime_artworks: notifyRealtimeArtworks,
+      notify_realtime_catalogues: notifyRealtimeCatalogues,
+      notify_realtime_artists: notifyRealtimeArtists,
+      notify_daily: notifyDaily,
+      notify_weekly: notifyWeekly,
+      preferred_digest_time: digestTime,
+    });
+  };
+
+  // --------------------------
+  // RENDER
+  // --------------------------
   return (
     <div>
       <h1>Collector Settings</h1>
@@ -117,26 +210,94 @@ const CollectorSettingsPage = () => {
         </button>
       </div>
 
-      {/* Tab Panels */}
+      {/* Account */}
       {activeTab === 'account' && (
         <div className="widget">
           <h3>Account Settings</h3>
           <p>Email, password, profile details, etc.</p>
-          {/* Add actual account settings form here */}
+          {/* TODO: account settings form */}
         </div>
       )}
 
+      {/* Notifications */}
       {activeTab === 'notifications' && (
         <div className="widget">
           <h3>Notification Settings</h3>
           <p>Choose how and when you want to receive notifications.</p>
-          {/* Add notification preferences form here */}
+
+          <div style={{ marginTop: '1rem' }}>
+            <label>
+              <input
+                type="checkbox"
+                checked={notifyRealtimeArtworks}
+                onChange={() => setNotifyRealtimeArtworks(!notifyRealtimeArtworks)}
+              /> Real-time: New artworks
+            </label>
+          </div>
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                checked={notifyRealtimeCatalogues}
+                onChange={() => setNotifyRealtimeCatalogues(!notifyRealtimeCatalogues)}
+              /> Real-time: New catalogues
+            </label>
+          </div>
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                checked={notifyRealtimeArtists}
+                onChange={() => setNotifyRealtimeArtists(!notifyRealtimeArtists)}
+              /> Real-time: New artists
+            </label>
+          </div>
+
+          <div style={{ marginTop: '1rem' }}>
+            <label>
+              <input
+                type="checkbox"
+                checked={notifyDaily}
+                onChange={() => setNotifyDaily(!notifyDaily)}
+              /> Daily Digest
+            </label>
+          </div>
+          <div>
+            <label>
+              <input
+                type="checkbox"
+                checked={notifyWeekly}
+                onChange={() => setNotifyWeekly(!notifyWeekly)}
+              /> Weekly Digest
+            </label>
+          </div>
+
+          {(notifyDaily || notifyWeekly) && (
+            <div style={{ marginTop: '1rem' }}>
+              <label>Preferred Digest Time</label>
+              <input
+                type="time"
+                value={digestTime}
+                onChange={(e) => setDigestTime(e.target.value)}
+                className="input"
+              />
+            </div>
+          )}
+
+          <button
+            onClick={handleSaveNotifications}
+            disabled={notificationMutation.isPending}
+            className="button button-primary"
+            style={{ marginTop: '1.5rem' }}
+          >
+            {notificationMutation.isPending ? 'Saving...' : 'Save Notification Settings'}
+          </button>
         </div>
       )}
 
+      {/* Preferences */}
       {activeTab === 'preferences' && (
         <>
-          {/* Preferences Form */}
           <div className="widget" style={{ marginBottom: '2rem' }}>
             <h3>Your Preferences</h3>
             <div style={{ marginTop: '1rem' }}>
@@ -201,15 +362,14 @@ const CollectorSettingsPage = () => {
 
             <button
               onClick={handleSavePreferences}
-              disabled={mutation.isPending}
+              disabled={preferencesMutation.isPending}
               className="button button-primary"
               style={{ marginTop: '1.5rem' }}
             >
-              {mutation.isPending ? 'Saving...' : 'Save Preferences'}
+              {preferencesMutation.isPending ? 'Saving...' : 'Save Preferences'}
             </button>
           </div>
 
-          {/* Learned Behavior */}
           <div className="widget">
             <h3>Learned Behavior</h3>
             {preferences?.learned_preferences ? (
