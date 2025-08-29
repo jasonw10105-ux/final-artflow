@@ -1,89 +1,65 @@
-import React, { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabaseClient";
+import React, { useState } from "react";
 import { useAuth } from "@/contexts/AuthProvider";
-import { useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
-import ArtworkUploadModal from "@/components/dashboard/ArtworkUploadModal";
+import ArtworkUploadModal from "./ArtworkUploadModal";
 
 export default function ArtworkWizardPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-
   const [artworkId, setArtworkId] = useState<string | null>(null);
-  const [step, setStep] = useState<"primary" | "additional">("primary");
+  const [showUpload, setShowUpload] = useState(true);
 
-  // Auto-create Untitled Artwork
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("Not authenticated");
+  const createUntitledArtwork = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("artworks")
+      .insert({ title: "Untitled Artwork", user_id: user.id, status: "Pending" })
+      .select("id")
+      .single();
 
-      const { data, error } = await supabase
-        .from("artworks")
-        .insert({
-          user_id: user.id,
-          title: "Untitled Artwork",
-          status: "Pending",
-        })
-        .select("id")
-        .single();
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setArtworkId(data.id);
+    setShowUpload(true);
+  };
 
-      if (error) throw new Error(error.message);
-      return data.id as string;
-    },
-    onSuccess: (id) => setArtworkId(id),
-    onError: (err: any) => toast.error(err.message ?? "Failed to create artwork"),
-  });
-
-  useEffect(() => {
-    if (!artworkId) createMutation.mutate();
-  }, [artworkId, createMutation]);
-
-  const handlePrimaryUploadComplete = async (uploadedIds: string[]) => {
+  const handleUploadComplete = async (uploadedIds: string[]) => {
     if (!artworkId) return;
 
     try {
-      // Trigger intelligent metadata update via Supabase RPC
-      const { error } = await supabase.rpc("update_artwork_intelligent_metadata", {
-        artwork_id: artworkId,
-        primary_image_id: uploadedIds[0],
-      });
-      if (error) throw new Error(error.message);
-
-      toast.success("Primary image uploaded and metadata updated");
-      setStep("additional");
+      // Call RPC for intelligent metadata update
+      const { error } = await supabase.rpc("update_artwork_intelligent_metadata", { artwork_uuid: artworkId });
+      if (error) throw error;
+      toast.success("Artwork saved with intelligent metadata!");
+      setShowUpload(false);
     } catch (err: any) {
-      console.error(err);
-      toast.error("Failed to update intelligent metadata");
+      toast.error(err.message ?? "Failed to update metadata");
     }
   };
 
-  const handleAdditionalUploadComplete = async (uploadedIds: string[]) => {
-    toast.success(`Uploaded ${uploadedIds.length} additional images`);
-  };
-
-  const handleCreateMore = () => {
-    setStep("primary");
-    setArtworkId(null);
-  };
-
-  if (!artworkId) return <p>Initializing artwork wizard…</p>;
-
   return (
-    <div>
-      {step === "primary" && (
-        <ArtworkUploadModal primaryOnly onUploadComplete={handlePrimaryUploadComplete} />
+    <div className="max-w-3xl mx-auto p-6">
+      <h1 className="text-2xl font-semibold mb-6">Artwork Wizard</h1>
+
+      {!artworkId && (
+        <button className="button-primary" onClick={createUntitledArtwork}>
+          Create New Artwork
+        </button>
       )}
 
-      {step === "additional" && (
-        <>
-          <ArtworkUploadModal primaryOnly={false} onUploadComplete={handleAdditionalUploadComplete} maxFiles={4} />
-          <div style={{ marginTop: "16px", display: "flex", justifyContent: "center" }}>
-            <button className="button button-secondary" onClick={handleCreateMore}>
-              Create Another Artwork
-            </button>
-          </div>
-        </>
+      {showUpload && artworkId && (
+        <ArtworkUploadModal onUploadComplete={handleUploadComplete} />
+      )}
+
+      {!showUpload && (
+        <div>
+          <p>Artwork created successfully!</p>
+          <button className="button-secondary" onClick={createUntitledArtwork}>
+            + Create Another Artwork
+          </button>
+        </div>
       )}
     </div>
   );
