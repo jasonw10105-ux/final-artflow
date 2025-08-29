@@ -1,11 +1,9 @@
-
 // src/stores/artworkUploadStore.ts
-
 import { create } from 'zustand';
-import { supabase } from '@/lib/supabaseClient'; // Corrected Path
+import { supabase } from '@/lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 
-type UploadStatus = 'pending' | 'uploading' | 'success' | 'error';
+export type UploadStatus = 'pending' | 'uploading' | 'success' | 'error';
 
 export interface UploadFile {
   id: string;
@@ -16,100 +14,93 @@ export interface UploadFile {
 }
 
 interface ArtworkUploadState {
-  files: UploadFile[];
+  primaryImage?: UploadFile; // Single primary image
+  additionalImages: UploadFile[]; // Optional bulk uploads (max 4)
   isUploading: boolean;
-  totalProgress: number;
-  addFiles: (files: File[]) => void;
-  removeFile: (id: string) => void; // Added for modal functionality
-  cancelUpload: (id: string) => void;
+
+  addPrimaryImage: (file: File) => void;
+  addAdditionalImages: (files: File[]) => void;
+  removeFile: (id: string) => void;
   clearStore: () => void;
   uploadAndCreatePendingArtworks: (userId: string) => Promise<string[]>;
 }
 
 export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
-  files: [],
+  primaryImage: undefined,
+  additionalImages: [],
   isUploading: false,
-  totalProgress: 0,
 
-  addFiles: (newFiles) => {
-    const fileEntries: UploadFile[] = newFiles.map(file => ({
-      id: uuidv4(),
-      file,
-      status: 'pending',
-      progress: 0,
-    }));
-    set(state => ({ files: [...state.files, ...fileEntries] }));
-  },
-
-  // This function was missing but required by the upload modal
-  removeFile: (id: string) => {
-    set(state => ({
-      files: state.files.filter(f => f.id !== id)
-    }));
-  },
-
-  cancelUpload: (id: string) => {
-    set(state => ({
-      files: state.files.filter(f => f.id !== id)
-    }));
-  },
-
-  clearStore: () => {
-    set({ files: [], isUploading: false, totalProgress: 0 });
-  },
-
-  uploadAndCreatePendingArtworks: async (userId) => {
-    set({ isUploading: true, totalProgress: 0 });
-    const filesToUpload = get().files.filter(f => f.status === 'pending');
-    const createdArtworkIds: string[] = [];
-    const totalFiles = filesToUpload.length;
-    let completedFiles = 0;
-
-    const uploadPromises = filesToUpload.map(async (uploadFile) => {
-      try {
-        set(state => ({
-          files: state.files.map(f => f.id === uploadFile.id ? { ...f, status: 'uploading' } : f)
-        }));
-
-        const fileExt = uploadFile.file.name.split('.').pop();
-        const filePath = `${userId}/${uuidv4()}.${fileExt}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('artworks')
-          .upload(filePath, uploadFile.file);
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage.from('artworks').getPublicUrl(filePath);
-        
-        const { data: newArtwork, error: insertError } = await supabase
-          .from('artworks')
-          .insert({ user_id: userId, image_url: publicUrl, status: 'Pending', title: '' })
-          .select('id')
-          .single();
-          
-        if (insertError) throw insertError;
-        
-        if (newArtwork) {
-          createdArtworkIds.push(newArtwork.id);
-        }
-
-        set(state => ({
-          files: state.files.map(f => f.id === uploadFile.id ? { ...f, status: 'success', progress: 100 } : f)
-        }));
-      } catch (error: any) {
-        set(state => ({
-          files: state.files.map(f => f.id === uploadFile.id ? { ...f, status: 'error', error: error.message } : f)
-        }));
-      } finally {
-        completedFiles++;
-        const progress = (completedFiles / totalFiles) * 100;
-        set({ totalProgress: progress });
-      }
+  addPrimaryImage: (file: File) => {
+    set({
+      primaryImage: { id: uuidv4(), file, status: 'pending', progress: 0 },
     });
+  },
 
-    await Promise.all(uploadPromises);
-    set({ isUploading: false });
-    return createdArtworkIds;
+  addAdditionalImages: (files: File[]) => {
+    set((state) => ({
+      additionalImages: [...state.additionalImages, ...files.slice(0, 4 - state.additionalImages.length).map(f => ({
+        id: uuidv4(),
+        file: f,
+        status: 'pending',
+        progress: 0,
+      }))],
+    }));
+  },
+
+  removeFile: (id: string) => {
+    set((state) => ({
+      primaryImage: state.primaryImage?.id === id ? undefined : state.primaryImage,
+      additionalImages: state.additionalImages.filter(f => f.id !== id),
+    }));
+  },
+
+  clearStore: () => set({ primaryImage: undefined, additionalImages: [], isUploading: false }),
+
+  uploadAndCreatePendingArtworks: async (userId: string) => {
+    const state = get();
+    if (!state.primaryImage) throw new Error('Primary image is required');
+
+    set({ isUploading: true });
+
+    try {
+      const artworkIds: string[] = [];
+
+      // 1️⃣ Upload primary image
+      const primaryId = uuidv4();
+      const primaryPath = `artworks/${primaryId}/primary/${state.primaryImage.file.name}`;
+      const { error: primaryError } = await supabase.storage
+        .from('artwork_images')
+        .upload(primaryPath, state.primaryImage.file, { upsert: true });
+      if (primaryError) throw primaryError;
+
+      // Create pending artwork record
+      const { data: artworkData, error: artworkError } = await supabase
+        .from('artworks')
+        .insert({
+          user_id: userId,
+          title: '',
+          primary_image_url: primaryPath,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (artworkError || !artworkData) throw artworkError;
+
+      artworkIds.push(artworkData.id);
+
+      // 2️⃣ Upload additional images (optional)
+      for (const file of state.additionalImages) {
+        const additionalPath = `artworks/${artworkData.id}/additional/${file.file.name}`;
+        const { error } = await supabase.storage
+          .from('artwork_images')
+          .upload(additionalPath, file.file, { upsert: true });
+        if (error) console.warn('Additional image upload error', error);
+      }
+
+      return artworkIds;
+    } finally {
+      set({ isUploading: false });
+    }
   },
 }));
