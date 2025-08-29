@@ -1,106 +1,90 @@
-// src/stores/artworkUploadStore.ts
-import { create } from 'zustand';
-import { supabase } from '@/lib/supabaseClient';
-import { v4 as uuidv4 } from 'uuid';
+import React, { useEffect, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/contexts/AuthProvider";
+import { useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import ArtworkUploadModal from "@/components/dashboard/ArtworkUploadModal";
 
-export type UploadStatus = 'pending' | 'uploading' | 'success' | 'error';
+export default function ArtworkWizardPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
-export interface UploadFile {
-  id: string;
-  file: File;
-  status: UploadStatus;
-  progress: number;
-  error?: string;
-}
+  const [artworkId, setArtworkId] = useState<string | null>(null);
+  const [step, setStep] = useState<"primary" | "additional">("primary");
 
-interface ArtworkUploadState {
-  primaryImage?: UploadFile; // Single primary image
-  additionalImages: UploadFile[]; // Optional bulk uploads (max 4)
-  isUploading: boolean;
+  // Auto-create Untitled Artwork
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Not authenticated");
 
-  addPrimaryImage: (file: File) => void;
-  addAdditionalImages: (files: File[]) => void;
-  removeFile: (id: string) => void;
-  clearStore: () => void;
-  uploadAndCreatePendingArtworks: (userId: string) => Promise<string[]>;
-}
-
-export const useArtworkUploadStore = create<ArtworkUploadState>((set, get) => ({
-  primaryImage: undefined,
-  additionalImages: [],
-  isUploading: false,
-
-  addPrimaryImage: (file: File) => {
-    set({
-      primaryImage: { id: uuidv4(), file, status: 'pending', progress: 0 },
-    });
-  },
-
-  addAdditionalImages: (files: File[]) => {
-    set((state) => ({
-      additionalImages: [...state.additionalImages, ...files.slice(0, 4 - state.additionalImages.length).map(f => ({
-        id: uuidv4(),
-        file: f,
-        status: 'pending',
-        progress: 0,
-      }))],
-    }));
-  },
-
-  removeFile: (id: string) => {
-    set((state) => ({
-      primaryImage: state.primaryImage?.id === id ? undefined : state.primaryImage,
-      additionalImages: state.additionalImages.filter(f => f.id !== id),
-    }));
-  },
-
-  clearStore: () => set({ primaryImage: undefined, additionalImages: [], isUploading: false }),
-
-  uploadAndCreatePendingArtworks: async (userId: string) => {
-    const state = get();
-    if (!state.primaryImage) throw new Error('Primary image is required');
-
-    set({ isUploading: true });
-
-    try {
-      const artworkIds: string[] = [];
-
-      // 1️⃣ Upload primary image
-      const primaryId = uuidv4();
-      const primaryPath = `artworks/${primaryId}/primary/${state.primaryImage.file.name}`;
-      const { error: primaryError } = await supabase.storage
-        .from('artwork_images')
-        .upload(primaryPath, state.primaryImage.file, { upsert: true });
-      if (primaryError) throw primaryError;
-
-      // Create pending artwork record
-      const { data: artworkData, error: artworkError } = await supabase
-        .from('artworks')
+      const { data, error } = await supabase
+        .from("artworks")
         .insert({
-          user_id: userId,
-          title: '',
-          primary_image_url: primaryPath,
-          status: 'pending',
+          user_id: user.id,
+          title: "Untitled Artwork",
+          status: "Pending",
         })
-        .select('id')
+        .select("id")
         .single();
 
-      if (artworkError || !artworkData) throw artworkError;
+      if (error) throw new Error(error.message);
+      return data.id as string;
+    },
+    onSuccess: (id) => setArtworkId(id),
+    onError: (err: any) => toast.error(err.message ?? "Failed to create artwork"),
+  });
 
-      artworkIds.push(artworkData.id);
+  useEffect(() => {
+    if (!artworkId) createMutation.mutate();
+  }, [artworkId, createMutation]);
 
-      // 2️⃣ Upload additional images (optional)
-      for (const file of state.additionalImages) {
-        const additionalPath = `artworks/${artworkData.id}/additional/${file.file.name}`;
-        const { error } = await supabase.storage
-          .from('artwork_images')
-          .upload(additionalPath, file.file, { upsert: true });
-        if (error) console.warn('Additional image upload error', error);
-      }
+  const handlePrimaryUploadComplete = async (uploadedIds: string[]) => {
+    if (!artworkId) return;
 
-      return artworkIds;
-    } finally {
-      set({ isUploading: false });
+    try {
+      // Trigger intelligent metadata update via Supabase RPC
+      const { error } = await supabase.rpc("update_artwork_intelligent_metadata", {
+        artwork_id: artworkId,
+        primary_image_id: uploadedIds[0],
+      });
+      if (error) throw new Error(error.message);
+
+      toast.success("Primary image uploaded and metadata updated");
+      setStep("additional");
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to update intelligent metadata");
     }
-  },
-}));
+  };
+
+  const handleAdditionalUploadComplete = async (uploadedIds: string[]) => {
+    toast.success(`Uploaded ${uploadedIds.length} additional images`);
+  };
+
+  const handleCreateMore = () => {
+    setStep("primary");
+    setArtworkId(null);
+  };
+
+  if (!artworkId) return <p>Initializing artwork wizard…</p>;
+
+  return (
+    <div>
+      {step === "primary" && (
+        <ArtworkUploadModal primaryOnly onUploadComplete={handlePrimaryUploadComplete} />
+      )}
+
+      {step === "additional" && (
+        <>
+          <ArtworkUploadModal primaryOnly={false} onUploadComplete={handleAdditionalUploadComplete} maxFiles={4} />
+          <div style={{ marginTop: "16px", display: "flex", justifyContent: "center" }}>
+            <button className="button button-secondary" onClick={handleCreateMore}>
+              Create Another Artwork
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
