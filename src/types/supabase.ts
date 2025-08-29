@@ -10,7 +10,7 @@ export type Database = {
           title: string | null;
           description: string | null;
           price: number | null;
-          status: 'draft' | 'available';           // ← normalized
+          status: 'draft' | 'available'; // normalized
           is_price_negotiable: boolean | null;
           min_price: number | null;
           max_price: number | null;
@@ -37,7 +37,31 @@ export type Database = {
           id: string;
           artwork_id: string;
           image_url: string;
-        // watermarked image is optional
           watermarked_image_url: string | null;
           visualization_image_url: string | null;
           position: number;
+          is_primary: boolean;
+          created_at: string | null;
+        };
+        Insert: {
+          artwork_id: string;
+          image_url: string;
+          watermarked_image_url?: string | null;
+          visualization_image_url?: string | null;
+          position: number;
+          is_primary?: boolean;
+          created_at?: string | null;
+        };
+        Update: Partial<{
+          artwork_id: string;
+          image_url: string;
+          watermarked_image_url: string | null;
+          visualization_image_url: string | null;
+          position: number;
+          is_primary: boolean;
+          created_at: string | null;
+        }>;
+      };
+    };
+  };
+};
