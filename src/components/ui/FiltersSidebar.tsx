@@ -6,6 +6,7 @@ type Artwork = {
   genre: string | null;
   status: "draft" | "available" | "Pending" | "Available" | "On Hold" | "Sold";
   keywords: string[] | null;
+  color_groups?: string[] | null;
   price: number | null;
 };
 
@@ -13,6 +14,7 @@ export type Filters = {
   genre: string[];
   status: string[];
   keyword: string[];
+  color: string[];
   search: string;
   sort?: "newest" | "price-low" | "price-high" | "title-az" | "title-za";
 };
@@ -26,17 +28,17 @@ type Props = {
 export default function FiltersSidebar({ artworks, filters, setFilters }: Props) {
   const safeFilters: Filters = useMemo(
     () =>
-      filters ?? { genre: [], status: [], keyword: [], search: "", sort: "newest" },
+      filters ?? { genre: [], status: [], keyword: [], color: [], search: "", sort: "newest" },
     [filters]
   );
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
   const [availableKeywords, setAvailableKeywords] = useState<string[]>([]);
+  const [availableColors, setAvailableColors] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState<Filters["sort"]>(safeFilters.sort ?? "newest");
 
   useEffect(() => {
     const genres = Array.from(new Set(artworks.map((a) => a.genre).filter(Boolean))) as string[];
-    // Normalize legacy statuses into draft/available for filtering UX
     const norm = (s: Artwork["status"]) =>
       s === "Available" ? "available" :
       s === "Pending" ? "draft" :
@@ -45,16 +47,18 @@ export default function FiltersSidebar({ artworks, filters, setFilters }: Props)
       (s as string).toLowerCase();
     const statuses = Array.from(new Set(artworks.map((a) => norm(a.status)))) as string[];
     const keywords = Array.from(new Set(artworks.flatMap((a) => a.keywords ?? []))) as string[];
+    const colors = Array.from(new Set(artworks.flatMap((a) => a.color_groups ?? []))) as string[];
 
     setAvailableGenres(genres);
     setAvailableStatuses(statuses);
     setAvailableKeywords(keywords);
+    setAvailableColors(colors);
   }, [artworks]);
 
   const toggleFilter = (key: keyof Omit<Filters,"search"|"sort">, value: string) => {
     if (!setFilters) return;
     setFilters((prev) => {
-      const base = prev ?? { genre: [], status: [], keyword: [], search: "", sort: "newest" };
+      const base = prev ?? { genre: [], status: [], keyword: [], color: [], search: "", sort: "newest" };
       const current = base[key];
       const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
       return { ...base, [key]: next };
@@ -63,14 +67,13 @@ export default function FiltersSidebar({ artworks, filters, setFilters }: Props)
 
   const handleSearch: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     if (!setFilters) return;
-    const val = e.target.value;
-    setFilters((prev) => ({ ...(prev ?? { genre: [], status: [], keyword: [], search: "", sort: "newest" }), search: val }));
+    setFilters((prev) => ({ ...(prev ?? { genre: [], status: [], keyword: [], color: [], search: "", sort: "newest" }), search: e.target.value }));
   };
 
   const handleSort: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
     setSortOption(e.target.value as Filters["sort"]);
     if (!setFilters) return;
-    setFilters((prev) => ({ ...(prev ?? { genre: [], status: [], keyword: [], search: "" }), sort: e.target.value as Filters["sort"] }));
+    setFilters((prev) => ({ ...(prev ?? { genre: [], status: [], keyword: [], color: [], search: "" }), sort: e.target.value as Filters["sort"] }));
   };
 
   return (
@@ -83,7 +86,7 @@ export default function FiltersSidebar({ artworks, filters, setFilters }: Props)
           type="text"
           value={safeFilters.search}
           onChange={handleSearch}
-          placeholder="Search title or keywords"
+          placeholder="Search title, keywords, or colors"
         />
       </div>
 
@@ -125,6 +128,20 @@ export default function FiltersSidebar({ artworks, filters, setFilters }: Props)
               onChange={() => toggleFilter("keyword", k)}
             />
             <span>{k}</span>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <label>Colors</label>
+        {availableColors.map((c) => (
+          <div key={c}>
+            <input
+              type="checkbox"
+              checked={safeFilters.color.includes(c)}
+              onChange={() => toggleFilter("color", c)}
+            />
+            <span>{c}</span>
           </div>
         ))}
       </div>
