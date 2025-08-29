@@ -1,97 +1,106 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { useDropzone } from "react-dropzone";
 import { useArtworkUploadStore, UploadFile } from "@/stores/artworkUploadStore";
-import { useAuth } from "@/contexts/AuthProvider";
 import { X, UploadCloud } from "lucide-react";
 
 interface ArtworkUploadModalProps {
   onUploadComplete: (uploadedIds: string[]) => void;
-  primaryOnly?: boolean;
-  maxFiles?: number;
+  allowAdditional?: boolean;
 }
 
-const ArtworkUploadModal = ({ onUploadComplete, primaryOnly = false, maxFiles = 4 }: ArtworkUploadModalProps) => {
-  const { files, isUploading, uploadAndCreatePendingArtworks, cancelUpload, clearStore, addFiles } =
+const ArtworkUploadModal = ({ onUploadComplete, allowAdditional = true }: ArtworkUploadModalProps) => {
+  const { files, addFiles, cancelUpload, clearStore, uploadAndCreatePendingArtworks, isUploading } =
     useArtworkUploadStore();
-  const { user } = useAuth();
-
-  const [saving, setSaving] = useState(false);
 
   const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      if (primaryOnly && acceptedFiles.length > 1) acceptedFiles = [acceptedFiles[0]];
-      if (!primaryOnly && files.length + acceptedFiles.length > maxFiles) {
-        acceptedFiles = acceptedFiles.slice(0, maxFiles - files.length);
-      }
-      addFiles(acceptedFiles);
+    (acceptedFiles: File[], isPrimary = false) => {
+      const limit = isPrimary ? 1 : 4;
+      const existingCount = files.filter((f) => f.isPrimary === isPrimary).length;
+      const remainingSlots = limit - existingCount;
+      if (remainingSlots <= 0) return;
+      addFiles(acceptedFiles.slice(0, remainingSlots), isPrimary);
     },
-    [addFiles, files.length, primaryOnly, maxFiles]
+    [addFiles, files]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "image/*": [".jpeg", ".png", ".gif", ".jpg", ".webp"] },
+    onDrop: (acceptedFiles) => onDrop(acceptedFiles, true),
+    accept: { "image/*": [] },
+    maxFiles: 1,
   });
 
-  const handleSave = async () => {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const uploadedIds = await uploadAndCreatePendingArtworks(user.id);
-      onUploadComplete(uploadedIds);
-      clearStore();
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
+  const handleCreate = async () => {
+    const primaryFile = files.find((f) => f.isPrimary);
+    if (!primaryFile) return;
+
+    const uploadedIds = await uploadAndCreatePendingArtworks("user-id-placeholder"); // replace with real user id
+    onUploadComplete(uploadedIds);
+    clearStore();
   };
 
-  const isSaveDisabled = useMemo(() => {
-    if (saving || isUploading) return true;
-    if (files.length === 0) return true;
-    if (files.some((f) => f.status !== "success")) return true;
+  const isCreateDisabled = useMemo(() => {
+    const primaryFile = files.find((f) => f.isPrimary);
+    if (!primaryFile) return true;
+    if (primaryFile.status !== "success") return true;
     return false;
-  }, [files, saving, isUploading]);
+  }, [files]);
+
+  const additionalFiles = allowAdditional ? files.filter((f) => !f.isPrimary) : [];
 
   return (
     <div className="modal-backdrop">
       <div className="modal-content">
-        <button
-          onClick={clearStore}
-          style={{ position: "absolute", top: "1rem", right: "1rem", background: "none", border: "none", cursor: "pointer" }}
-        >
+        <button onClick={clearStore} style={{ position: "absolute", top: 12, right: 12, border: "none", background: "none" }}>
           <X />
         </button>
+        <h3>Upload Artwork</h3>
 
-        <h3>{primaryOnly ? "Upload Primary Image" : "Upload Additional Images"}</h3>
+        {/* Primary Image */}
+        <p>Primary Image (required)</p>
+        <div {...getRootProps()} className={`dropzone ${isDragActive ? "active" : ""}`}>
+          <input {...getInputProps()} />
+          <UploadCloud size={48} />
+          <p>{isDragActive ? "Drop here…" : "Drag & drop, or click to select"}</p>
+        </div>
 
-        <div style={{ maxHeight: "200px", overflowY: "auto", margin: "1rem 0" }}>
+        <div style={{ maxHeight: 200, overflowY: "auto", marginTop: 12 }}>
           {files.map((file: UploadFile) => (
-            <div key={file.id} style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
-              <div style={{ flexGrow: 1 }}>
-                <p style={{ wordBreak: "break-all", fontSize: "0.875rem" }}>{file.file.name}</p>
-                <div style={{ width: "100%", background: "var(--input)", borderRadius: "var(--radius)", overflow: "hidden", height: "8px", marginTop: "0.5rem" }}>
-                  <div style={{ width: `${file.progress}%`, background: file.status === "error" ? "red" : "var(--primary)", height: "8px", transition: "width 0.4s ease" }} />
+            <div key={file.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ flex: 1 }}>
+                <p>{file.file.name}</p>
+                <div style={{ width: "100%", height: 6, background: "#eee", borderRadius: 3, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      width: `${file.progress}%`,
+                      height: "6px",
+                      background: file.status === "error" ? "red" : "#4f46e5",
+                      transition: "width 0.4s",
+                    }}
+                  />
                 </div>
-                {file.status === "error" && <p style={{ color: "red", fontSize: "0.75rem", marginTop: "0.25rem" }}>Error: {file.error}</p>}
-                {file.status === "success" && <p style={{ color: "green", fontSize: "0.75rem", marginTop: "0.25rem" }}>Ready to save</p>}
+                {file.status === "error" && <p style={{ color: "red" }}>{file.error}</p>}
               </div>
-              <button onClick={() => cancelUpload(file.id)} className="button-secondary" disabled={isUploading}><X size={16} /></button>
+              <button onClick={() => cancelUpload(file.id)} disabled={isUploading}>
+                <X size={16} />
+              </button>
             </div>
           ))}
         </div>
 
-        <div {...getRootProps()} style={{ border: `2px dashed ${isDragActive ? "var(--primary)" : "var(--border)"}`, padding: "2rem", textAlign: "center", borderRadius: "var(--radius)", cursor: "pointer", margin: "1rem 0" }}>
-          <input {...getInputProps()} />
-          <UploadCloud style={{ margin: "0 auto 1rem auto", color: "var(--muted-foreground)" }} />
-          {isDragActive ? <p>Drop files here</p> : <p>Drag & drop, or click to select files</p>}
-        </div>
+        {/* Additional Images */}
+        {allowAdditional && (
+          <div style={{ marginTop: 16 }}>
+            <p>Additional Images (optional, max 4)</p>
+            <AdditionalImagesDropzone files={additionalFiles} onDrop={onDrop} isUploading={isUploading} cancelUpload={cancelUpload} />
+          </div>
+        )}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "1.5rem" }}>
-          <button className="button-secondary" onClick={clearStore} disabled={isUploading || saving}>Cancel All</button>
-          <button className="button button-primary" onClick={handleSave} disabled={isSaveDisabled}>
-            {saving ? "Saving…" : primaryOnly ? "Save Primary Image" : "Save Additional Images"}
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button onClick={clearStore} className="button-secondary" disabled={isUploading}>
+            Cancel All
+          </button>
+          <button onClick={handleCreate} className="button-primary" disabled={isCreateDisabled}>
+            {isUploading ? "Uploading…" : "Save & Continue"}
           </button>
         </div>
       </div>
@@ -100,3 +109,42 @@ const ArtworkUploadModal = ({ onUploadComplete, primaryOnly = false, maxFiles = 
 };
 
 export default ArtworkUploadModal;
+
+const AdditionalImagesDropzone = ({
+  files,
+  onDrop,
+  isUploading,
+  cancelUpload,
+}: {
+  files: UploadFile[];
+  onDrop: (files: File[], isPrimary?: boolean) => void;
+  isUploading: boolean;
+  cancelUpload: (id: string) => void;
+}) => {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: (acceptedFiles) => onDrop(acceptedFiles, false),
+    accept: { "image/*": [] },
+    maxFiles: 4,
+  });
+
+  return (
+    <>
+      <div {...getRootProps()} className={`dropzone ${isDragActive ? "active" : ""}`}>
+        <input {...getInputProps()} />
+        <UploadCloud size={36} />
+        <p>{isDragActive ? "Drop here…" : "Drag & drop additional images or click"}</p>
+      </div>
+
+      <div style={{ maxHeight: 150, overflowY: "auto", marginTop: 8 }}>
+        {files.map((file) => (
+          <div key={file.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>{file.file.name}</span>
+            <button onClick={() => cancelUpload(file.id)} disabled={isUploading}>
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+};
