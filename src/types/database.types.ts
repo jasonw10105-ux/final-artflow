@@ -1,10 +1,16 @@
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
-type OptionalId<T extends { id: any }> = Omit<Partial<T>, 'id'>;
-
 // Generic helpers
-type Insert<Row extends { id: any }, RequiredKeys extends keyof Row = never> = OptionalId<Row> & Pick<Row, RequiredKeys>;
-type Update<Row extends { id: any }> = Partial<Row>;
+type AutoOptionalIdAndTimestamps<Row> = 'id' extends keyof Row
+  ? Partial<Pick<Row, 'id' | 'created_at' | 'updated_at'>> & Omit<Row, 'id' | 'created_at' | 'updated_at'>
+  : Row;
+
+type RequiredKeys<Row> = {
+  [K in keyof Row]-?: null extends Row[K] ? never : K
+}[keyof Row];
+
+type GenerateInsert<Row> = Pick<AutoOptionalIdAndTimestamps<Row>, RequiredKeys<AutoOptionalIdAndTimestamps<Row>>> & Partial<Omit<AutoOptionalIdAndTimestamps<Row>, RequiredKeys<AutoOptionalIdAndTimestamps<Row>>>>;
+type GenerateUpdate<Row> = Partial<Row>;
 
 export type Database = {
   public: {
@@ -14,6 +20,7 @@ export type Database = {
           id: string;
           user_id: string;
           created_at: string | null;
+          updated_at: string | null;
           slug: string | null;
           title: string | null;
           description: string | null;
@@ -30,14 +37,13 @@ export type Database = {
           framing_info: Json | null;
           provenance: string | null;
           currency: string | null;
-          updated_at: string | null;
           edition_info: Json | null;
           genre: string | null;
           dominant_colors: string[] | null;
           keywords: string[] | null;
         };
-        Insert: Insert<Database['public']['Tables']['artworks']['Row'], 'user_id'>;
-        Update: Update<Database['public']['Tables']['artworks']['Row']>;
+        Insert: GenerateInsert<Database['public']['Tables']['artworks']['Row']>;
+        Update: GenerateUpdate<Database['public']['Tables']['artworks']['Row']>;
       };
 
       artwork_images: {
@@ -50,9 +56,10 @@ export type Database = {
           position: number;
           is_primary: boolean;
           created_at: string | null;
+          updated_at: string | null;
         };
-        Insert: Insert<Database['public']['Tables']['artwork_images']['Row'], 'artwork_id' | 'image_url' | 'position'>;
-        Update: Update<Database['public']['Tables']['artwork_images']['Row']>;
+        Insert: GenerateInsert<Database['public']['Tables']['artwork_images']['Row']>;
+        Update: GenerateUpdate<Database['public']['Tables']['artwork_images']['Row']>;
       };
     };
   };
