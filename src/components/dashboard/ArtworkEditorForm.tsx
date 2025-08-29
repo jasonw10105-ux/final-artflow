@@ -1,563 +1,323 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { supabase } from "../../../lib/supabaseClient";
-import { useAuth } from "@/contexts/AuthProvider";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import toast from "react-hot-toast";
-import { v4 as uuidv4 } from "uuid";
-import { useDropzone } from "react-dropzone";
-import {
-  DndContext,
-  closestCenter,
-  DragEndEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { X } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthProvider';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import { X, UploadCloud } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+import TagManager, { Tag } from './TagManager';
+import CatalogueSelectionModal from './CatalogueSelectionModal';
+import ColorThief from 'colorthief';
+import toast from 'react-hot-toast';
+import { v4 as uuidv4 } from 'uuid';
 
-// ------ Types ------
+interface ArtworkEditorFormProps {
+  artworkId?: string; // Optional: editing existing artwork
+  onSaveSuccess: (artworkId: string) => void;
+}
 
-type Artwork = {
+interface ExhibitionEntry {
   id: string;
-  user_id: string;
-  title: string | null;
-  description: string | null;
-  price: number | null;
-  currency: string | null;
-  is_price_negotiable: boolean | null;
-  min_price: number | null;
-  max_price: number | null;
-  medium: string | null;
-  genre: string | null;
-  dimensions: {
-    width: number | string | null;
-    height: number | string | null;
-    depth?: number | string | null;
-    unit: "cm";
-  } | null;
-  status: string;
-  keywords?: string[] | null;
-  dominant_colors?: string[] | null;
-};
+  year: string;
+  details: string;
+}
 
-type ArtworkImage = {
-  id: string;
-  artwork_id: string;
-  image_url: string;
-  watermarked_image_url: string | null;
-  visualization_image_url: string | null;
-  position: number;
-};
+interface ArtworkFormState {
+  title: string;
+  artistName: string;
+  dateCreated: string;
+  mediumPrimary: string;
+  mediumSecondary?: string;
+  dimensions: { height: string; width: string; depth?: string };
+  weight?: string;
+  signatureLocation?: string;
+  editionInfo?: { total: number; artistProofs: number; available: number };
+  description?: string;
+  certificateOfAuthenticity?: boolean;
+  provenance?: string;
+  exhibitions: ExhibitionEntry[];
+  literature?: string[];
+  price?: string;
+  currency?: string;
+  condition?: string;
+  framed?: boolean;
+  frameDetails?: string;
+  location?: string;
+  availability?: string;
+  tags: Tag[];
+  keywords: Tag[];
+  genre: Tag[];
+  dominantColors: string[];
+  orientation?: 'portrait' | 'landscape' | 'square';
+  primaryImageFile?: File;
+  additionalImagesFiles: File[];
+  catalogueId?: string | null;
+}
 
-// ------ Helpers ------
+const ArtworkEditorForm: React.FC<ArtworkEditorFormProps> = ({ artworkId, onSaveSuccess }) => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-const coerceDimValue = (v: string): number | string | null => {
-  const trimmed = v.trim();
-  if (!trimmed) return null;
-  if (/^var(iable)?$/i.test(trimmed)) return "variable";
-  const n = Number(trimmed.replace(",", "."));
-  return Number.isFinite(n) ? n : "variable";
-};
-
-// ------ Sortable Image Item ------
-
-function SortableImageItem({
-  item,
-  onRemove,
-}: {
-  item: ArtworkImage;
-  onRemove: (id: string) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: item.id,
+  const [formState, setFormState] = useState<ArtworkFormState>({
+    title: '',
+    artistName: '',
+    dateCreated: '',
+    mediumPrimary: '',
+    mediumSecondary: '',
+    dimensions: { height: '', width: '', depth: '' },
+    exhibitions: [],
+    tags: [],
+    keywords: [],
+    genre: [],
+    dominantColors: [],
+    additionalImagesFiles: [],
+    availability: 'Available',
+    currency: 'ZAR',
+    condition: 'Excellent',
   });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [showCatalogueModal, setShowCatalogueModal] = useState(false);
+
+  // ------------------- DROPZONE -------------------
+  const onPrimaryDrop = useCallback((files: File[]) => {
+    if (files.length === 0) return;
+    setFormState((prev) => ({ ...prev, primaryImageFile: files[0] }));
+  }, []);
+
+  const onAdditionalDrop = useCallback((files: File[]) => {
+    setFormState((prev) => ({
+      ...prev,
+      additionalImagesFiles: [...prev.additionalImagesFiles, ...files].slice(0, 4),
+    }));
+  }, []);
+
+  const { getRootProps: getPrimaryRootProps, getInputProps: getPrimaryInputProps, isDragActive: isPrimaryDragActive } = useDropzone({
+    onDrop: onPrimaryDrop,
+    accept: { 'image/*': ['.jpeg', '.png', '.gif', '.jpg', '.webp'] },
+    maxFiles: 1,
+  });
+
+  const { getRootProps: getAdditionalRootProps, getInputProps: getAdditionalInputProps, isDragActive: isAdditionalDragActive } = useDropzone({
+    onDrop: onAdditionalDrop,
+    accept: { 'image/*': ['.jpeg', '.png', '.gif', '.jpg', '.webp'] },
+    maxFiles: 4,
+  });
+
+  // ------------------- INTELLIGENT METADATA -------------------
+  useEffect(() => {
+    if (!formState.primaryImageFile) return;
+
+    const img = new Image();
+    img.src = URL.createObjectURL(formState.primaryImageFile);
+    img.onload = () => {
+      // Orientation
+      const orientation =
+        img.width > img.height ? 'landscape' : img.width < img.height ? 'portrait' : 'square';
+
+      setFormState((prev) => ({ ...prev, orientation }));
+
+      // Dominant colors using ColorThief
+      try {
+        const colorThief = new ColorThief();
+        const dominantColor = colorThief.getColor(img); // [r,g,b]
+        setFormState((prev) => ({
+          ...prev,
+          dominantColors: [`rgb(${dominantColor[0]},${dominantColor[1]},${dominantColor[2]})`],
+        }));
+      } catch (err) {
+        console.warn('Error extracting dominant color', err);
+      }
+
+      // TODO: genre & keyword AI detection placeholder
+      // Here you would integrate with AI or image recognition API
+      // For now, just auto-fill empty arrays if they were empty
+      setFormState((prev) => ({
+        ...prev,
+        genre: prev.genre.length === 0 ? [{ id: uuidv4(), name: 'Unknown' }] : prev.genre,
+        keywords: prev.keywords.length === 0 ? [{ id: uuidv4(), name: 'Autodetected' }] : prev.keywords,
+        tags: prev.tags.length === 0 ? [{ id: uuidv4(), name: 'Autodetected' }] : prev.tags,
+      }));
+    };
+  }, [formState.primaryImageFile]);
+
+  // ------------------- ADD / REMOVE EXHIBITIONS -------------------
+  const addExhibition = () => {
+    setFormState((prev) => ({
+      ...prev,
+      exhibitions: [...prev.exhibitions, { id: uuidv4(), year: '', details: '' }],
+    }));
   };
+
+  const updateExhibition = (id: string, field: 'year' | 'details', value: string) => {
+    setFormState((prev) => ({
+      ...prev,
+      exhibitions: prev.exhibitions.map((ex) => (ex.id === id ? { ...ex, [field]: value } : ex)),
+    }));
+  };
+
+  const removeExhibition = (id: string) => {
+    setFormState((prev) => ({
+      ...prev,
+      exhibitions: prev.exhibitions.filter((ex) => ex.id !== id),
+    }));
+  };
+
+  // ------------------- TAG / KEYWORD / GENRE MANAGEMENT -------------------
+  const handleTagChange = (tags: Tag[]) => setFormState((prev) => ({ ...prev, tags }));
+  const handleKeywordChange = (tags: Tag[]) => setFormState((prev) => ({ ...prev, keywords: tags }));
+  const handleGenreChange = (tags: Tag[]) => setFormState((prev) => ({ ...prev, genre: tags }));
+
+  const createTagInDb = async (name: string): Promise<Tag | null> => {
+    if (!user) return null;
+    const { data, error } = await supabase.from('tags').insert({ name, user_id: user.id }).select('*').single();
+    if (error) return null;
+    const tag: Tag = { id: data.id, name: data.name };
+    setAllTags((prev) => [...prev, tag]);
+    return tag;
+  };
+
+  // ------------------- SAVE ARTWORK -------------------
+  const saveArtworkMutation = useMutation({
+    mutationFn: async (payload: FormData) => {
+      const { data, error } = await supabase.from('artworks').upsert(payload).select('id').single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async (savedArtwork: any) => {
+      const artworkId = savedArtwork.id;
+
+      // Upload primary image
+      if (formState.primaryImageFile) {
+        await supabase.storage
+          .from('artwork_images')
+          .upload(`${artworkId}/primary/${formState.primaryImageFile.name}`, formState.primaryImageFile, { upsert: true });
+      }
+
+      // Upload additional images
+      for (const file of formState.additionalImagesFiles) {
+        await supabase.storage
+          .from('artwork_images')
+          .upload(`${artworkId}/additional/${file.name}`, file, { upsert: true });
+      }
+
+      // Trigger watermark/visualization here AFTER save
+      // TODO: Add API call for watermark / visualization processing
+
+      toast.success('Artwork saved successfully!');
+      onSaveSuccess(artworkId);
+    },
+    onError: (err: any) => {
+      toast.error(`Error saving artwork: ${err.message}`);
+    },
+  });
+
+  const handleSave = () => {
+    const formData = new FormData();
+    Object.entries(formState).forEach(([key, value]) => {
+      if (value instanceof Array || value instanceof Object) {
+        formData.append(key, JSON.stringify(value));
+      } else {
+        formData.append(key, value as any);
+      }
+    });
+
+    saveArtworkMutation.mutate(formData);
+  };
+
+  // ------------------- JSX -------------------
   return (
-    <div ref={setNodeRef} style={style} className="img-item">
-      <div className="thumb" {...attributes} {...listeners} title="Drag to reorder">
-        <img src={item.image_url} alt="" />
+    <div className="artwork-editor-form">
+      <h2>Artwork Editor</h2>
+
+      <label>Title</label>
+      <input
+        value={formState.title}
+        onChange={(e) => setFormState({ ...formState, title: e.target.value })}
+        placeholder="Artwork title"
+      />
+
+      <label>Artist Name</label>
+      <input
+        value={formState.artistName}
+        onChange={(e) => setFormState({ ...formState, artistName: e.target.value })}
+        placeholder="Artist name"
+      />
+
+      {/* Primary Image */}
+      <label>Primary Image</label>
+      <div {...getPrimaryRootProps()} className="dropzone">
+        <input {...getPrimaryInputProps()} />
+        <UploadCloud />
+        {isPrimaryDragActive ? <p>Drop image here</p> : <p>{formState.primaryImageFile?.name || 'Drag or click to upload'}</p>}
       </div>
-      <div className="thumb-actions">
-        <button
-          type="button"
-          className="remove-btn"
-          onClick={() => onRemove(item.id)}
-          aria-label="Remove image"
-        >
-          <X size={16} />
-        </button>
-        {item.watermarked_image_url && <span className="badge">WM ✓</span>}
-        {item.visualization_image_url && <span className="badge">Viz ✓</span>}
+
+      {/* Additional Images */}
+      <label>Additional Images (Optional, Max 4)</label>
+      <div {...getAdditionalRootProps()} className="dropzone">
+        <input {...getAdditionalInputProps()} />
+        <UploadCloud />
+        {isAdditionalDragActive ? <p>Drop images here</p> : <p>{formState.additionalImagesFiles.length} files uploaded</p>}
       </div>
-      <style jsx>{`
-        .img-item {
-          display: grid;
-          grid-template-columns: 96px 1fr;
-          gap: 0.75rem;
-          align-items: center;
-          padding: 0.5rem;
-          border: 1px solid var(--border, #e5e7eb);
-          border-radius: 12px;
-          background: #fff;
-        }
-        .thumb {
-          width: 96px;
-          height: 96px;
-          border-radius: 10px;
-          overflow: hidden;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-          cursor: grab;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #fafafa;
-        }
-        .thumb img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-        .thumb-actions {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-        .remove-btn {
-          appearance: none;
-          border: none;
-          background: #fee2e2;
-          color: #991b1b;
-          padding: 0.35rem 0.5rem;
-          border-radius: 8px;
-          cursor: pointer;
-        }
-        .badge {
-          background: #ecfeff;
-          color: #0e7490;
-          font-size: 12px;
-          padding: 0.1rem 0.4rem;
-          border-radius: 6px;
-        }
-      `}</style>
+
+      {/* Tags */}
+      <TagManager
+        allTags={allTags}
+        selectedTags={formState.tags}
+        onSelectedTagsChange={handleTagChange}
+        onTagCreate={createTagInDb}
+      />
+
+      {/* Keywords */}
+      <TagManager
+        allTags={allTags}
+        selectedTags={formState.keywords}
+        onSelectedTagsChange={handleKeywordChange}
+        onTagCreate={createTagInDb}
+      />
+
+      {/* Genre */}
+      <TagManager
+        allTags={allTags}
+        selectedTags={formState.genre}
+        onSelectedTagsChange={handleGenreChange}
+        onTagCreate={createTagInDb}
+      />
+
+      {/* Exhibitions */}
+      <h3>Exhibitions</h3>
+      {formState.exhibitions.map((ex) => (
+        <div key={ex.id} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <input
+            placeholder="Year"
+            value={ex.year}
+            onChange={(e) => updateExhibition(ex.id, 'year', e.target.value)}
+          />
+          <input
+            placeholder="Details"
+            value={ex.details}
+            onChange={(e) => updateExhibition(ex.id, 'details', e.target.value)}
+          />
+          <button onClick={() => removeExhibition(ex.id)}>Remove</button>
+        </div>
+      ))}
+      <button onClick={addExhibition}>Add Exhibition</button>
+
+      <button onClick={() => setShowCatalogueModal(true)}>Assign Catalogue</button>
+
+      <button onClick={handleSave} disabled={saveArtworkMutation.isLoading}>
+        {saveArtworkMutation.isLoading ? 'Saving...' : 'Save Artwork'}
+      </button>
+
+      {showCatalogueModal && (
+        <CatalogueSelectionModal
+          isOpen={showCatalogueModal}
+          onClose={() => setShowCatalogueModal(false)}
+          onSelectCatalogue={(catalogueId) => setFormState((prev) => ({ ...prev, catalogueId }))}
+          currentCatalogueId={formState.catalogueId || null}
+        />
+      )}
     </div>
   );
-}
+};
 
-// ------ Main Component ------
-
-export default function ArtworkEditorForm({
-  artworkId,
-  onSaved,
-}: {
-  artworkId?: string;
-  onSaved?: (id: string) => void;
-}) {
-  const { user } = useAuth();
-  const qc = useQueryClient();
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
-  // Form state
-  const [title, setTitle] = useState("");
-  const [mediumParent, setMediumParent] = useState("");
-  const [mediumChild, setMediumChild] = useState("");
-  const medium = useMemo(() => {
-    if (!mediumParent) return "";
-    return mediumChild ? `${mediumParent} · ${mediumChild}` : mediumParent;
-  }, [mediumParent, mediumChild]);
-
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState<string>("");
-  const [currency, setCurrency] = useState("ZAR");
-  const [isNegotiable, setIsNegotiable] = useState(false);
-  const [minPrice, setMinPrice] = useState<string>("");
-  const [maxPrice, setMaxPrice] = useState<string>("");
-
-  const [width, setWidth] = useState<string>("");
-  const [height, setHeight] = useState<string>("");
-  const [depth, setDepth] = useState<string>("");
-
-  const [images, setImages] = useState<ArtworkImage[]>([]);
-  const [toDelete, setToDelete] = useState<Set<string>>(new Set());
-
-  const [genre, setGenre] = useState("");
-  const [keywords, setKeywords] = useState<string>("");
-
-  // Load existing artwork
-  useEffect(() => {
-    if (!artworkId) return;
-    (async () => {
-      const { data, error } = await supabase.from("artworks").select("*").eq("id", artworkId).single();
-      if (error) {
-        toast.error(`Failed to load artwork: ${error.message}`);
-        return;
-      }
-      if (data.title) setTitle(data.title);
-      if (data.description) setDescription(data.description);
-      if (data.medium) {
-        const [p, c] = String(data.medium).split("·").map((s) => s.trim());
-        setMediumParent(p ?? "");
-        setMediumChild(c ?? "");
-      }
-      if (data.currency) setCurrency(data.currency);
-      if (data.is_price_negotiable) setIsNegotiable(true);
-      if (data.price != null) setPrice(String(data.price));
-      if (data.min_price != null) setMinPrice(String(data.min_price));
-      if (data.max_price != null) setMaxPrice(String(data.max_price));
-      if (data.genre) setGenre(data.genre);
-      if (data.keywords) setKeywords(data.keywords.join(", "));
-
-      const dims = data.dimensions ?? null;
-      if (dims) {
-        setWidth(dims.width != null ? String(dims.width) : "");
-        setHeight(dims.height != null ? String(dims.height) : "");
-        setDepth(dims.depth != null ? String(dims.depth) : "");
-      }
-
-      const { data: imgs, error: imgErr } = await supabase
-        .from("artwork_images")
-        .select("*")
-        .eq("artwork_id", data.id)
-        .order("position", { ascending: true });
-      if (imgErr) {
-        toast.error(`Failed to load images: ${imgErr.message}`);
-      } else {
-        setImages((imgs ?? []) as ArtworkImage[]);
-      }
-    })();
-  }, [artworkId]);
-
-  // Dropzone
-  const onDrop = useCallback(
-    async (accepted: File[]) => {
-      if (!user) {
-        toast.error("You must be signed in to upload images.");
-        return;
-      }
-      if (!accepted.length) return;
-
-      const newItems: ArtworkImage[] = [];
-      const parentId = artworkId ?? `draft-${uuidv4()}`;
-
-      for (const file of accepted) {
-        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-        const id = uuidv4();
-        const storagePath = `originals/${user.id}/${parentId}/${id}.${ext}`;
-
-        const arrayBuffer = await file.arrayBuffer();
-        const { error: upErr } = await supabase.storage
-          .from("artworks")
-          .upload(storagePath, arrayBuffer, {
-            contentType: file.type || "image/jpeg",
-            upsert: true,
-          });
-
-        if (upErr) {
-          toast.error(`Upload failed: ${upErr.message}`);
-          continue;
-        }
-
-        const { data: pub } = supabase.storage.from("artworks").getPublicUrl(storagePath);
-
-        newItems.push({
-          id,
-          artwork_id: artworkId ?? "",
-          image_url: pub.publicUrl,
-          watermarked_image_url: null,
-          visualization_image_url: null,
-          position: images.length + newItems.length,
-        });
-      }
-
-      setImages((prev) => [...prev, ...newItems]);
-      toast.success(`${newItems.length} image(s) added`);
-    },
-    [artworkId, images.length, user]
-  );
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: { "image/*": [] },
-    multiple: true,
-    onDrop,
-  });
-
-  // Drag & drop reorder
-  const onDragEnd = (e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const oldIndex = images.findIndex((i) => i.id === active.id);
-    const newIndex = images.findIndex((i) => i.id === over.id);
-    const reordered = arrayMove(images, oldIndex, newIndex).map((img, idx) => ({
-      ...img,
-      position: idx,
-    }));
-    setImages(reordered);
-  };
-
-  const removeImage = (id: string) => {
-    setImages((prev) => prev.filter((i) => i.id !== id));
-    if (!id.includes("-")) setToDelete((s) => new Set([...s, id]));
-  };
-
-  // Save mutation
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error("Not authenticated");
-
-      const payload: Partial<Artwork> = {
-        user_id: user.id,
-        title: title.trim(),
-        description: description.trim() || null,
-        medium: medium || null,
-        price: price ? Number(price) : null,
-        currency,
-        is_price_negotiable: isNegotiable,
-        min_price: isNegotiable && minPrice ? Number(minPrice) : null,
-        max_price: isNegotiable && maxPrice ? Number(maxPrice) : null,
-        dimensions: {
-          width: coerceDimValue(width),
-          height: coerceDimValue(height),
-          depth: depth ? coerceDimValue(depth) : null,
-          unit: "cm",
-        },
-        status: "Pending",
-        genre: genre.trim() || null,
-        keywords: keywords
-          .split(",")
-          .map((k) => k.trim())
-          .filter(Boolean),
-      };
-
-      let id = artworkId;
-      if (id) {
-        const { error: upErr } = await supabase.from("artworks").update(payload).eq("id", id);
-        if (upErr) throw new Error(`Update failed: ${upErr.message}`);
-      } else {
-        const { data, error: insErr } = await supabase.from("artworks").insert(payload).select("id").single();
-        if (insErr) throw new Error(`Create failed: ${insErr.message}`);
-        id = data.id;
-      }
-
-      const existing = await supabase.from("artwork_images").select("id").eq("artwork_id", id!);
-      const existingIds = new Set((existing.data ?? []).map((r) => r.id));
-
-      for (const delId of toDelete) {
-        if (existingIds.has(delId)) {
-          await supabase.from("artwork_images").delete().eq("id", delId);
-        }
-      }
-
-      for (const img of images) {
-        if (existingIds.has(img.id)) {
-          await supabase.from("artwork_images").update({ position: img.position }).eq("id", img.id);
-        } else {
-          const row = {
-            id: img.id,
-            artwork_id: id!,
-            image_url: img.image_url,
-            position: img.position,
-          };
-          await supabase.from("artwork_images").insert(row);
-        }
-      }
-
-      await fetch(`${supabase.functionsUrl}/process-artwork-images`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artworkId: id, force: false }),
-      });
-
-      return id!;
-    },
-    onSuccess: (id) => {
-      qc.invalidateQueries({ queryKey: ["artwork", id] });
-      qc.invalidateQueries({ queryKey: ["artwork_images", id] });
-      toast.success("Artwork saved");
-      onSaved?.(id);
-    },
-    onError: (e: any) => {
-      toast.error(e.message ?? "Failed to save");
-    },
-  });
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        saveMutation.mutate();
-      }}
-      className="form-wrap"
-    >
-      <h2>Artwork Editor</h2>
-      <div className="grid">
-        <label className="field">
-          <span>Title *</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Parent Medium *</span>
-          <input value={mediumParent} onChange={(e) => setMediumParent(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Medium (child / technique)</span>
-          <input value={mediumChild} onChange={(e) => setMediumChild(e.target.value)} />
-        </label>
-        <label className="field col-span-2">
-          <span>Description</span>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
-        </label>
-        <label className="field">
-          <span>Genre</span>
-          <input value={genre} onChange={(e) => setGenre(e.target.value)} />
-        </label>
-        <label className="field">
-          <span>Keywords (comma separated)</span>
-          <input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
-        </label>
-        <div className="field">
-          <span>Price *</span>
-          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} />
-        </div>
-        <div className="field">
-          <span>Currency</span>
-          <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            <option value="ZAR">ZAR</option>
-            <option value="USD">USD</option>
-          </select>
-        </div>
-        <label className="check field">
-          <input type="checkbox" checked={isNegotiable} onChange={(e) => setIsNegotiable(e.target.checked)} />
-          <span>Price is negotiable</span>
-        </label>
-        {isNegotiable && (
-          <>
-            <div className="field">
-              <span>Min Price *</span>
-              <input type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
-            </div>
-            <div className="field">
-              <span>Max Price *</span>
-              <input type="number" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
-            </div>
-          </>
-        )}
-        <div className="dim col-span-2">
-          <label className="field">
-            <span>Width *</span>
-            <input value={width} onChange={(e) => setWidth(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Height *</span>
-            <input value={height} onChange={(e) => setHeight(e.target.value)} />
-          </label>
-          <label className="field">
-            <span>Depth</span>
-            <input value={depth} onChange={(e) => setDepth(e.target.value)} />
-          </label>
-        </div>
-        <div className="col-span-2">
-          <div {...getRootProps({ className: "dropzone" })}>
-            <input {...getInputProps()} />
-            {isDragActive ? <p>Drop images here…</p> : <p>Drag & drop or click to select</p>}
-          </div>
-          {images.length > 0 && (
-            <div className="images-list">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-                <SortableContext items={images.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                  <div className="list">
-                    {images.map((img) => (
-                      <SortableImageItem key={img.id} item={img} onRemove={removeImage} />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </div>
-          )}
-        </div>
-      </div>
-            <div className="actions">
-        <button type="submit" disabled={saveMutation.isLoading}>
-          {saveMutation.isLoading ? "Saving..." : "Save Artwork"}
-        </button>
-      </div>
-
-      <style jsx>{`
-        .form-wrap {
-          display: grid;
-          gap: 1.5rem;
-          max-width: 900px;
-          margin: 0 auto;
-        }
-        .grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 1rem 1.5rem;
-        }
-        .field {
-          display: flex;
-          flex-direction: column;
-          gap: 0.4rem;
-        }
-        .field input,
-        .field textarea,
-        .field select {
-          border: 1px solid var(--border, #e5e7eb);
-          border-radius: 8px;
-          padding: 0.5rem 0.75rem;
-          font-size: 14px;
-        }
-        .check {
-          flex-direction: row;
-          align-items: center;
-          gap: 0.5rem;
-        }
-        .dim {
-          display: flex;
-          gap: 1rem;
-        }
-        .dropzone {
-          border: 2px dashed #94a3b8;
-          padding: 1rem;
-          text-align: center;
-          border-radius: 12px;
-          color: #475569;
-          cursor: pointer;
-          background: #f8fafc;
-        }
-        .images-list {
-          margin-top: 1rem;
-        }
-        .list {
-          display: grid;
-          gap: 0.75rem;
-        }
-        .actions {
-          display: flex;
-          justify-content: flex-end;
-        }
-        .actions button {
-          padding: 0.6rem 1.2rem;
-          background: #2563eb;
-          color: #fff;
-          border: none;
-          border-radius: 8px;
-          cursor: pointer;
-        }
-        .actions button[disabled] {
-          background: #94a3b8;
-          cursor: not-allowed;
-        }
-      `}</style>
-    </form>
-  );
-}
-
+export default ArtworkEditorForm;
