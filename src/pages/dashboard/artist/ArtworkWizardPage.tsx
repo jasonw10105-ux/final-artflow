@@ -1,65 +1,71 @@
 import React, { useState } from "react";
-import { useAuth } from "@/contexts/AuthProvider";
+import { useMutation } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
-import ArtworkUploadModal from "./ArtworkUploadModal";
+import ArtworkUploadModal from "@/components/dashboard/ArtworkUploadModal";
+import { useArtworkUploadStore } from "@/stores/artworkUploadStore";
 
 export default function ArtworkWizardPage() {
-  const { user } = useAuth();
-  const [artworkId, setArtworkId] = useState<string | null>(null);
-  const [showUpload, setShowUpload] = useState(true);
+  const { reset, artworkId } = useArtworkUploadStore();
+  const [uploadOpen, setUploadOpen] = useState(true);
 
-  const createUntitledArtwork = async () => {
-    if (!user) return;
-    const { data, error } = await supabase
-      .from("artworks")
-      .insert({ title: "Untitled Artwork", user_id: user.id, status: "Pending" })
-      .select("id")
-      .single();
+  const createArtwork = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase
+        .from("artworks")
+        .insert({ title: "Untitled Artwork", status: "draft" })
+        .select("id")
+        .single();
 
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setArtworkId(data.id);
-    setShowUpload(true);
-  };
+      if (error) throw error;
+      return data.id as string;
+    },
+    onSuccess: (id) => {
+      useArtworkUploadStore.getState().setArtworkId(id);
+      toast.success("New artwork created");
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
 
-  const handleUploadComplete = async (uploadedIds: string[]) => {
+  const handleSave = async () => {
     if (!artworkId) return;
 
-    try {
-      // Call RPC for intelligent metadata update
-      const { error } = await supabase.rpc("update_artwork_intelligent_metadata", { artwork_uuid: artworkId });
-      if (error) throw error;
+    const res = await fetch("/functions/v1/update_artwork_intelligent_metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ artworkId }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      toast.error(`Metadata update failed: ${err.error}`);
+    } else {
       toast.success("Artwork saved with intelligent metadata!");
-      setShowUpload(false);
-    } catch (err: any) {
-      toast.error(err.message ?? "Failed to update metadata");
+      reset();
+      setUploadOpen(false);
     }
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h1 className="text-2xl font-semibold mb-6">Artwork Wizard</h1>
-
-      {!artworkId && (
-        <button className="button-primary" onClick={createUntitledArtwork}>
-          Create New Artwork
+    <div style={{ padding: 32 }}>
+      <h1>Create Artwork</h1>
+      {!artworkId ? (
+        <button
+          onClick={() => createArtwork.mutate()}
+          disabled={createArtwork.isLoading}
+        >
+          {createArtwork.isLoading ? "Creating..." : "Start New Artwork"}
         </button>
-      )}
-
-      {showUpload && artworkId && (
-        <ArtworkUploadModal onUploadComplete={handleUploadComplete} />
-      )}
-
-      {!showUpload && (
-        <div>
-          <p>Artwork created successfully!</p>
-          <button className="button-secondary" onClick={createUntitledArtwork}>
-            + Create Another Artwork
+      ) : (
+        <>
+          <ArtworkUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} />
+          <button
+            onClick={handleSave}
+            style={{ marginTop: 16, background: "#000", color: "#fff", padding: "8px 16px" }}
+          >
+            Save Artwork
           </button>
-        </div>
+        </>
       )}
     </div>
   );
