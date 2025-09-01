@@ -1,109 +1,135 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useSearchParams, Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabaseClient';
-import FiltersSidebar, { ActiveFilters, AvailableFilters } from '../../components/ui/FiltersSidebar';
+import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Artwork, Catalogue } from "../types";
 
-const ITEMS_PER_PAGE = 12;
-
-interface Catalogue {
-  id: string;
-  title: string;
-  slug: string;
-  profile_full_name: string;
-  profile_slug: string;
-  cover_image_url?: string;
-}
-
-const BrowseCataloguesPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [page, setPage] = useState(0);
-
-  const initialFilters: ActiveFilters = useMemo(() => ({
-    search: searchParams.get('search') || '',
-    colors: [],
-    genres: [],
-    artists: [],
-    sizes: [],
-    waysToBuy: [],
-    signed: [],
-    framed: [],
-    minPrice: '',
-    maxPrice: '',
-    sortBy: 'recently_added',
-  }), [searchParams]);
-
-  const [activeFilters, setActiveFilters] = useState<ActiveFilters>(initialFilters);
-  const [availableFilters, setAvailableFilters] = useState<AvailableFilters>({});
-  const [catalogues, setCatalogues] = useState<Catalogue[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (activeFilters.search) params.set('search', activeFilters.search);
-    setSearchParams(params);
-    setPage(0);
-  }, [activeFilters, setSearchParams]);
-
-  const { isLoading } = useQuery({
-    queryKey: ['filteredCatalogues', page, activeFilters],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_filtered_items', {
-        p_type: 'catalogue',
-        p_keywords: activeFilters.search ? [activeFilters.search] : [],
-        p_offset: page * ITEMS_PER_PAGE,
-        p_limit: ITEMS_PER_PAGE
-      });
-      if (error) throw new Error(error.message);
-
-      const resp = data as any;
-      setCatalogues(resp.items || []);
-      setAvailableFilters(resp.filter_counts || {});
-      setTotalCount(resp.items?.length || 0);
-    },
-    keepPreviousData: true
-  });
-
-  return (
-    <div className="browse-page-container">
-      <h1 className="browse-page-title">Browse Catalogues</h1>
-      <div className="main-content-grid">
-        <FiltersSidebar
-          availableFilters={availableFilters}
-          activeFilters={activeFilters}
-          setActiveFilters={setActiveFilters}
-        />
-
-        <div className="artwork-list-area">
-          {isLoading ? <p>Loading catalogues...</p> :
-            catalogues.length ? (
-              <div className="artwork-grid">
-                {catalogues.map(cat => (
-                  <Link key={cat.id} to={`/${cat.profile_slug}/catalogue/${cat.slug}`}>
-                    <div className="artwork-card">
-                      <img src={cat.cover_image_url || ''} alt={cat.title} />
-                      <div className="artwork-card-info">
-                        <h4>{cat.title}</h4>
-                        <p>{cat.profile_full_name}</p>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : <p>No catalogues match your selected filters.</p>
-          }
-
-          {totalCount >= ITEMS_PER_PAGE && (
-            <div className="pagination-controls">
-              <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}>Previous</button>
-              <span>Page {page+1}</span>
-              <button onClick={()=>setPage(p=>p+1)}>Next</button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+type Filters = {
+  genre: string[];
+  keyword: string[];
+  search: string;
+  sort: "newest" | "price-low" | "price-high" | "title-az" | "title-za";
 };
 
-export default BrowseCataloguesPage;
+type Props = {
+  catalogues: Catalogue[];
+};
+
+export default function BrowseCataloguesPage({ catalogues }: Props) {
+  const [filters, setFilters] = useState<Filters>({
+    genre: [],
+    keyword: [],
+    search: "",
+    sort: "newest",
+  });
+
+  // Compute filtered catalogues and artworks
+  const filteredCatalogues = useMemo(() => {
+    return catalogues
+      .map((cat) => {
+        const availableArts = cat.artworks?.filter(
+          (a) => (a.status ?? "").toLowerCase() === "available"
+        ) ?? [];
+
+        const filteredArts = availableArts.filter((a) => {
+          const matchesGenre =
+            filters.genre.length === 0 || (a.genre && filters.genre.includes(a.genre));
+          const matchesKeyword =
+            filters.keyword.length === 0 ||
+            (a.keywords && a.keywords.some((k) => filters.keyword.includes(k)));
+          const matchesSearch =
+            filters.search === "" ||
+            a.title?.toLowerCase().includes(filters.search.toLowerCase()) ||
+            a.keywords?.some((k) => k.toLowerCase().includes(filters.search.toLowerCase()));
+
+          return matchesGenre && matchesKeyword && matchesSearch;
+        });
+
+        return { ...cat, artworks: filteredArts };
+      })
+      .filter((cat) => (cat.artworks?.length ?? 0) > 0)
+      .sort((a, b) => {
+        switch (filters.sort) {
+          case "price-low":
+            return (a.artworks?.[0].price ?? 0) - (b.artworks?.[0].price ?? 0);
+          case "price-high":
+            return (b.artworks?.[0].price ?? 0) - (a.artworks?.[0].price ?? 0);
+          case "title-az":
+            return (a.title ?? "").localeCompare(b.title ?? "");
+          case "title-za":
+            return (b.title ?? "").localeCompare(a.title ?? "");
+          case "newest":
+          default:
+            return (
+              new Date(b.created_at ?? 0).getTime() -
+              new Date(a.created_at ?? 0).getTime()
+            );
+        }
+      });
+  }, [catalogues, filters]);
+
+  return (
+    <div style={{ padding: "16px" }}>
+      <h1>Browse Catalogues</h1>
+
+      {/* Filters */}
+      <div style={{ display: "flex", gap: "16px", marginBottom: "16px" }}>
+        <input
+          type="text"
+          placeholder="Search artworks..."
+          value={filters.search}
+          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+        />
+        <select
+          value={filters.sort}
+          onChange={(e) => setFilters({ ...filters, sort: e.target.value as Filters["sort"] })}
+        >
+          <option value="newest">Newest</option>
+          <option value="price-low">Price: Low → High</option>
+          <option value="price-high">Price: High → Low</option>
+          <option value="title-az">Title A → Z</option>
+          <option value="title-za">Title Z → A</option>
+        </select>
+      </div>
+
+      {/* Catalogues */}
+      {filteredCatalogues.length === 0 ? (
+        <p>No catalogues match your filters.</p>
+      ) : (
+        filteredCatalogues.map((cat) => (
+          <div key={cat.id} style={{ marginBottom: "32px" }}>
+            <h2>{cat.title}</h2>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              {cat.artworks?.map((art) => (
+                <div
+                  key={art.id}
+                  style={{
+                    border: "1px solid #ddd",
+                    borderRadius: "8px",
+                    overflow: "hidden",
+                    padding: "8px",
+                  }}
+                >
+                  <Link to={`/artwork/${art.slug ?? ""}`}>
+                    <img
+                      src={art.artwork_images?.[0]?.image_url ?? "https://placehold.co/400x300"}
+                      alt={art.title ?? "Artwork"}
+                      style={{ width: "100%", height: "150px", objectFit: "cover" }}
+                    />
+                    <h3>{art.title ?? "Untitled"}</h3>
+                  </Link>
+                  <p>{art.price ? `R${art.price.toLocaleString()}` : "Price on request"}</p>
+                  {art.genre && <p>Genre: {art.genre}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}

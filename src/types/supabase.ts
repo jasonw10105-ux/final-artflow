@@ -1,3 +1,6 @@
+// src/types/supabase.ts
+export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
+
 export type Database = {
   public: {
     Tables: {
@@ -10,7 +13,7 @@ export type Database = {
           title: string | null;
           description: string | null;
           price: number | null;
-          status: 'draft' | 'available'; // normalized
+          status: 'draft' | 'available';
           is_price_negotiable: boolean | null;
           min_price: number | null;
           max_price: number | null;

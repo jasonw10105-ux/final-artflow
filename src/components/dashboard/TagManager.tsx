@@ -1,17 +1,15 @@
-// src/components/dashboard/TagManager.tsx
-
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import toast from 'react-hot-toast'; // Assuming you use toast
 
-// Define the shape of our Tag object for TypeScript
 export interface Tag {
   id: string;
   name: string;
 }
 
 interface TagManagerProps {
-  allTags: Tag[]; // All tags available to the artist
-  selectedTags: Tag[]; // Tags currently applied to the contact
+  allTags: Tag[]; // All tags available to the artist (fetched from DB)
+  selectedTags: Tag[]; // Tags currently applied to the artwork
   onSelectedTagsChange: (tags: Tag[]) => void; // Callback to update the parent's state
   onTagCreate: (tagName: string) => Promise<Tag | null>; // Callback to create a new tag in the DB
 }
@@ -44,8 +42,9 @@ const TagManager: React.FC<TagManagerProps> = ({
         } else {
           // Create a new tag
           setIsLoading(true);
-          tagToAdd = await onTagCreate(tagOrTagName);
+          const createdTag = await onTagCreate(tagOrTagName); // Call parent's creation function
           setIsLoading(false);
+          tagToAdd = createdTag;
         }
       } else {
         tagToAdd = tagOrTagName;
@@ -54,6 +53,8 @@ const TagManager: React.FC<TagManagerProps> = ({
       if (tagToAdd && !selectedTags.some((selected) => selected.id === tagToAdd!.id)) {
         onSelectedTagsChange([...selectedTags, tagToAdd]);
         setInputValue(''); // Clear input after adding
+      } else if (tagToAdd) {
+        toast.error(`Tag "${tagToAdd.name}" already added.`);
       }
     };
 

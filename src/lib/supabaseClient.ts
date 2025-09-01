@@ -1,23 +1,20 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// This singleton pattern ensures that only one instance of the Supabase client exists.
-let clientInstance: SupabaseClient | null = null;
+let supabaseInstance: SupabaseClient | null = null;
 
-const getSupabase = () => {
-    if (clientInstance) {
-        return clientInstance;
-    }
+export const getSupabase = (): SupabaseClient => {
+  if (supabaseInstance) return supabaseInstance;
 
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-    if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Supabase URL and Anon Key are required in your .env.local file.');
-    }
-    
-    clientInstance = createClient(supabaseUrl, supabaseAnonKey);
-    return clientInstance;
-}
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables. Check your .env file.');
+  }
 
-// Export the single, memoized instance with the name 'supabase'.
-export const supabase = getSupabase();
+  supabaseInstance = createClient(supabaseUrl, supabaseAnonKey);
+  return supabaseInstance;
+};
+
+// Export a singleton instance directly for convenience
+export const supabase: SupabaseClient = getSupabase();

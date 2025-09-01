@@ -24,19 +24,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const isInitialLoadRef = useRef(true);
 
+  // Fetch user profile from Supabase
   const fetchProfile = async (userId: string): Promise<Profile | null> => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (error) {
-      console.error('Failed to fetch profile:', error.message);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (err: any) {
+      console.error('Failed to fetch profile:', err.message);
       return null;
     }
-    return data;
   };
 
+  // Handle auth state changes
   const handleAuthChange = async (newSession: Session | null) => {
     const currentUser = newSession?.user ?? null;
 
@@ -50,7 +55,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setProfile(null);
     }
 
-    // Only set loading false once on initial load
     if (isInitialLoadRef.current) {
       setLoading(false);
       isInitialLoadRef.current = false;
@@ -58,7 +62,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Fetch initial session on mount
+    // Get initial session
     supabase.auth.getSession()
       .then(({ data: { session: initialSession }, error }) => {
         if (error) {
@@ -68,18 +72,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           handleAuthChange(initialSession);
         }
       })
-      .catch((e) => {
-        console.error('Caught error during getSession:', (e as Error).message);
+      .catch((err) => {
+        console.error('Caught error during getSession:', (err as Error).message);
         handleAuthChange(null);
       });
 
-    // Subscribe to auth state changes (login/logout)
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      await handleAuthChange(newSession);
+    // Listen for auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      handleAuthChange(newSession);
     });
 
-    // Cleanup subscription on unmount
-    return () => subscription?.subscription.unsubscribe();
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async (): Promise<{ error: Error | null }> => {
@@ -90,13 +95,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { error };
   };
 
-  const value: AuthContextType = {
-    user,
-    profile,
-    session,
-    loading,
-    signOut,
-  };
+  const value: AuthContextType = { user, profile, session, loading, signOut };
 
   if (loading) {
     return (
@@ -109,6 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// Custom hook to use auth context
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth must be used within an AuthProvider');

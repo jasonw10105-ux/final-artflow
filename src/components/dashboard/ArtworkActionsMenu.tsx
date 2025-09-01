@@ -1,30 +1,26 @@
 // src/components/dashboard/ArtworkActionsMenu.tsx
-
 import React from 'react';
 import { Menu, MenuItem } from '@mui/material';
 import { handleDownload } from '../../utils/imageUtils';
-import { Database } from '../../types/supabase';
+import { Database } from '../../types/database.types';
 import { useAuth } from '@/contexts/AuthProvider';
 
 type Artwork = Database['public']['Tables']['artworks']['Row'];
+type ArtworkImage = Database['public']['Tables']['artwork_images']['Row'];
 
 interface ArtworkActionsMenuProps {
   artwork: Artwork;
   anchorEl: null | HTMLElement;
   onClose: () => void;
   onEdit: (id: string) => void;
-  onDelete: (id: string, title: string | null) => void;
+  onDelete: (id: string) => void;
   onMarkAsSold: (id: string) => void;
   onMarkAsAvailable: (id: string) => void;
   onAssignCatalogue: () => void;
-  // Pass in artwork_images separately since they’re not on artwork row anymore
-  images?: {
-    watermarked?: string | null;
-    visualization?: string | null;
-  };
+  images?: ArtworkImage[];
 }
 
-const ArtworkActionsMenu = ({
+const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({
   artwork,
   anchorEl,
   onClose,
@@ -34,102 +30,47 @@ const ArtworkActionsMenu = ({
   onMarkAsAvailable,
   onAssignCatalogue,
   images,
-}: ArtworkActionsMenuProps) => {
+}) => {
   const { profile } = useAuth();
   const isOpen = Boolean(anchorEl);
 
-  const publicUrl =
-    profile?.slug && artwork.slug
-      ? `/${profile.slug}/artwork/${artwork.slug}`
-      : null;
+  const publicUrl = profile?.slug && artwork.slug ? `/u/${profile.slug}/artwork/${artwork.slug}` : null;
+
+  const watermarked = images?.[0]?.watermarked_image_url;
+  const visualization = images?.[0]?.visualization_image_url;
 
   return (
     <Menu anchorEl={anchorEl} open={isOpen} onClose={onClose}>
       {publicUrl && (
-        <MenuItem
-          component="a"
-          href={publicUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={onClose}
-        >
+        <MenuItem component="a" href={publicUrl} target="_blank" rel="noopener noreferrer" onClick={onClose}>
           View Public Page
         </MenuItem>
       )}
 
-      <MenuItem
-        onClick={() => {
-          onEdit(artwork.id);
-          onClose();
-        }}
-      >
-        Edit Details
-      </MenuItem>
+      <MenuItem onClick={() => { onEdit(artwork.id); onClose(); }}>Edit Details</MenuItem>
+      <MenuItem onClick={() => { onAssignCatalogue(); onClose(); }}>Assign to Catalogue</MenuItem>
 
-      <MenuItem
-        onClick={() => {
-          onAssignCatalogue();
-          onClose();
-        }}
-      >
-        Assign to Catalogue
-      </MenuItem>
-
-      {artwork.status === 'available' && (
-        <MenuItem
-          onClick={() => {
-            onMarkAsSold(artwork.id);
-            onClose();
-          }}
-        >
-          Mark as Sold
-        </MenuItem>
+      {artwork.status === 'Available' && (
+        <MenuItem onClick={() => { onMarkAsSold(artwork.id); onClose(); }}>Mark as Sold</MenuItem>
       )}
 
-      {(artwork.status === 'sold' || artwork.status === 'draft') && (
-        <MenuItem
-          onClick={() => {
-            onMarkAsAvailable(artwork.id);
-            onClose();
-          }}
-        >
-          Mark as Available
-        </MenuItem>
+      {(artwork.status === 'Sold' || artwork.status === 'Draft') && (
+        <MenuItem onClick={() => { onMarkAsAvailable(artwork.id); onClose(); }}>Mark as Available</MenuItem>
       )}
 
-      {images?.watermarked && (
-        <MenuItem
-          onClick={() =>
-            handleDownload(
-              images.watermarked!,
-              `${artwork.slug ?? 'artwork'}-watermarked.png`
-            )
-          }
-        >
+      {watermarked && (
+        <MenuItem onClick={() => handleDownload(watermarked, `${artwork.slug ?? 'artwork'}-watermarked.png`)}>
           Download Watermarked
         </MenuItem>
       )}
 
-      {images?.visualization && (
-        <MenuItem
-          onClick={() =>
-            handleDownload(
-              images.visualization!,
-              `${artwork.slug ?? 'artwork'}-visualization.jpg`
-            )
-          }
-        >
+      {visualization && (
+        <MenuItem onClick={() => handleDownload(visualization, `${artwork.slug ?? 'artwork'}-visualization.jpg`)}>
           Download Visualization
         </MenuItem>
       )}
 
-      <MenuItem
-        onClick={() => {
-          onDelete(artwork.id, artwork.title);
-          onClose();
-        }}
-        color="error"
-      >
+      <MenuItem onClick={() => { onDelete(artwork.id); onClose(); }} style={{ color: 'red' }}>
         Delete Artwork
       </MenuItem>
     </Menu>

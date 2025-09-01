@@ -1,96 +1,111 @@
-import React from "react";
-import { useArtworkUploadStore } from "@/stores/artworkUploadStore";
+import React, { useState, useCallback } from "react";
+import { useDropzone } from "react-dropzone";
 import { supabase } from "@/lib/supabaseClient";
+import { useArtworkUploadStore } from "@/stores/artworkUploadStore";
 import toast from "react-hot-toast";
-import ColorThief from "colorthief";
 
-type Props = {
-  artworkId: string;
+interface ArtworkUploadModalProps {
+  open: boolean;
   onClose: () => void;
-};
+  artworkId: string;
+}
 
-export default function ArtworkUploadModal({ artworkId, onClose }: Props) {
-  const { images, removeImage, setPrimary, clear } = useArtworkUploadStore();
+export default function ArtworkUploadModal({ open, onClose, artworkId }: ArtworkUploadModalProps) {
+  const { addImages } = useArtworkUploadStore();
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
 
-  const extractColors = async (file: File): Promise<string[]> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = "Anonymous";
-      img.src = URL.createObjectURL(file);
-      img.onload = () => {
-        try {
-          const ct = new ColorThief();
-          const palette = ct.getPalette(img, 5);
-          // convert [r,g,b] => hex
-          const hexColors = palette.map(
-            ([r, g, b]) =>
-              "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
-          );
-          resolve(hexColors);
-        } catch {
-          resolve([]);
-        }
-      };
-      img.onerror = () => resolve([]);
-    });
-  };
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    setFiles((prev) => [...prev, ...acceptedFiles]);
+  }, []);
 
-  const handleSave = async () => {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "image/*": [".jpeg", ".png", ".jpg", ".gif"] },
+    multiple: true,
+  });
+
+  const handleUpload = async () => {
+    if (!files.length) return toast.error("No files to upload");
+    setUploading(true);
+
     try {
-      let primaryColors: string[] = [];
-      for (const [idx, img] of images.entries()) {
-        const path = `${artworkId}/${crypto.randomUUID()}-${img.file.name}`;
+      const uploadedImages = [];
+
+      for (const file of files) {
+        const path = `${artworkId}/${crypto.randomUUID()}-${file.name}`;
         const { error: uploadErr } = await supabase.storage
           .from("artworks")
-          .upload(path, img.file, { upsert: true });
+          .upload(path, file, { upsert: true });
 
         if (uploadErr) throw uploadErr;
 
         const publicUrl = supabase.storage.from("artworks").getPublicUrl(path).data.publicUrl;
 
-        if (img.isPrimary) {
-          // client-side fallback color extraction
-          primaryColors = await extractColors(img.file);
-        }
-
-        const { error: dbErr } = await supabase.from("artwork_images").insert({
+        const { data, error: dbErr } = await supabase.from("artwork_images").insert({
           artwork_id: artworkId,
           image_url: publicUrl,
-          is_primary: img.isPrimary,
-          position: idx,
-        });
+        }).select("*");
 
         if (dbErr) throw dbErr;
+        uploadedImages.push(...data);
       }
 
-      // Trigger intelligent metadata
-      await fetch("/functions/v1/update_artwork_intelligent_metadata", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artworkId, primaryColors }),
-      });
-
-      toast.success("Images uploaded and metadata updated.");
-      clear();
+      addImages(artworkId, uploadedImages);
+      toast.success("Images uploaded successfully");
+      setFiles([]);
       onClose();
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
     }
   };
 
+  if (!open) return null;
+
   return (
-    <div style={{ background: "#fff", padding: 24, borderRadius: 12 }}>
-      <h2>Upload Images</h2>
-      {images.map((img, i) => (
-        <div key={img.id} style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <img src={img.previewUrl} alt="" style={{ width: 100, height: 100, objectFit: "cover" }} />
-          <button onClick={() => setPrimary(img.id)}>{img.isPrimary ? "Primary" : "Make Primary"}</button>
-          <button onClick={() => removeImage(img.id)}>Remove</button>
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div className="bg-white rounded-lg p-6 w-96">
+        <h2 className="text-lg font-bold mb-4">Upload Artwork Images</h2>
+        <div
+          {...getRootProps()}
+          className={`border-2 border-dashed p-6 text-center cursor-pointer ${
+            isDragActive ? "border-blue-500" : "border-gray-300"
+          }`}
+        >
+          <input {...getInputProps()} />
+          {isDragActive ? (
+            <p>Drop the images here ...</p>
+          ) : (
+            <p>Drag & drop images here, or click to select files</p>
+          )}
         </div>
-      ))}
-      <div style={{ marginTop: 16 }}>
-        <button onClick={handleSave}>Save & Update Metadata</button>
-        <button onClick={onClose}>Cancel</button>
+
+        {files.length > 0 && (
+          <ul className="mt-4 max-h-48 overflow-y-auto space-y-2">
+            {files.map((file, idx) => (
+              <li key={idx}>{file.name}</li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex justify-end gap-2 mt-6">
+          <button
+            className="px-3 py-1 bg-gray-300 rounded"
+            onClick={onClose}
+            disabled={uploading}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-3 py-1 bg-black text-white rounded"
+            onClick={handleUpload}
+            disabled={uploading}
+          >
+            {uploading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
       </div>
     </div>
   );

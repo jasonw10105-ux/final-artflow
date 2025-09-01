@@ -20,17 +20,23 @@
 // - ROOM_SCENE_URL   (public room scene image for visualization)
 // - BENCH_REAL_WIDTH_M (e.g. "2.0")
 // - BENCH_PIXEL_WIDTH  (e.g. "800")
+// - WATERMARK_FONT_URL (Optional: Override default font URL)
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
-import { Tfidf } from "npm:tiny-tfidf";
+import * as TinyTfidf from "https://esm.sh/tiny-tfidf";
 
 // --- Config with sane fallbacks (you should still set ENV values) ---
+// These are read from environment variables linked to this specific function
 const ROOM_SCENE_URL = Deno.env.get("ROOM_SCENE_URL") ??
-  "https://your-project-ref.supabase.co/storage/v1/object/public/visualization/room.jpg";
+  "https://mfddxrpiuawggmnzqagn.supabase.co/storage/v1/object/public/Visualization/WhatsApp%20Image%202025-08-23%20at%2018.32.02.jpeg";
 const BENCH_REAL_WIDTH_M = parseFloat(Deno.env.get("BENCH_REAL_WIDTH_M") ?? "2.0");
 const BENCH_PIXEL_WIDTH = parseInt(Deno.env.get("BENCH_PIXEL_WIDTH") ?? "800", 10);
+
+// Default to your hosted font, but allow override via environment variable
+const WATERMARK_FONT_URL_CONFIG = Deno.env.get("WATERMARK_FONT_URL") ??
+  "https://mfddxrpiuawggmnzqagn.supabase.co/storage/v1/object/public/fonts/InstrumentSans-Medium.ttf";
 
 // Helpers --------------------------------------------------------------
 
@@ -40,27 +46,52 @@ function asHex(r: number, g: number, b: number) {
 }
 
 async function averageHexFromImageBuffer(buf: ArrayBuffer): Promise<string> {
-  const img = await Image.decode(buf);
-  // Downscale to reduce cost, then average
-  const targetW = 64;
+  let img: Image;
+  try {
+    img = await Image.decode(buf);
+  } catch (decodeError) {
+    console.error("Failed to decode image buffer:", decodeError);
+    return "#000000"; // Return a default color if image can't be decoded
+  }
+
+  if (img.width < 1 || img.height < 1) {
+    console.warn("Decoded image has invalid dimensions (width or height < 1); returning default color.");
+    return "#000000";
+  }
+
+  const targetW = Math.min(img.width, 64);
   const scale = targetW / img.width;
   const targetH = Math.max(1, Math.round(img.height * scale));
+
   const small = img.clone();
   small.resize(targetW, targetH);
 
-  let r = 0, g = 0, b = 0;
-  const total = small.width * small.height;
-  for (let y = 0; y < small.height; y++) {
-    for (let x = 0; x < small.width; x++) {
-      const rgba = small.getPixelAt(x, y);
-      // rgba is number 0xRRGGBBAA
-      const R = (rgba >> 24) & 0xff;
-      const G = (rgba >> 16) & 0xff;
-      const B = (rgba >> 8) & 0xff;
-      r += R; g += G; b += B;
-    }
+  if (small.width < 1 || small.height < 1) {
+    console.warn("Resized image has invalid dimensions (width or height < 1); returning default color.");
+    return "#000000";
   }
-  return asHex(Math.round(r / total), Math.round(g / total), Math.round(b / total));
+
+  let r = 0, g = 0, b = 0;
+  const totalPixels = small.width * small.height;
+
+  if (totalPixels > 0 && small.pixels) { // Ensure pixels array exists and has content
+    for (let i = 0; i < small.pixels.length; i += 4) { // Iterate RGBA chunks
+      r += small.pixels[i];     // Red
+      g += small.pixels[i + 1]; // Green
+      b += small.pixels[i + 2]; // Blue
+      // Alpha small.pixels[i + 3] is ignored for average color
+    }
+  } else {
+    console.warn("No pixels to process after resizing; returning default color.");
+    return "#000000";
+  }
+
+  if (totalPixels === 0) {
+      console.warn("Total pixels for average calculation is zero (should not happen here); returning default color.");
+      return "#000000";
+  }
+
+  return asHex(Math.round(r / totalPixels), Math.round(g / totalPixels), Math.round(b / totalPixels));
 }
 
 function cmToMeters(cm: number) {
@@ -105,10 +136,22 @@ async function watermarkImage(
   text: string,
 ): Promise<Uint8Array> {
   const img = await Image.decode(original);
-  const font = await Image.loadFont(
-    "https://deno.land/x/imagescript@1.2.17/formats/fonts/opensans/OpenSans-Regular.ttf",
-  );
-  const wm = Image.renderText(font, Math.max(24, Math.round(img.width * 0.02)), text, 0xffffffff);
+  
+  let fontBuffer: ArrayBuffer;
+  if (!WATERMARK_FONT_URL_CONFIG) { // Use the configured font URL
+    console.error("WATERMARK_FONT_URL_CONFIG is not set. Watermarking will be skipped or may fail.");
+    throw new Error("WATERMARK_FONT_URL_CONFIG (derived from env or default) is required for watermarking.");
+  }
+
+  try {
+    fontBuffer = await fetchBuffer(WATERMARK_FONT_URL_CONFIG); // Fetch from your Storage
+  } catch (fontError) {
+    console.error(`Failed to load font from ${WATERMARK_FONT_URL_CONFIG}:`, fontError);
+    throw new Error(`Critical: Failed to load font for watermarking. Details: ${fontError}`);
+  }
+
+  // Pass the raw fontBuffer directly to Image.renderText as per imagescript@1.2.17 API
+  const wm = Image.renderText(fontBuffer, Math.max(24, Math.round(img.width * 0.02)), text, 0xffffffff);
   const out = img.clone();
   out.composite(wm, img.width - wm.width - 20, img.height - wm.height - 20);
   return await out.encodeJPEG(88);
@@ -122,7 +165,8 @@ async function composeVisualization(
   const room = await Image.decode(roomSceneBuf);
   const art = await Image.decode(artworkBuf);
   const scaled = art.clone();
-  scaled.resize(desiredWidthPx, Image.RESIZE_AUTO);
+  // Ensure desiredArtPx is not null/undefined before passing to resize
+  scaled.resize(desiredWidthPx || art.width, Image.RESIZE_AUTO); // Fallback to original width if desiredArtPx is missing
 
   // Position above center “bench”
   const x = Math.round(room.width / 2 - scaled.width / 2);
@@ -134,7 +178,7 @@ async function composeVisualization(
 // Keywords extraction
 function extractKeywords(title: string | null, description: string | null, medium: string | null): string[] {
   const corpus = [title, description, medium].filter(Boolean).join(" ").toLowerCase();
-  const tfidf = new Tfidf();
+  const tfidf = new TinyTfidf.Tfidf();
   tfidf.addDocument(corpus);
   const terms = tfidf.getTerms(0)
     .slice(0, 12)
@@ -155,27 +199,52 @@ function extractKeywords(title: string | null, description: string | null, mediu
 // Handler --------------------------------------------------------------
 
 serve(async (req) => {
+  // Always include CORS headers for Edge Functions that might be called cross-origin
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': req.headers.get('Origin') || '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
   try {
     if (req.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+      return new Response(JSON.stringify({ error: "Method not allowed. Only POST requests are supported." }), {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const { artworkId, force = false, forceWatermark = false, forceVisualization = false } = await req.json();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error("SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY environment variables are not set for process-artwork-images.");
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+    const body = await req.json();
+    const { artworkId, force = false, forceWatermark = false, forceVisualization = false } = body;
 
     if (!artworkId) {
-      return new Response(JSON.stringify({ error: "artworkId is required" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "artworkId is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    console.log(`[process-artwork-images] Processing artworkId: ${artworkId}`);
 
     // 1) Fetch artwork + artist name
     const { data: artwork, error: artErr } = await supabase
       .from("artworks")
       .select(`
-        id, title, description, medium, dimensions, keywords, dominant_colors,
+        id, title, description, medium, dimensions, keywords, dominant_colors, genre, subject,
         user_id,
         profiles:profiles!artworks_user_id_fkey ( full_name )
       `)
@@ -183,7 +252,7 @@ serve(async (req) => {
       .single();
 
     if (artErr || !artwork) {
-      throw new Error(artErr?.message ?? "Artwork not found");
+      throw new Error(artErr?.message ?? `Artwork with ID ${artworkId} not found or failed to fetch details.`);
     }
 
     const artistName = (artwork as any).profiles?.full_name || "Artist";
@@ -195,38 +264,46 @@ serve(async (req) => {
       .eq("artwork_id", artworkId)
       .order("position", { ascending: true });
 
-    if (imgErr) throw new Error(`Failed to load images: ${imgErr.message}`);
+    if (imgErr) throw new Error(`Failed to load images for artwork ${artworkId}: ${imgErr.message}`);
 
-    // 3) Preload room scene once
-    const roomSceneBuf = await fetchBuffer(ROOM_SCENE_URL);
+    // 3) Preload room scene once for visualization
+    let roomSceneBuf: ArrayBuffer | null = null;
+    try {
+      if (ROOM_SCENE_URL) {
+        roomSceneBuf = await fetchBuffer(ROOM_SCENE_URL);
+      } else {
+        console.warn("[process-artwork-images] ROOM_SCENE_URL is not set. Skipping visualization generation.");
+      }
+    } catch (err) {
+      console.error("[process-artwork-images] Failed to fetch ROOM_SCENE_URL:", err);
+      roomSceneBuf = null;
+    }
+
 
     // Figure out visualization scale from width in cm (required to place on wall)
     const dims = artwork.dimensions ?? {};
     const widthCm = parseMaybeNumber(dims.width);
-    const unit = (dims.unit ?? "cm").toLowerCase();
-    const usableWidthMeters = unit === "cm"
-      ? (widthCm !== null ? cmToMeters(widthCm) : null)
-      : unit === "m"
-      ? (widthCm !== null ? widthCm : null)
-      : null; // inches are not supported per spec
+    const usableWidthMeters = (widthCm !== null) ? cmToMeters(widthCm) : null;
 
     const ppm = BENCH_PIXEL_WIDTH / BENCH_REAL_WIDTH_M; // pixels per meter
     const desiredArtPx = usableWidthMeters ? Math.max(80, Math.round(usableWidthMeters * ppm)) : null;
 
     // 4) Process each image
     let firstImageAverageHex: string | null = null;
+    const currentArtworkKeywords = artwork.keywords || [];
+    const currentArtworkGenre = artwork.genre;
+    const currentArtworkSubject = artwork.subject;
 
     for (const img of (images ?? [])) {
-      // Fetch original
       const originalBuf = await fetchBuffer(img.image_url);
 
-      // Dominant color from first encountered original
       if (!firstImageAverageHex) {
         firstImageAverageHex = await averageHexFromImageBuffer(originalBuf);
       }
 
       // Watermark
       if (force || forceWatermark || !img.watermarked_image_url) {
+        console.log(`[process-artwork-images] Generating watermark for image ${img.id}`);
         const wmBytes = await watermarkImage(originalBuf, `© ${artistName}`);
         const wmPath = `watermarked/${artworkId}/${img.id}-${Date.now()}.jpg`;
         const wmUrl = await uploadBytes(supabase, "artworks", wmPath, wmBytes, "image/jpeg");
@@ -235,21 +312,20 @@ serve(async (req) => {
           .from("artwork_images")
           .update({ watermarked_image_url: wmUrl, updated_at: new Date().toISOString() })
           .eq("id", img.id);
-        if (upErr) throw new Error(`Failed to update watermarked URL: ${upErr.message}`);
+        if (upErr) console.error(`Failed to update watermarked URL for image ${img.id}: ${upErr.message}`);
       }
 
       // Visualization
-      if ((force || forceVisualization || !img.visualization_image_url) && desiredArtPx) {
-        // Use watermarked if present; else original
+      if ((force || forceVisualization || !img.visualization_image_url) && desiredArtPx && roomSceneBuf) {
+        console.log(`[process-artwork-images] Generating visualization for image ${img.id}`);
         let sourceForViz: ArrayBuffer = originalBuf;
-        // re-fetch watermarked to ensure we visualize the watermark version
-        const { data: refreshed } = await supabase
-          .from("artwork_images")
-          .select("watermarked_image_url")
-          .eq("id", img.id)
-          .single();
-        const useUrl = refreshed?.watermarked_image_url ?? img.watermarked_image_url ?? img.image_url;
-        sourceForViz = await fetchBuffer(useUrl);
+        const useUrl = img.watermarked_image_url ?? img.image_url;
+        try {
+           sourceForViz = await fetchBuffer(useUrl);
+        } catch (fetchVizErr) {
+            console.warn(`Could not fetch image for visualization (${useUrl}): ${fetchVizErr}. Falling back to original.`);
+            sourceForViz = originalBuf;
+        }
 
         const vizBytes = await composeVisualization(roomSceneBuf, sourceForViz, desiredArtPx);
         const vizPath = `visualizations/${artworkId}/${img.id}-${Date.now()}.jpg`;
@@ -259,39 +335,42 @@ serve(async (req) => {
           .from("artwork_images")
           .update({ visualization_image_url: vizUrl, updated_at: new Date().toISOString() })
           .eq("id", img.id);
-        if (upVizErr) throw new Error(`Failed to update visualization URL: ${upVizErr.message}`);
+        if (upVizErr) console.error(`Failed to update visualization URL for image ${img.id}: ${upVizErr.message}`);
       }
     }
 
-    // 5) Update keywords + dominant colors on artwork
-    const keywords = extractKeywords(artwork.title, artwork.description, artwork.medium);
-    const dominant = firstImageAverageHex ? [firstImageAverageHex] : null;
+    // 5) Update keywords + dominant colors + genre + subject on artwork
+    const imageKeywords: string[] = [];
+    const imageGenre: string | null = null;
+    const imageSubject: string | null = null;
 
-    const { error: artUpdateErr } = await supabase
-      .from("artworks")
-      .update({
-        keywords,
-        dominant_colors: dominant,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", artworkId);
+    const textKeywords = extractKeywords(artwork.title, artwork.description, artwork.medium);
+    const finalKeywords = Array.from(new Set([...currentArtworkKeywords, ...textKeywords, ...imageKeywords]));
 
-    if (artUpdateErr) throw new Error(`Failed to update artwork keywords/colors: ${artUpdateErr.message}`);
+    const updatePayload: any = {
+      dominant_colors: firstImageAverageHex ? [firstImageAverageHex] : (artwork.dominant_colors || []),
+      genre: imageGenre || currentArtworkGenre,
+      subject: imageSubject || currentArtworkSubject,
+      keywords: finalKeywords,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: artUpdateErr } = await supabase.from("artworks").update(updatePayload).eq("id", artworkId);
+    if (artUpdateErr) throw new Error(`Failed to update artwork metadata: ${artUpdateErr.message}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         artworkId,
-        processedImages: (images ?? []).length,
-        keywords,
-        dominant_colors: dominant,
+        message: "Artwork images and metadata processed successfully.",
+        updatedMetadata: updatePayload,
       }),
-      { headers: { "Content-Type": "application/json" }, status: 200 },
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
   } catch (err) {
-    console.error("process-artwork-images ERROR:", err);
+    console.error("Error in process-artwork-images function:", err);
     return new Response(JSON.stringify({ error: (err as Error).message }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });
   }

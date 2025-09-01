@@ -1,129 +1,131 @@
-// Supabase Edge Function
-// Run: supabase functions deploy update_artwork_intelligent_metadata
-// Call: supabase.functions.invoke("update_artwork_intelligent_metadata", { body: { artwork_id } })
+// functions/update_artwork_intelligent_metadata/index.ts
+import { serve } from "std/server"; // supabase edge
+import fetch from "node-fetch"; // only if needed
+import { createClient } from "@supabase/supabase-js";
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import ColorThief from "npm:colorthief";
+// Optional: include color extraction library suitable for edge runtime or implement a simple remote call.
+// Here we will fetch image and use a small color quantization routine (simple kmeans is heavy).
+// For robustness, you can call a small image-processing microservice or use colorthief server-side.
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-);
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const AI_VISION_ENDPOINT = Deno.env.get("AI_VISION_ENDPOINT") || ""; // optional
+const AI_VISION_KEY = Deno.env.get("AI_VISION_KEY") || "";
 
-// Map RGB values to a rough color group
-function rgbToGroup([r, g, b]: number[]): string {
-  const hsl = rgbToHsl(r, g, b);
-  const [h, s, l] = hsl;
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
-  if (l < 0.1) return "black";
-  if (l > 0.9) return "white";
-  if (s < 0.15) return "gray";
-
-  if (h < 15 || h >= 345) return "red";
-  if (h < 45) return "orange";
-  if (h < 65) return "yellow";
-  if (h < 170) return "green";
-  if (h < 260) return "blue";
-  if (h < 320) return "purple";
-  return "brown";
-}
-
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-
-  return [h * 360, s, l];
-}
-
-// Guess orientation based on image dimensions
-function getOrientation(width: number, height: number): "landscape" | "portrait" | "square" {
-  if (width > height) return "landscape";
-  if (height > width) return "portrait";
-  return "square";
-}
-
-// Basic genre guess (placeholder - you could extend with ML API later)
-function guessGenre(colors: string[], orientation: string): string {
-  if (colors.includes("green") && orientation === "landscape") return "Landscape";
-  if (colors.includes("blue") && orientation === "portrait") return "Portrait";
-  if (colors.includes("gray")) return "Abstract";
-  return "Figurative";
-}
-
-// Extract keywords from metadata
-function buildKeywords(colors: string[], orientation: string, genre: string): string[] {
-  return [...new Set([...colors, orientation, genre])];
-}
+const colorToGroup = (r:number,g:number,b:number) => {
+  // Simple mapping heuristics
+  if (r > 200 && g < 150 && b < 150) return "red";
+  if (g > 200 && r < 150 && b < 150) return "green";
+  if (b > 200 && r < 150 && g < 150) return "blue";
+  if (r > 200 && g > 200 && b < 150) return "yellow";
+  if (r > 150 && g < 100 && b > 150) return "purple";
+  return "neutral";
+};
 
 serve(async (req) => {
   try {
-    const { artwork_id } = await req.json();
-    if (!artwork_id) throw new Error("artwork_id required");
+    const body = await req.json();
+    const { artworkId } = body;
+    if (!artworkId) return new Response(JSON.stringify({ error: "artworkId required" }), { status: 400 });
 
-    // Get primary image
-    const { data: images, error: imgError } = await supabase
+    // 1. get primary image for artwork
+    const { data: imgs, error: imgErr } = await supabase
       .from("artwork_images")
       .select("*")
-      .eq("artwork_id", artwork_id)
-      .order("position", { ascending: true })
+      .eq("artwork_id", artworkId)
+      .eq("is_primary", true)
       .limit(1);
 
-    if (imgError) throw imgError;
-    if (!images || images.length === 0) throw new Error("No images found");
+    if (imgErr) throw imgErr;
+    const primary = (imgs && imgs[0]) || null;
+    if (!primary) return new Response(JSON.stringify({ error: "No primary image found" }), { status: 400 });
 
-    const primary = images[0];
     const imageUrl = primary.image_url;
 
-    // Fetch image for analysis
-    const res = await fetch(imageUrl);
-    if (!res.ok) throw new Error("Failed to fetch image");
-    const blob = await res.blob();
-    const arrayBuffer = await blob.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
+    // 2. (Optional) fetch image bytes and run color extraction (placeholder: fallback to AI if cannot process)
+    let dominantColors: string[] = [];
+    let colorGroups: string[] = [];
+    let orientation = "square";
 
-    // Extract dominant colors (returns [r,g,b] arrays)
-    const palette = await ColorThief.getPalette(buffer, 6);
-    const groups = palette.map(rgbToGroup);
-    const uniqueGroups = [...new Set(groups)];
+    try {
+      // We'll try a simple approach: fetch image and do a tiny canvas-like analysis if runtime supports it.
+      // If the environment doesn't allow, call AI vision endpoint for colors & tags.
+      // For portability we call AI_VISION_ENDPOINT (recommended: your own vision microservice that returns tags/colors/genre/orientation).
+      if (AI_VISION_ENDPOINT) {
+        const aiRes = await fetch(AI_VISION_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(AI_VISION_KEY ? { Authorization: `Bearer ${AI_VISION_KEY}` } : {})
+          },
+          body: JSON.stringify({ imageUrl })
+        });
+        const aiJson = await aiRes.json();
+        dominantColors = aiJson.dominant_colors ?? aiJson.palette ?? [];
+        colorGroups = (dominantColors.length ? dominantColors.map((hex:string) => {
+          // simple conversion hex->rgb->group
+          const hexSan = hex.replace("#", "");
+          const r = parseInt(hexSan.slice(0,2),16);
+          const g = parseInt(hexSan.slice(2,4),16);
+          const b = parseInt(hexSan.slice(4,6),16);
+          return colorToGroup(r,g,b);
+        }) : []);
+        orientation = aiJson.orientation ?? aiJson.orientation_guess ?? "square";
+      }
+    } catch (err) {
+      console.warn("AI vision call failed:", err);
+    }
 
-    // Fake image size detection (replace with Sharp or ML in prod)
-    const width = 1200, height = 900; // placeholder dimensions
-    const orientation = getOrientation(width, height);
-    const genre = guessGenre(uniqueGroups, orientation);
-    const keywords = buildKeywords(uniqueGroups, orientation, genre);
+    // 3. call AI again or use aiJson to extract tags/genre etc
+    let tags: string[] = [];
+    let genre = "";
+    try {
+      if (AI_VISION_ENDPOINT) {
+        const ai2 = await fetch(AI_VISION_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(AI_VISION_KEY ? { Authorization: `Bearer ${AI_VISION_KEY}` } : {})
+          },
+          body: JSON.stringify({ imageUrl, mode: "metadata" })
+        });
+        const j = await ai2.json();
+        tags = j.tags ?? tags;
+        genre = j.genre ?? genre;
+      }
+    } catch (err) {
+      console.warn("AI metadata failed:", err);
+    }
 
-    // Save metadata
-    const { error: updateError } = await supabase
-      .from("artworks")
-      .update({
-        genre,
-        orientation,
-        dominant_colors: uniqueGroups,
-        keywords,
-      })
-      .eq("id", artwork_id);
+    // If still empty, fallback to safe defaults
+    if (!dominantColors.length) dominantColors = ["#999999"];
+    if (!colorGroups.length) {
+      colorGroups = dominantColors.map(hex => {
+        const h = hex.replace("#","");
+        const r = parseInt(h.slice(0,2),16);
+        const g = parseInt(h.slice(2,4),16);
+        const b = parseInt(h.slice(4,6),16);
+        return colorToGroup(r,g,b);
+      });
+    }
 
-    if (updateError) throw updateError;
+    // 4. update artwork row
+    const updatePayload: any = {
+      dominant_colors: dominantColors,
+      color_groups: Array.from(new Set(colorGroups)),
+      keywords: tags,
+      genre,
+      orientation
+    };
 
-    return new Response(
-      JSON.stringify({ success: true, artwork_id, genre, orientation, dominant_colors: uniqueGroups, keywords }),
-      { headers: { "Content-Type": "application/json" }, status: 200 }
-    );
-  } catch (err: any) {
-    console.error("Metadata update failed", err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    const { error: updErr } = await supabase.from("artworks").update(updatePayload).eq("id", artworkId);
+    if (updErr) throw updErr;
+
+    return new Response(JSON.stringify({ success: true, updatePayload }), { status: 200 });
+  } catch (err:any) {
+    console.error("update_artwork_intelligent_metadata error:", err);
+    return new Response(JSON.stringify({ error: err.message || String(err) }), { status: 500 });
   }
 });

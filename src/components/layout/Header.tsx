@@ -14,14 +14,8 @@ const Header = () => {
         navigate('/login', { replace: true });
     };
 
-    // Determine dashboard path based on role
-    const dashboardPath = (() => {
-        if (!profile) return "/dashboard";
-        if (profile.role === "artist") return "/artist/dashboard";
-        if (profile.role === "collector") return "/collector/dashboard";
-        if (profile.role === "both") return "/artist/dashboard"; // or "/dashboard" if you create that route
-        return "/dashboard";
-    })();
+    // Dashboard path is always /u/dashboard for logged in users
+    const dashboardPath = session ? '/u/dashboard' : '/';
 
     const LoggedInNav = () => (
         <>
@@ -47,7 +41,7 @@ const Header = () => {
     return (
         <>
             <header className="main-header">
-                <Link to={session ? dashboardPath : "/home"} className="header-logo">
+                <Link to={dashboardPath} className="header-logo">
                     <img src="/logo.svg" alt="Artflow" style={{ height: '50px' }} />
                 </Link>
 
@@ -65,7 +59,7 @@ const Header = () => {
                     <div className="offcanvas-menu-backdrop" onClick={() => setIsMenuOpen(false)}></div>
                     <div className={`offcanvas-menu ${isMenuOpen ? 'open' : ''}`}>
                         <div className="offcanvas-header">
-                            <Link to={session ? dashboardPath : "/home"} className="header-logo" onClick={() => setIsMenuOpen(false)}>
+                            <Link to={dashboardPath} className="header-logo" onClick={() => setIsMenuOpen(false)}>
                                 <img src="/logo.svg" alt="Artflow" style={{ height: '50px' }}/>
                             </Link>
                             <button className="mobile-menu-toggle" onClick={() => setIsMenuOpen(false)}>
