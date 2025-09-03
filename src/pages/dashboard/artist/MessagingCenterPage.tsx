@@ -3,16 +3,22 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../contexts/AuthProvider';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Search, Send, MessageSquarePlus, MoreVertical, DollarSign, Zap, Shield, X } from 'lucide-react';
+import { Search, Send, MessageSquarePlus, MoreVertical, DollarSign, Zap, Shield, X, CheckCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 // --- TYPES ---
+interface ArtworkImage {
+  image_url: string;
+  position: number;
+}
+
 interface Artwork {
   id: string;
   title: string;
-  image_url: string;
   slug: string;
   price: number;
   artist: { slug: string };
+  artwork_images: ArtworkImage[]; // CHANGED: image_url is now part of an array of ArtworkImage
 }
 interface Conversation {
   id: string;
@@ -29,6 +35,16 @@ interface Message {
   sender_id: string;
   created_at: string;
 }
+
+// Helper function to get the primary image URL
+const getPrimaryImageUrl = (artwork: Artwork | null | undefined): string | undefined => {
+  if (!artwork || !artwork.artwork_images || artwork.artwork_images.length === 0) {
+    return undefined;
+  }
+  // Sort by position (assuming lower position means primary) and take the first one
+  const primaryImage = artwork.artwork_images.sort((a, b) => a.position - b.position)[0];
+  return primaryImage?.image_url;
+};
 
 // --- MODAL COMPONENT for Blocking ---
 const BlockContactModal = ({ onBlock, onClose, inquirerName }: { onBlock: (reason: string) => void; onClose: () => void; inquirerName: string }) => {
@@ -74,6 +90,9 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
     const [showBlockModal, setShowBlockModal] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // Get the primary image URL for the current artwork
+    const primaryArtworkImageUrl = useMemo(() => getPrimaryImageUrl(conversation.artwork), [conversation.artwork]);
+
     const automatedReplies = [
         { title: 'Availability Inquiry', text: `Hello! Thank you for your interest. Yes, "${conversation.artwork?.title || 'this piece'}" is still available for purchase.` },
         { title: 'Shipping Question', text: 'Regarding shipping, I typically ship artworks within 3-5 business days. All pieces are professionally packaged and insured. Do you have a specific location you\'d like me to get a quote for?' },
@@ -89,15 +108,41 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
         setMessages(data || []);
     }, [conversation.id]);
 
+    // Mutation to mark a conversation as read
+    const markAsReadMutation = useMutation({
+        mutationFn: async (convoId: string) => {
+            const { error } = await supabase.from('conversations').update({ artist_unread: false }).eq('id', convoId);
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        },
+        onError: (err: any) => {
+            console.error("Failed to mark as read:", err.message);
+        },
+    });
+
     useEffect(() => {
         fetchMessages();
+        // Mark conversation as read when it's opened
+        if (conversation.artist_unread) {
+            markAsReadMutation.mutate(conversation.id);
+        }
+
         const subscription = supabase.channel(`messages:${conversation.id}`)
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversation.id}` }, (payload) => {
                 setMessages(current => [...current, payload.new as Message]);
+                // Ensure to mark as unread for the artist if a new message comes from inquirer
+                if (payload.new.sender_id !== user.id && !conversation.is_blocked) {
+                    supabase.from('conversations').update({ artist_unread: true, last_message_at: new Date().toISOString() }).eq('id', conversation.id).then(({ error }) => {
+                        if (error) console.error("Failed to update unread status on new message:", error);
+                        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+                    });
+                }
             })
             .subscribe();
         return () => { supabase.removeChannel(subscription); };
-    }, [conversation.id, fetchMessages]);
+    }, [conversation.id, fetchMessages, conversation.artist_unread, user.id, queryClient, markAsReadMutation, conversation.is_blocked]);
 
     useEffect(scrollToBottom, [messages]);
 
@@ -107,8 +152,15 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
             const { error } = await supabase.from('messages').insert({ conversation_id: conversation.id, sender_id: user.id, content });
             if (error) throw error;
         },
-        onSuccess: () => setReply(''),
-        onError: (err: any) => alert(`Error: ${err.message}`),
+        onSuccess: () => {
+            setReply('');
+            // Also update last_message_at and artist_unread status for the conversation
+            supabase.from('conversations').update({ last_message_at: new Date().toISOString(), artist_unread: false }).eq('id', conversation.id).then(({ error }) => {
+                if (error) console.error("Failed to update conversation timestamp:", error);
+                queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            });
+        },
+        onError: (err: any) => toast.error(`Error sending message: ${err.message}`),
     });
 
     const blockMutation = useMutation({
@@ -117,12 +169,28 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
             if (error) throw error;
         },
         onSuccess: () => {
-            alert(`${conversation.inquirer_name} has been blocked.`);
+            toast.success(`${conversation.inquirer_name} has been blocked.`);
             setShowBlockModal(false);
             queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            // Potentially navigate away if this was the only active conversation
         },
-        onError: (err: any) => alert(`Error: ${err.message}`),
+        onError: (err: any) => toast.error(`Error blocking contact: ${err.message}`),
     });
+
+    const unblockMutation = useMutation({
+        mutationFn: async () => {
+            // Assuming you have an RPC or endpoint to unblock
+            // This would likely be another RPC, e.g., 'unblock_conversation'
+            const { error } = await supabase.rpc('unblock_conversation', { p_conversation_id: conversation.id, p_artist_id: user.id });
+            if (error) throw error;
+        },
+        onSuccess: () => {
+            toast.success(`${conversation.inquirer_name} has been unblocked.`);
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        },
+        onError: (err: any) => toast.error(`Error unblocking contact: ${err.message}`),
+    });
+
 
     const handleReply = (e: React.FormEvent) => {
         e.preventDefault();
@@ -132,20 +200,19 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
     const handleCreatePaymentLink = () => {
         const price = conversation.artwork?.price;
         if (!price) {
-            alert("This artwork doesn't have a price set. Please add a price before creating a payment link.");
+            toast('This artwork doesn\'t have a price set. Please add a price before creating a payment link.', { icon: '⚠️' });
             return;
         }
-        // In a real app, you would call your backend here to generate a Stripe Checkout link.
-        // For now, we simulate it by creating a pre-filled message.
+        console.log("Simulating payment link generation. API call to backend would go here.");
         const artworkTitle = conversation.artwork.title;
-        const paymentMessage = `Here is the secure link to complete your purchase for "${artworkTitle}":\n\n[Your Secure Payment Link Here]\n\nThis link will expire in 24 hours. Please let me know if you have any questions!`;
+        const paymentMessage = `Here is the secure link to complete your purchase for "${artworkTitle}" priced at $${price.toLocaleString()}:\n\n[Your Secure Payment Link Here]\n\nThis link will expire in 24 hours. Please let me know if you have any questions!`;
         setReply(paymentMessage);
     };
 
     return (
         <div className="message-view-container">
             {showBlockModal && <BlockContactModal inquirerName={conversation.inquirer_name} onClose={() => setShowBlockModal(false)} onBlock={(reason) => blockMutation.mutate(reason)} />}
-            
+
             <header className="message-view-header">
                 <div className="avatar-placeholder">{conversation.inquirer_name.charAt(0)}</div>
                 <div>
@@ -157,15 +224,19 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
                         <button className="button-icon"><MoreVertical size={20} /></button>
                         <div className="dropdown-content">
                             <a href="#">View Collector Profile</a>
-                            <a href="#" onClick={() => setShowBlockModal(true)}>Block Contact</a>
+                            {conversation.is_blocked ? (
+                                <a href="#" onClick={() => unblockMutation.mutate()}>Unblock Contact</a>
+                            ) : (
+                                <a href="#" onClick={() => setShowBlockModal(true)}>Block Contact</a>
+                            )}
                         </div>
                     </div>
                 </div>
             </header>
-            
+
             {conversation.artwork && (
                 <div className="artwork-context-banner">
-                    <img src={conversation.artwork.image_url} alt={conversation.artwork.title} />
+                    {primaryArtworkImageUrl && <img src={primaryArtworkImageUrl} alt={conversation.artwork.title} />} {/* CHANGED */}
                     <div>
                         <strong>{conversation.artwork.title}</strong>
                         <span>{conversation.artwork.price ? `$${conversation.artwork.price.toLocaleString()}` : 'Price on request'}</span>
@@ -173,7 +244,7 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
                     <Link to={`/${conversation.artwork.artist.slug}/artwork/${conversation.artwork.slug}`} target="_blank" className="button-secondary">View Artwork</Link>
                 </div>
             )}
-            
+
             <div className="message-list">
                 {messages.map(msg => (
                     <div key={msg.id} className={`message-bubble ${msg.sender_id === user.id ? 'sent' : 'received'}`}>
@@ -187,6 +258,7 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
             {conversation.is_blocked ? (
                 <div className="blocked-contact-indicator">
                     <Shield size={16} /> You have blocked this contact.
+                    <button className="button-link ml-2" onClick={() => unblockMutation.mutate()}>Unblock</button>
                 </div>
             ) : (
                 <form onSubmit={handleReply} className="message-reply-form">
@@ -202,7 +274,7 @@ const MessageView = ({ conversation, user }: { conversation: Conversation; user:
                         </button>
                     </div>
                     <textarea className="input" value={reply} onChange={e => setReply(e.target.value)} placeholder="Type your message..."/>
-                    <button type="submit" className="button-primary icon-button" disabled={replyMutation.isPending}>
+                    <button type="submit" className="button-primary icon-button" disabled={replyMutation.isPending || !reply.trim()}>
                         <Send size={20} />
                     </button>
                 </form>
@@ -227,33 +299,43 @@ const MessagingCenterPage = () => {
     const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(true);
+    const queryClient = useQueryClient();
 
     const fetchConversations = useCallback(async () => {
-        if (!user) return;
+        if (!user) {
+            setIsLoading(false);
+            return;
+        }
         const { data, error } = await supabase.from('conversations')
-            .select('*, artwork:artworks(id, title, image_url, slug, price, artist:profiles(slug))')
+            .select('*, artwork:artworks(id, title, slug, price, artist:profiles(slug), artwork_images(image_url, position))') // CHANGED: Selecting artwork_images
             .eq('artist_id', user.id)
-            .eq('is_blocked', false) // --- IMPORTANT: Filter out blocked contacts
             .order('last_message_at', { ascending: false });
-        if (error) console.error("Error fetching convos:", error);
-        setConversations(data as Conversation[] || []);
+
+        if (error) {
+            console.error("Error fetching convos:", error);
+            toast.error(`Error loading conversations: ${error.message}`);
+            setConversations([]);
+        } else {
+            setConversations(data as Conversation[] || []);
+        }
         setIsLoading(false);
-    }, [user]);
+    }, [user, queryClient]);
 
     useEffect(() => {
         fetchConversations();
         const subscription = supabase.channel('conversations')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations', filter: `artist_id=eq.${user?.id}` }, () => {
-                fetchConversations();
+                queryClient.invalidateQueries({ queryKey: ['conversations'] }); // Invalidate on change to refetch
             })
             .subscribe();
         return () => { supabase.removeChannel(subscription); };
-    }, [user, fetchConversations]);
+    }, [user, fetchConversations, queryClient]); // Added queryClient to dependencies
 
     const filteredConversations = useMemo(() => {
         return conversations.filter(c =>
-            c.inquirer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.artwork?.title.toLowerCase().includes(searchTerm.toLowerCase())
+            !c.is_blocked &&
+            (c.inquirer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            c.artwork?.title.toLowerCase().includes(searchTerm.toLowerCase()))
         );
     }, [conversations, searchTerm]);
 
@@ -267,14 +349,17 @@ const MessagingCenterPage = () => {
         } else if (filteredConversations.length === 0) {
             setActiveConvoId(null);
         }
-    }, [activeConvoId, filteredConversations]);
-    
+        if (activeConvoId && !filteredConversations.some(c => c.id === activeConvoId)) {
+            if (filteredConversations.length > 0) {
+                setActiveConvoId(filteredConversations[0].id);
+            } else {
+                setActiveConvoId(null);
+            }
+        }
+    }, [activeConvoId, filteredConversations, conversations]);
+
     if (isLoading) {
         return <div className="loading-fullscreen">Loading Messages...</div>;
-    }
-
-    if (conversations.length === 0) {
-        return <MessagingEmptyState />;
     }
 
     return (
@@ -288,33 +373,41 @@ const MessagingCenterPage = () => {
                     </div>
                 </header>
                 <div className="conversation-list">
-                    {filteredConversations.map((convo) => (
-                        <div key={convo.id} onClick={() => setActiveConvoId(convo.id)} className={`conversation-item ${convo.id === activeConvoId ? 'active' : ''}`}>
-                             <div className="avatar-placeholder">{convo.inquirer_name.charAt(0)}</div>
-                             <div className="convo-details">
-                                <div className="convo-header">
-                                    <span className="inquirer-name">{convo.inquirer_name}</span>
-                                    <span className="convo-timestamp">{new Date(convo.last_message_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
-                                </div>
-                                <p className="convo-preview">
-                                    {convo.artwork?.image_url && <img src={convo.artwork.image_url} className="convo-preview-img" alt=""/>}
-                                    {convo.artwork?.title || 'General Inquiry'}
-                                </p>
-                             </div>
-                             {convo.artist_unread && <div className="unread-dot"></div>}
+                    {filteredConversations.length === 0 && searchTerm === '' ? (
+                        <div className="empty-sidebar-message">
+                            <MessageSquarePlus size={32} color="var(--muted)" />
+                            <p>No active conversations.</p>
                         </div>
-                    ))}
+                    ) : filteredConversations.length === 0 && searchTerm !== '' ? (
+                         <div className="empty-sidebar-message">
+                            <Search size={32} color="var(--muted)" />
+                            <p>No results found for "{searchTerm}".</p>
+                        </div>
+                    ) : (
+                        filteredConversations.map((convo) => (
+                            <div key={convo.id} onClick={() => setActiveConvoId(convo.id)} className={`conversation-item ${convo.id === activeConvoId ? 'active' : ''}`}>
+                                <div className="avatar-placeholder">{convo.inquirer_name.charAt(0)}</div>
+                                <div className="convo-details">
+                                    <div className="convo-header">
+                                        <span className="inquirer-name">{convo.inquirer_name}</span>
+                                        <span className="convo-timestamp">{new Date(convo.last_message_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}</span>
+                                    </div>
+                                    <p className="convo-preview">
+                                        {getPrimaryImageUrl(convo.artwork) && <img src={getPrimaryImageUrl(convo.artwork)} className="convo-preview-img" alt=""/>} {/* CHANGED */}
+                                        {convo.artwork?.title || 'General Inquiry'}
+                                    </p>
+                                </div>
+                                {convo.artist_unread && <div className="unread-dot"></div>}
+                            </div>
+                        ))
+                    )}
                 </div>
             </aside>
             <main className="message-view">
                 {activeConversation ? (
                     <MessageView conversation={activeConversation} user={user} />
                 ) : (
-                    <div className="messaging-empty-state">
-                        <MessageSquarePlus size={48} color="var(--muted)" />
-                        <h3>Select a conversation</h3>
-                        <p>Choose a message from the list to view its contents.</p>
-                    </div>
+                    <MessagingEmptyState />
                 )}
             </main>
         </div>

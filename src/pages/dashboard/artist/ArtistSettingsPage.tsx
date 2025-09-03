@@ -4,42 +4,80 @@ import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import Button from '@/components/ui/Button';
 import ImageUpload from '@/components/ui/ImageUpload';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Plus, Sun, Moon, Award, User, FileText } from 'lucide-react';
+import { LocationJson, SocialLinkJson } from '@/types/database.types';
+import '@/styles/app.css';
 
-// Define structured types for JSONB data to improve type safety
-interface SocialLink {
-    platform: string;
-    url: string;
+// --- TYPE DEFINITIONS ---
+interface CoASettings {
+    enabled: boolean;
+    type: 'physical' | 'digital';
 }
 
-interface Location {
-    country?: string;
-    city?: string;
-}
+// --- PREVIEW COMPONENTS ---
+const InvoicePreview = ({ artistName, logoUrl }: { artistName: string, logoUrl: string | null }) => (
+    <div className="document-preview">
+        <div className="preview-header">
+            {logoUrl ? <img src={logoUrl} alt="Artist Logo" className="preview-logo" /> : <div className="logo-placeholder"></div>}
+            <div className="preview-artist-info">
+                <h4 className="font-bold">{artistName}</h4>
+                <p>Artist Invoice</p>
+            </div>
+        </div>
+        <h3 className="preview-title">INVOICE</h3>
+        <div className="preview-body">
+            <div className="preview-line-item"><span>'Artwork Title'</span><span>$2,500.00</span></div>
+            <div className="preview-line-item total"><span>Total</span><span>$2,500.00</span></div>
+        </div>
+        <p className="preview-footer">Thank you for your purchase.</p>
+    </div>
+);
 
+const CoAPreview = ({ artistName, logoUrl }: { artistName: string, logoUrl: string | null }) => (
+     <div className="document-preview coa-preview">
+        <div className="preview-header">
+             {logoUrl ? <img src={logoUrl} alt="Artist Logo" className="preview-logo" /> : <div className="logo-placeholder"></div>}
+             <h4 className="font-bold">{artistName}</h4>
+        </div>
+        <h3 className="preview-title coa-title">Certificate of Authenticity</h3>
+        <div className="preview-body coa-body">
+            <p>This document certifies that the artwork titled <strong>'Artwork Title'</strong> is an authentic, original piece by the undersigned artist.</p>
+            <div className="coa-details-grid">
+                <span><strong>Medium:</strong> Oil on Canvas</span>
+                <span><strong>Dimensions:</strong> 24 x 36 in</span>
+                <span><strong>Year:</strong> 2024</span>
+            </div>
+        </div>
+        <div className="preview-footer coa-footer">
+            <span>{artistName}</span>
+            <span>{new Date().toLocaleDateString()}</span>
+        </div>
+    </div>
+);
+
+// --- MAIN SETTINGS PAGE ---
 const ArtistSettingsPage = () => {
-    // Authentication and user profile data from context
     const { user, profile, loading: authLoading } = useAuth();
+    const [activeTab, setActiveTab] = useState<'profile' | 'branding'>('profile');
 
-    // Component-level loading state for form submission
     const [loading, setLoading] = useState(false);
-
-    // Form field states
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [displayName, setDisplayName] = useState('');
     const [shortBio, setShortBio] = useState('');
     const [artistStatement, setArtistStatement] = useState('');
-    const [contactNumber, setContactNumber] = useState('');
-    const [locationCountry, setLocationCountry] = useState('');
-    const [locationCity, setLocationCity] = useState('');
-    const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+    const [socialLinks, setSocialLinks] = useState<SocialLinkJson[]>([]);
     
-    // State for avatar image file and its preview URL
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+    
+    // --- NEW: States for Branding & Documents ---
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const [coaSettings, setCoaSettings] = useState<CoASettings>({ enabled: false, type: 'physical' });
 
-    // Effect to populate the form with profile data once it's loaded
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
     useEffect(() => {
         if (profile) {
             setFirstName(profile.first_name || '');
@@ -47,77 +85,62 @@ const ArtistSettingsPage = () => {
             setDisplayName(profile.display_name || '');
             setShortBio(profile.short_bio || '');
             setArtistStatement(profile.artist_statement || '');
-            setContactNumber(profile.contact_number || '');
             setAvatarPreview(profile.avatar_url || null);
+            setLogoPreview(profile.logo_url || null);
 
-            if (profile.location && typeof profile.location === 'object' && !Array.isArray(profile.location)) {
-                const loc = profile.location as Location;
-                setLocationCountry(loc.country || '');
-                setLocationCity(loc.city || '');
-            }
-
-            // *** BULLETPROOF TYPE CONVERSION ***
-            // This is the most explicit way to handle the type conversion.
-            // We manually create a new, correctly typed array and populate it.
             if (Array.isArray(profile.social_links)) {
-                // 1. Create a new variable that is explicitly typed as SocialLink[]
-                const correctlyTypedLinks: SocialLink[] = [];
-
-                // 2. Loop through the raw data from the database
-                for (const link of profile.social_links) {
-                    // 3. Robustly check if each item is a valid object with the correct properties
-                    if (link && typeof link === 'object' && 'platform' in link && 'url' in link) {
-                        // 4. Push a correctly structured object into our new, clean array
-                        correctlyTypedLinks.push({
-                            platform: String((link as any).platform),
-                            url: String((link as any).url)
-                        });
-                    }
-                }
-                // 5. Call setState with the new array that is guaranteed to be the correct type.
-                setSocialLinks(correctlyTypedLinks);
+                setSocialLinks(profile.social_links as SocialLinkJson[]);
+            }
+            if (profile.coa_settings && typeof profile.coa_settings === 'object') {
+                setCoaSettings(profile.coa_settings as CoASettings);
             }
         }
     }, [profile]);
 
-    // --- Social Links Management ---
-    const handleAddSocialLink = () => {
-        setSocialLinks([...socialLinks, { platform: 'Website', url: '' }]);
+    const validateForm = () => {
+        const newErrors: Record<string, string> = {};
+        if (!displayName.trim()) newErrors.displayName = 'Display Name is required.';
+        if (!firstName.trim()) newErrors.firstName = 'First Name is required.';
+        if (!lastName.trim()) newErrors.lastName = 'Last Name is required.';
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
     };
 
-    const handleRemoveSocialLink = (index: number) => {
-        setSocialLinks(socialLinks.filter((_, i) => i !== index));
-    };
-
-    const handleSocialLinkChange = (index: number, field: keyof SocialLink, value: string) => {
-        const newLinks = socialLinks.map((link, i) => 
-            i === index ? { ...link, [field]: value } : link
-        );
+    const handleAddSocialLink = () => setSocialLinks([...socialLinks, { platform: 'Website', url: '', details: '' }]);
+    const handleRemoveSocialLink = (index: number) => setSocialLinks(socialLinks.filter((_, i) => i !== index));
+    const handleSocialLinkChange = (index: number, field: keyof SocialLinkJson, value: string) => {
+        const newLinks = socialLinks.map((link, i) => i === index ? { ...link, [field]: value } : link);
         setSocialLinks(newLinks);
     };
 
-    // --- Profile Update Handler ---
     const handleUpdateProfile = async (e: FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user || !validateForm()) {
+            toast.error('Please correct the errors in the form.');
+            return;
+        }
 
         setLoading(true);
         const toastId = toast.loading('Saving changes...');
 
         try {
             let avatarUrl = profile?.avatar_url;
+            let logoUrl = profile?.logo_url;
 
+            // Handle Avatar Upload
             if (avatarFile) {
-                const fileExt = avatarFile.name.split('.').pop();
-                const filePath = `${user.id}/${Date.now()}.${fileExt}`;
-                
-                const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, {
-                    upsert: true,
-                });
+                const filePath = `${user.id}/avatar-${Date.now()}`;
+                const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, avatarFile, { upsert: true });
                 if (uploadError) throw uploadError;
+                avatarUrl = supabase.storage.from('avatars').getPublicUrl(filePath).data.publicUrl;
+            }
 
-                const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
-                avatarUrl = data.publicUrl;
+            // Handle Logo Upload
+            if (logoFile) {
+                const filePath = `${user.id}/logo-${Date.now()}`;
+                const { error: uploadError } = await supabase.storage.from('logos').upload(filePath, logoFile, { upsert: true });
+                if (uploadError) throw uploadError;
+                logoUrl = supabase.storage.from('logos').getPublicUrl(filePath).data.publicUrl;
             }
 
             const updates = {
@@ -128,18 +151,19 @@ const ArtistSettingsPage = () => {
                 full_name: `${firstName} ${lastName}`.trim(),
                 short_bio: shortBio,
                 artist_statement: artistStatement,
-                contact_number: contactNumber,
-                location: { country: locationCountry, city: locationCity },
                 social_links: socialLinks.filter(link => link.url.trim() !== ''),
                 avatar_url: avatarUrl,
+                logo_url: logoUrl,
+                coa_settings: coaSettings,
                 updated_at: new Date().toISOString(),
             };
 
             const { error: profileError } = await supabase.from('profiles').upsert(updates);
             if (profileError) throw profileError;
-            
-            toast.success('Profile updated successfully!', { id: toastId });
+
+            toast.success('Settings updated successfully!', { id: toastId });
         } catch (error: any) {
+            console.error("Profile update error:", error);
             toast.error(error.message || 'An unknown error occurred.', { id: toastId });
         } finally {
             setLoading(false);
@@ -147,90 +171,122 @@ const ArtistSettingsPage = () => {
     };
 
     if (authLoading) {
-        return <div className="p-4">Loading your profile...</div>;
+        return <div className="page-container"><p className="loading-message">Loading your profile...</p></div>;
     }
 
     return (
-        <div className="settings-page">
+        <div className="settings-page page-container">
             <h1>Artist Settings</h1>
-            <p className="page-subtitle">Manage your public profile information, contact details, and account settings.</p>
+            <p className="page-subtitle">Manage your public profile, branding, and document settings.</p>
+
+            <div className="tabs-container">
+                <button className={`tab-button ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+                    <User size={16} /> Public Profile
+                </button>
+                <button className={`tab-button ${activeTab === 'branding' ? 'active' : ''}`} onClick={() => setActiveTab('branding')}>
+                    <FileText size={16} /> Branding & Documents
+                </button>
+            </div>
 
             <form onSubmit={handleUpdateProfile} className="settings-form">
-                <div className="form-section">
-                    <h3>Public Profile</h3>
-                    <p>This information will be displayed on your public artist portfolio.</p>
-                    
-                    <ImageUpload onFileSelect={setAvatarFile} initialPreview={avatarPreview || undefined} />
-                    
-                    <div className="form-group">
-                        <label className="label" htmlFor="displayName">Display Name</label>
-                        <input id="displayName" className="input" type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="The name shown publicly on your profile" />
-                    </div>
+                {activeTab === 'profile' && (
+                    <>
+                        <div className="form-section">
+                            <h3>Public Profile</h3>
+                            <p className="form-section-description">This information will be displayed on your public artist portfolio.</p>
+                            <ImageUpload label="Profile Picture" onFileSelect={setAvatarFile} initialPreview={avatarPreview || undefined} />
+                            <div className="form-group">
+                                <label className="label" htmlFor="displayName">Display Name</label>
+                                <input id="displayName" className={`input ${errors.displayName ? 'input-error' : ''}`} type="text" value={displayName} onChange={e => { setDisplayName(e.target.value); setErrors(prev => ({ ...prev, displayName: '' })); }} />
+                                {errors.displayName && <p className="error-message">{errors.displayName}</p>}
+                            </div>
+                            <div className="form-grid-2-col">
+                                <div className="form-group">
+                                    <label className="label" htmlFor="firstName">First Name</label>
+                                    <input id="firstName" className={`input ${errors.firstName ? 'input-error' : ''}`} type="text" value={firstName} onChange={e => { setFirstName(e.target.value); setErrors(prev => ({ ...prev, firstName: '' })); }} />
+                                    {errors.firstName && <p className="error-message">{errors.firstName}</p>}
+                                </div>
+                                <div className="form-group">
+                                    <label className="label" htmlFor="lastName">Last Name</label>
+                                    <input id="lastName" className={`input ${errors.lastName ? 'input-error' : ''}`} type="text" value={lastName} onChange={e => { setLastName(e.target.value); setErrors(prev => ({ ...prev, lastName: '' })); }} />
+                                    {errors.lastName && <p className="error-message">{errors.lastName}</p>}
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label className="label" htmlFor="shortBio">Short Bio / Tagline</label>
+                                <input id="shortBio" className="input" type="text" value={shortBio} onChange={e => setShortBio(e.target.value)} placeholder="e.g., Contemporary Abstract Painter" />
+                            </div>
+                            <div className="form-group">
+                                <label className="label" htmlFor="artistStatement">Artist Statement</label>
+                                <textarea id="artistStatement" className="textarea" value={artistStatement} onChange={e => setArtistStatement(e.target.value)} placeholder="Tell collectors about your work, process, and inspiration..."></textarea>
+                            </div>
+                        </div>
 
-                    <div className="form-grid-2-col">
-                        <div className="form-group">
-                            <label className="label" htmlFor="firstName">First Name</label>
-                            <input id="firstName" className="input" type="text" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                        <div className="form-section">
+                            <h3>Social Links</h3>
+                            <p className="form-section-description">Link to your website, social media, and other online presences.</p>
+                            {socialLinks.map((link, index) => (
+                                <div key={index} className="social-link-group">
+                                    <select value={link.platform} onChange={e => handleSocialLinkChange(index, 'platform', e.target.value)} className="input">
+                                        <option value="Website">Website</option>
+                                        <option value="Instagram">Instagram</option>
+                                        <option value="Facebook">Facebook</option>
+                                        <option value="Twitter">Twitter</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                    {link.platform === 'Other' && <input type="text" value={link.details || ''} onChange={e => handleSocialLinkChange(index, 'details', e.target.value)} className="input" placeholder="Custom Platform Name" />}
+                                    <input type="url" value={link.url} onChange={e => handleSocialLinkChange(index, 'url', e.target.value)} className="input" placeholder="https://..." />
+                                    <button type="button" onClick={() => handleRemoveSocialLink(index)} className="button-icon-danger"><Trash2 size={16} /></button>
+                                </div>
+                            ))}
+                            <button type="button" onClick={handleAddSocialLink} className="button button-secondary button-with-icon"><Plus size={16} /> Add Social Link</button>
                         </div>
-                        <div className="form-group">
-                            <label className="label" htmlFor="lastName">Last Name</label>
-                            <input id="lastName" className="input" type="text" value={lastName} onChange={e => setLastName(e.target.value)} />
-                        </div>
-                    </div>
-                    
-                    <div className="form-group">
-                        <label className="label" htmlFor="shortBio">Short Bio / Tagline</label>
-                        <input id="shortBio" className="input" type="text" value={shortBio} onChange={e => setShortBio(e.target.value)} placeholder="e.g., Contemporary Abstract Painter" />
-                    </div>
+                    </>
+                )}
 
-                    <div className="form-group">
-                        <label className="label" htmlFor="artistStatement">Artist Statement</label>
-                        <textarea id="artistStatement" className="textarea" value={artistStatement} onChange={e => setArtistStatement(e.target.value)} placeholder="Tell collectors about your work, process, and inspiration..."></textarea>
-                    </div>
-                </div>
+                {activeTab === 'branding' && (
+                     <>
+                        <div className="form-section">
+                            <h3>Branding</h3>
+                            <p className="form-section-description">Upload your logo to be automatically included on invoices and digital certificates.</p>
+                            <ImageUpload label="Artist Logo" onFileSelect={setLogoFile} initialPreview={logoPreview || undefined} />
+                        </div>
+                        
+                        <div className="form-section">
+                            <h3><Award size={20} className="inline-block mr-2" /> Certificate of Authenticity (CoA)</h3>
+                            <p className="form-section-description">Configure how you provide Certificates of Authenticity for your sold artworks.</p>
+                            <div className="flex items-center gap-4 py-4">
+                                <label htmlFor="coa-enabled-toggle" className="label-flex font-semibold">I provide a CoA for my artworks</label>
+                                <label className="switch">
+                                    <input id="coa-enabled-toggle" type="checkbox" checked={coaSettings.enabled} onChange={(e) => setCoaSettings(prev => ({ ...prev, enabled: e.target.checked }))} />
+                                    <span className="slider round"></span>
+                                </label>
+                            </div>
+                            {coaSettings.enabled && (
+                                <div className="pl-4 border-l-2 border-border">
+                                    <p className="label mb-2">How do you provide the certificate?</p>
+                                    <div className="radio-group">
+                                        <label className="radio-label"><input type="radio" name="coaType" value="physical" checked={coaSettings.type === 'physical'} onChange={() => setCoaSettings(prev => ({ ...prev, type: 'physical' }))} className="radio" /> Physically (shipped with the artwork)</label>
+                                        <label className="radio-label"><input type="radio" name="coaType" value="digital" checked={coaSettings.type === 'digital'} onChange={() => setCoaSettings(prev => ({ ...prev, type: 'digital' }))} className="radio" /> Digitally (auto-generated by Artflow)</label>
+                                    </div>
+                                    {coaSettings.type === 'digital' && <p className="text-sm text-muted-foreground mt-2">When a sale is recorded, Artflow will automatically generate a PDF certificate and make it available to the collector in their Vault.</p>}
+                                </div>
+                            )}
+                        </div>
 
-                <div className="form-section">
-                    <h3>Contact & Location</h3>
-                    <p>This information is private and will only be used for communication and shipping.</p>
-                     <div className="form-grid-2-col">
-                        <div className="form-group">
-                            <label className="label" htmlFor="contactNumber">Phone Number</label>
-                            <input id="contactNumber" className="input" type="tel" value={contactNumber} onChange={e => setContactNumber(e.target.value)} />
+                        <div className="form-section">
+                            <h3>Document Previews</h3>
+                            <p className="form-section-description">This is how your logo and name will appear on documents sent to collectors.</p>
+                            <div className="document-previews-grid">
+                                <InvoicePreview artistName={displayName} logoUrl={logoPreview} />
+                                <CoAPreview artistName={displayName} logoUrl={logoPreview} />
+                            </div>
                         </div>
-                         <div className="form-group">
-                            <label className="label" htmlFor="locationCountry">Country</label>
-                            <input id="locationCountry" className="input" type="text" value={locationCountry} onChange={e => setLocationCountry(e.target.value)} />
-                        </div>
-                    </div>
-                     <div className="form-group">
-                        <label className="label" htmlFor="locationCity">City</label>
-                        <input id="locationCity" className="input" type="text" value={locationCity} onChange={e => setLocationCity(e.target.value)} />
-                    </div>
-                </div>
-                
-                 <div className="form-section">
-                    <h3>Social Links</h3>
-                    <p>Link to your website, social media, and other online presences.</p>
-                    {socialLinks.map((link, index) => (
-                        <div key={index} className="social-link-group">
-                            <select value={link.platform} onChange={e => handleSocialLinkChange(index, 'platform', e.target.value)} className="input">
-                                <option>Website</option>
-                                <option>Instagram</option>
-                                <option>Facebook</option>
-                                <option>Twitter</option>
-                                <option>Other</option>
-                            </select>
-                            <input type="url" value={link.url} onChange={e => handleSocialLinkChange(index, 'url', e.target.value)} className="input" placeholder="https://..." />
-                            <button type="button" onClick={() => handleRemoveSocialLink(index)} className="button-icon-danger" aria-label="Remove social link">
-                                <Trash2 size={16} />
-                            </button>
-                        </div>
-                    ))}
-                    <button type="button" onClick={handleAddSocialLink} className="button secondary">Add Social Link</button>
-                </div>
+                    </>
+                )}
 
                 <div className="form-actions">
-                    <Button type="submit" className="primary" isLoading={loading}>Save Changes</Button>
+                    <Button type="submit" className="button button-primary" isLoading={loading}>Save Changes</Button>
                 </div>
             </form>
         </div>

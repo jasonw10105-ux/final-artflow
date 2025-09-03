@@ -1,12 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { useDebounce } from '@/hooks/useDebounce';
-import { PlusCircle, ImageOff, CheckCircle, Archive, Lock } from 'lucide-react';
-// FIX: Corrected the import path for the database types.
+import { PlusCircle, ImageOff, CheckCircle, Archive, Lock, Share2 } from 'lucide-react'; // Added Share2 icon
 import { Database } from '@/types/database.types';
+import ShareModal from '@/components/public/ShareModal'; // Import the ShareModal
 
 type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
     total_count: number; available_count: number; sold_count: number;
@@ -21,7 +21,13 @@ const fetchCataloguesWithStatusCounts = async (userId: string): Promise<Catalogu
     return data || [];
 };
 
-const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWithCounts; profileSlug: string | null | undefined }) => (
+// Moved the ShareModal state and logic to the parent component (CatalogueListPage)
+// to manage which catalogue is being shared.
+const CatalogueListItem = React.memo(({ cat, profileSlug, onShare }: { 
+    cat: CatalogueWithCounts; 
+    profileSlug: string | null | undefined;
+    onShare: (catalogue: CatalogueWithCounts) => void; // Callback to open share modal
+}) => (
     <div style={{
         background: 'var(--card)', borderRadius: 'var(--radius)',
         display: 'flex', alignItems: 'center', gap: '1.5rem',
@@ -40,7 +46,7 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
             </div>
         )}
         <div style={{ flexGrow: 1, padding: '1rem 0' }}>
-            <div className="card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
                <h3>{cat.title}</h3>
                 {cat.is_system_catalogue && (
                     <span title="This system catalogue's details cannot be edited, but you can manage its artworks." style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', background: 'var(--muted)', color: 'var(--muted-foreground)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>
@@ -51,7 +57,7 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
                     <span style={{ fontSize: '0.75rem', background: 'var(--secondary)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>Draft</span>
                 )}
             </div>
-            <p>
+            <p style={{ marginBottom: '0.5rem' }}>
                 Total of {cat.total_count || 0} artwork(s)
             </p>
             <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem' }}>
@@ -67,11 +73,20 @@ const CatalogueListItem = React.memo(({ cat, profileSlug }: { cat: CatalogueWith
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', paddingRight: '1.5rem' }}>
             {cat.is_published && profileSlug && (
-                <Link to={`/${profileSlug}/catalogue/${cat.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">View</Link>
+                <Link to={`/u/${profileSlug}/catalogue/${cat.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">View</Link>
             )}
-            <Link to={`/artist/catalogues/edit/${cat.id}`} className='button button-secondary'>
+            <Link to={`/u/catalogues/edit/${cat.id}`} className='button button-secondary'>
                 {cat.is_system_catalogue ? 'Manage Artworks' : 'Edit'}
             </Link>
+            {cat.is_published && ( // Only show share button for published catalogues
+                <button 
+                    onClick={() => onShare(cat)} 
+                    className='button button-secondary' 
+                    title="Share Catalogue"
+                >
+                    <Share2 size={16} />
+                </button>
+            )}
         </div>
     </div>
 ));
@@ -101,6 +116,10 @@ const CatalogueListPage = () => {
     const [sortOption, setSortOption] = useState('created_at-desc');
     const [filterStatus, setFilterStatus] = useState('all');
 
+    // State for ShareModal
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [catalogueToShare, setCatalogueToShare] = useState<CatalogueWithCounts | null>(null);
+
     const { data: catalogues, isLoading } = useQuery({
         queryKey: ['cataloguesWithStatusCounts', user?.id],
         queryFn: () => fetchCataloguesWithStatusCounts(user!.id),
@@ -125,21 +144,45 @@ const CatalogueListPage = () => {
             if (valA === null || valA === undefined) return 1;
             if (valB === null || valB === undefined) return -1;
             let comparison = 0;
-            if (typeof valA === 'number' && typeof valB === 'number') comparison = valA - valB;
-            else if (typeof valA === 'string' && typeof valB === 'string') comparison = valA.localeCompare(valB);
-            else comparison = new Date(valA as string).getTime() - new Date(valB as string).getTime();
+            // Handle number comparison
+            if (['total_count', 'available_count', 'sold_count'].includes(key) && typeof valA === 'number' && typeof valB === 'number') {
+                comparison = valA - valB;
+            } 
+            // Handle string comparison for title
+            else if (key === 'title' && typeof valA === 'string' && typeof valB === 'string') {
+                comparison = valA.localeCompare(valB);
+            }
+            // Handle date comparison for created_at
+            else if (key === 'created_at' && typeof valA === 'string' && typeof valB === 'string') {
+                comparison = new Date(valA).getTime() - new Date(valB).getTime();
+            }
+            
             return direction === 'asc' ? comparison : -comparison;
         });
 
         return systemCatalogue ? [systemCatalogue, ...sorted] : sorted;
     }, [catalogues, debouncedSearchQuery, sortOption, filterStatus]);
 
+    // Handler to open the share modal with specific catalogue data
+    const handleOpenShareModal = useCallback((cat: CatalogueWithCounts) => {
+        setCatalogueToShare(cat);
+        setShowShareModal(true);
+    }, []);
+
+    // Handle modal body scroll locking
+    useEffect(() => {
+        document.body.style.overflow = showShareModal ? 'hidden' : 'auto';
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, [showShareModal]);
+
 
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <h1>Catalogues</h1>
-                <Link to="/artist/catalogues/new" className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <Link to="/u/catalogues/new" className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <PlusCircle size={16} /> Create Catalogue
                 </Link>
             </div>
@@ -173,7 +216,12 @@ const CatalogueListPage = () => {
                     <CatalogueListSkeleton />
                 ) : processedCatalogues.length > 0 ? (
                     processedCatalogues.map((cat) => (
-                        <CatalogueListItem key={cat.id} cat={cat} profileSlug={profile?.slug} />
+                        <CatalogueListItem 
+                            key={cat.id} 
+                            cat={cat} 
+                            profileSlug={profile?.slug} 
+                            onShare={handleOpenShareModal} // Pass the handler
+                        />
                     ))
                 ) : (
                     <div style={{ textAlign: 'center', padding: '3rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
@@ -185,6 +233,27 @@ const CatalogueListPage = () => {
                     </div>
                 )}
             </div>
+
+            {/* ShareModal */}
+            {showShareModal && catalogueToShare && profile?.slug && (
+                <ShareModal
+                    onClose={() => {
+                        setShowShareModal(false);
+                        setCatalogueToShare(null); // Clear shared catalogue data
+                    }}
+                    title={catalogueToShare.title}
+                    byline={profile.full_name || "Artflow Artist"} // Assuming byline is artist's name
+                    shareUrl={`${window.location.origin}/u/${profile.slug}/catalogue/${catalogueToShare.slug}`}
+                    previewImageUrls={catalogueToShare.cover_image_url ? [catalogueToShare.cover_image_url] : []}
+                    isCatalogue={true}
+                    // For catalogues, dimensions, price, year, currency might not be directly applicable
+                    // You can choose to pass null or default values
+                    dimensions={null}
+                    price={null}
+                    year={null}
+                    currency={null}
+                />
+            )}
         </div>
     );
 };

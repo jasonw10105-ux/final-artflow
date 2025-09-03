@@ -1,85 +1,294 @@
-// src/pages/dashboard/artist/ArtworkListPage.tsx
-import React, { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useMemo, useState, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import FiltersSidebar, { Filters } from "@/components/ui/FiltersSidebar";
-import ArtworkActionsMenu from "@/components/dashboard/ArtworkActionsMenu";
+import FiltersSidebar, { Filters } from "@/components/ui/FiltersSidebar"; // Assuming FiltersSidebar exists
+import { AppArtwork, AppArtworkWithJunction, CatalogueRef } from '@/types/app.types'; // Use AppArtwork
+import ArtworkActionsMenu from "@/components/dashboard/ArtworkActionsMenu"; // Assuming ArtworkActionsMenu exists
+import ShareButton from "@/components/ui/ShareButton"; // Reusable ShareButton component
+import { PlusCircle, Upload, Tag, Archive, XCircle, Settings, ImageOff } from 'lucide-react'; // Added ImageOff for placeholder
+import '@/styles/app.css'; // Import the centralized styles
 
-type CatalogueRef = { id: string; title: string; slug: string | null };
-type ArtworkImage = {
-  id: string;
-  image_url: string;
-  watermarked_image_url?: string | null;
-  visualization_image_url?: string | null;
-  position?: number;
+// --- CSV Import Modal Component ---
+interface CsvImportModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onImportSuccess: () => void;
+    userId: string;
+}
+
+const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImportSuccess, userId }) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [importLog, setImportLog] = useState<string[]>([]);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            setFile(e.target.files[0]);
+            setImportLog([]);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!file) {
+            toast.error("Please select a CSV file to upload.");
+            return;
+        }
+
+        setIsLoading(true);
+        setImportLog([]);
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+            const text = event.target?.result as string;
+            const lines = text.split('\n').filter(line => line.trim() !== '');
+
+            if (lines.length < 2) {
+                toast.error("CSV file is empty or too short.");
+                setIsLoading(false);
+                return;
+            }
+
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+            const artworksToInsert = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                if (values.length !== headers.length) {
+                    setImportLog(prev => [...prev, `Skipping row ${i + 1}: Mismatched column count.`]);
+                    continue;
+                }
+
+                const artwork: Partial<AppArtwork> = { user_id: userId, status: 'draft' };
+                headers.forEach((header, index) => {
+                    if (header === 'title') artwork.title = values[index];
+                    else if (header === 'description') artwork.description = values[index];
+                    else if (header === 'price') artwork.price = parseFloat(values[index]) || null;
+                    else if (header === 'currency') artwork.currency = values[index];
+                    else if (header === 'genre') artwork.genre = values[index];
+                    else if (header === 'medium') artwork.medium = values[index];
+                    else if (header === 'subject') artwork.subject = values[index];
+                    else if (header === 'keywords') artwork.keywords = values[index].split(';').map(k => k.trim()).filter(Boolean);
+                    else if (header === 'inventory_number') artwork.inventory_number = values[index];
+                    // Add more mappings as needed (dimensions, etc.)
+                });
+
+                if (artwork.title && artwork.medium) { // Basic validation
+                    artworksToInsert.push(artwork);
+                } else {
+                    setImportLog(prev => [...prev, `Skipping row ${i + 1}: Missing title or medium.`]);
+                }
+            }
+
+            if (artworksToInsert.length === 0) {
+                toast.error("No valid artworks found in the CSV for import.");
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                // Bulk insert operation
+                const { error } = await supabase.from('artworks').insert(artworksToInsert as any[]);
+                if (error) throw error;
+
+                toast.success(`CSV Import Complete: ${artworksToInsert.length} artworks added!`);
+                onImportSuccess();
+                onClose();
+            } catch (error: any) {
+                setImportLog(prev => [...prev, `Error during Supabase insert: ${error.message}`]);
+                toast.error(`Import failed: ${error.message}`);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        reader.readAsText(file);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="modal-backdrop">
+            <div className="modal-content csv-import-modal-content">
+                <div className="modal-header">
+                    <h3>Import Artworks from CSV</h3>
+                    <button type="button" onClick={onClose} className="button-icon-secondary"><XCircle size={20} /></button>
+                </div>
+                <div className="modal-body">
+                    <p className="text-muted-foreground mb-4">Upload a CSV file containing your artwork details. Supported headers: <code className="code-snippet">title</code>, <code className="code-snippet">description</code>, <code className="code-snippet">price</code>, <code className="code-snippet">currency</code>, <code className="code-snippet">genre</code>, <code className="code-snippet">medium</code>, <code className="code-snippet">subject</code>, <code className="code-snippet">keywords</code> (semicolon-separated), <code className="code-snippet">inventory_number</code>.</p>
+                    <div className="form-group mb-4">
+                        <label htmlFor="csv-file" className="label">Select CSV File</label>
+                        <input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} className="input-file" />
+                    </div>
+                    {file && <p className="mb-2">Selected file: <strong>{file.name}</strong></p>}
+                    <button onClick={handleUpload} className="button button-primary w-full" disabled={!file || isLoading}>
+                        {isLoading ? 'Importing...' : 'Upload and Import'}
+                    </button>
+                    {importLog.length > 0 && (
+                        <div className="import-log-box">
+                            <h4>Import Log:</h4>
+                            {importLog.map((log, index) => (
+                                <p key={index} className="text-sm">{log}</p>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 
-export type Artwork = {
-  id: string;
-  slug: string | null;
-  title: string | null;
-  price: number | null;
-  currency: string | null;
-  genre: string | null;
-  keywords?: string[] | null;
-  dominant_colors?: string[] | null;
-  color_groups?: string[] | null;
-  status:
-    | "draft"
-    | "available"
-    | "pending"
-    | "on hold"
-    | "sold"
-    | "Available"
-    | "Pending"
-    | "On Hold"
-    | "Sold";
-  artwork_images?: ArtworkImage[];
-  artwork_catalogue_junction?: { catalogue: CatalogueRef }[];
+
+// --- Bulk Actions Modal (Placeholder) ---
+interface BulkActionsModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    selectedArtworkIds: string[];
+    onApplyAction: (action: string) => void;
+}
+
+const BulkActionsModal: React.FC<BulkActionsModalProps> = ({ isOpen, onClose, selectedArtworkIds, onApplyAction }) => {
+    const [actionType, setActionType] = useState('');
+
+    const handleSubmit = () => {
+        if (actionType) {
+            onApplyAction(actionType);
+            onClose();
+        } else {
+            toast.error("Please select an action.");
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="modal-backdrop">
+            <div className="modal-content bulk-actions-modal-content">
+                <div className="modal-header">
+                    <h3>Bulk Actions ({selectedArtworkIds.length} Artworks)</h3>
+                    <button type="button" onClick={onClose} className="button-icon-secondary"><XCircle size={20} /></button>
+                </div>
+                <div className="modal-body">
+                    <p className="text-muted-foreground mb-4">Choose an action to apply to all selected artworks.</p>
+                    <div className="form-group mb-4">
+                        <label className="label">Select Action</label>
+                        <select className="input" value={actionType} onChange={(e) => setActionType(e.target.value)}>
+                            <option value="">-- Select --</option>
+                            <option value="mark-available">Mark as Available</option>
+                            <option value="mark-sold">Mark as Sold</option>
+                            <option value="add-tags">Add Tags</option>
+                            <option value="delete">Delete Artworks</option>
+                            <option value="add-to-catalogue">Add to Catalogue</option> {/* Added for bulk actions */}
+                            <option value="update-price">Update Price</option> {/* Added for bulk actions */}
+                        </select>
+                    </div>
+                    <button onClick={handleSubmit} className="button button-primary w-full" disabled={!actionType}>
+                        Apply Action
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
+
 
 export default function ArtworkListPage() {
   const [filters, setFilters] = useState<Filters>({
-    genre: [],
-    status: [],
-    keyword: [],
-    color: [],
-    search: "",
-    sort: "newest",
+    genre: [], status: [], keyword: [], color: [], medium: [], search: "", sort: "newest",
+    priceMin: undefined, priceMax: undefined, creationYearMin: undefined, creationYearMax: undefined,
+    subjectSearch: "", orientation: [], isFramed: null, isSigned: null, isEdition: null,
+    minHeight: undefined, maxHeight: undefined, minWidth: undefined, maxWidth: undefined, minDepth: undefined, maxDepth: undefined,
   });
+  const { user, profile } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const { data: artworks, isLoading } = useQuery<Artwork[]>({
-    queryKey: ["artworks"],
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile sidebar
+  const [selectedArtworkIds, setSelectedArtworkIds] = useState<string[]>([]); // For bulk actions
+  const [showCsvImportModal, setShowCsvImportModal] = useState(false);
+  const [showBulkActionsModal, setShowBulkActionsModal] = useState(false);
+
+  // --- Deep Linking for Filters (useEffect to parse URL on load) ---
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setFilters({
+      genre: params.get('genre')?.split(',') || [],
+      status: params.get('status')?.split(',') || [],
+      keyword: params.get('keyword')?.split(',') || [],
+      color: params.get('color')?.split(',') || [],
+      medium: params.get('medium')?.split(',') || [],
+      search: params.get('search') || '',
+      sort: (params.get('sort') as Filters['sort']) || 'newest',
+      priceMin: params.get('priceMin') ? parseFloat(params.get('priceMin')!) : undefined,
+      priceMax: params.get('priceMax') ? parseFloat(params.get('priceMax')!) : undefined,
+      creationYearMin: params.get('creationYearMin') ? parseInt(params.get('creationYearMin')!) : undefined,
+      creationYearMax: params.get('creationYearMax') ? parseInt(params.get('creationYearMax')!) : undefined,
+      subjectSearch: params.get('subjectSearch') || '',
+      orientation: params.get('orientation')?.split(',') || [],
+      isFramed: params.get('isFramed') ? (params.get('isFramed') === 'true') : null,
+      isSigned: params.get('isSigned') ? (params.get('isSigned') === 'true') : null,
+      isEdition: params.get('isEdition') ? (params.get('isEdition') === 'true') : null,
+      minHeight: params.get('minHeight') ? parseFloat(params.get('minHeight')!) : undefined,
+      maxHeight: params.get('maxHeight') ? parseFloat(params.get('maxHeight')!) : undefined,
+      minWidth: params.get('minWidth') ? parseFloat(params.get('minWidth')!) : undefined,
+      maxWidth: params.get('maxWidth') ? parseFloat(params.get('maxWidth')!) : undefined,
+      minDepth: params.get('minDepth') ? parseFloat(params.get('minDepth')!) : undefined,
+      maxDepth: params.get('maxDepth') ? parseFloat(params.get('maxDepth')!) : undefined,
+    });
+  }, [location.search]);
+
+  // --- Update URL on Filter Change (useEffect to update URL) ---
+  useEffect(() => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '' && !(Array.isArray(value) && value.length === 0)) {
+        params.set(key, Array.isArray(value) ? value.join(',') : String(value));
+      }
+    });
+    navigate(`?${params.toString()}`, { replace: true });
+  }, [filters, navigate]);
+
+
+  const { data: artworks, isLoading, error } = useQuery<AppArtwork[], Error>({ // Use AppArtwork
+    queryKey: ["artworks", user?.id], // Add user?.id to query key for RLS
     queryFn: async () => {
+      if (!user?.id) return [];
       const { data, error } = await supabase
         .from("artworks")
         .select(`
-          id, slug, title, price, currency, genre, keywords, dominant_colors, status,
-          artwork_images ( id, image_url, watermarked_image_url, visualization_image_url, position ),
+          id, slug, title, price, currency, genre, keywords, dominant_colors, status, color_groups, created_at,
+          subject, orientation, dimensions, framing_info, signature_info, edition_info,
+          description, inventory_number, provenance, location, medium, private_note,
+          artwork_images ( id, image_url, watermarked_image_url, visualization_image_url, position, is_primary ),
           artwork_catalogue_junction (
             catalogue:catalogues ( id, title, slug )
           )
         `)
+        .eq('user_id', user.id) // Ensure RLS for current user
         .order("created_at", { ascending: false });
 
       if (error) {
         toast.error(`Failed to load artworks: ${error.message}`);
         throw new Error(error.message);
       }
-      return data ?? [];
+      return data?.map(art => ({
+          ...art,
+          artwork_images: (art.artwork_images || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+      })) as AppArtwork[] || [];
     },
+    enabled: !!user?.id, // Only run query if user is available
   });
 
-  const filtered = useMemo(() => {
+  const filteredArtworks = useMemo(() => {
     if (!artworks) return [];
 
-    const normalizeStatus = (s: Artwork["status"]) =>
+    const normalizeStatus = (s: AppArtwork["status"]) =>
       s?.toLowerCase() === "available"
         ? "available"
         : ["pending", "on hold", "sold"].includes(s?.toLowerCase() ?? "")
-        ? "draft"
+        ? "draft" // Group these into 'draft' for internal display/filter purposes if desired
         : s?.toLowerCase() ?? "";
 
     return artworks
@@ -88,12 +297,68 @@ export default function ArtworkListPage() {
         if (filters.status.length && !filters.status.includes(normalizeStatus(a.status))) return false;
         if (filters.keyword.length && !a.keywords?.some((k) => filters.keyword.includes(k))) return false;
         if (filters.color.length && !a.color_groups?.some((c) => filters.color.includes(c))) return false;
+        if (filters.medium && filters.medium.length && !filters.medium.includes(a.medium ?? "")) return false;
+
+        if (filters.priceMin !== undefined && (a.price ?? 0) < filters.priceMin) return false;
+        if (filters.priceMax !== undefined && (a.price ?? 0) > filters.priceMax) return false;
+
+        if (a.created_at) {
+          const creationYear = new Date(a.created_at).getFullYear();
+          if (filters.creationYearMin !== undefined && creationYear < filters.creationYearMin) return false;
+          if (filters.creationYearMax !== undefined && creationYear > filters.creationYearMax) return false;
+        }
+
+        if (filters.subjectSearch && !(a.subject?.toLowerCase().includes(filters.subjectSearch.toLowerCase()))) return false;
+        if (filters.orientation.length > 0 && !(filters.orientation.includes(a.orientation ?? ''))) return false;
+
+        if (filters.isFramed !== null) {
+          if (filters.isFramed === true && (!a.framing_info?.is_framed)) return false;
+          if (filters.isFramed === false && (a.framing_info?.is_framed)) return false;
+        }
+
+        if (filters.isSigned !== null) {
+          if (filters.isSigned === true && (!a.signature_info?.is_signed)) return false;
+          if (filters.isSigned === false && (a.signature_info?.is_signed)) return false;
+        }
+
+        if (filters.isEdition !== null) {
+          if (filters.isEdition === true && (!a.edition_info?.is_edition)) return false;
+          if (filters.isEdition === false && (a.edition_info?.is_edition)) return false;
+        }
+
+        // Dimensions filters
+        if (filters.minHeight !== undefined && (a.dimensions?.height ?? 0) < filters.minHeight) return false;
+        if (filters.maxHeight !== undefined && (a.dimensions?.height ?? 0) > filters.maxHeight) return false;
+        if (filters.minWidth !== undefined && (a.dimensions?.width ?? 0) < filters.minWidth) return false;
+        if (filters.maxWidth !== undefined && (a.dimensions?.width ?? 0) > filters.maxWidth) return false;
+        if (filters.minDepth !== undefined && (a.dimensions?.depth ?? 0) < filters.minDepth) return false;
+        if (filters.maxDepth !== undefined && (a.dimensions?.depth ?? 0) > filters.maxDepth) return false;
+
+
+        // General Search - now searches all text fields *except* private_note
         if (filters.search) {
           const q = filters.search.toLowerCase();
-          const matchTitle = a.title?.toLowerCase().includes(q);
-          const matchKeyword = a.keywords?.some((k) => k.toLowerCase().includes(q));
-          const matchColor = a.color_groups?.some((c) => c.toLowerCase().includes(q));
-          if (!matchTitle && !matchKeyword && !matchColor) return false;
+          const searchableFields = [
+            a.title,
+            a.description,
+            a.genre,
+            a.medium,
+            a.subject,
+            a.orientation,
+            a.inventory_number,
+            a.provenance,
+            a.location,
+            a.framing_info?.details,
+            a.signature_info?.location,
+            a.signature_info?.details,
+            ...(a.keywords || []),
+            ...(a.dominant_colors || []),
+            ...(a.color_groups || []),
+            ...(a.artwork_catalogue_junction?.map(junction => junction.catalogue?.title) || []),
+          ].filter(Boolean).map(String);
+
+          const match = searchableFields.some(field => field.toLowerCase().includes(q));
+          if (!match) return false;
         }
         return true;
       })
@@ -107,71 +372,192 @@ export default function ArtworkListPage() {
             return (a.title ?? "").localeCompare(b.title ?? "");
           case "title-za":
             return (b.title ?? "").localeCompare(a.title ?? "");
+          case "newest": // Default sort is newest from query, no additional sort needed unless overridden
           default:
-            return 0; // newest already from query
+            return 0;
         }
       });
   }, [artworks, filters]);
 
-  if (isLoading) return <p>Loading artworks...</p>;
-  if (!artworks?.length) return <p>No artworks found.</p>;
+  // --- Bulk Actions ---
+  const handleSelectArtwork = (id: string) => {
+      setSelectedArtworkIds(prev =>
+          prev.includes(id) ? prev.filter(aId => aId !== id) : [...prev, id]
+      );
+  };
+
+  const handleApplyBulkAction = (action: string) => {
+      if (!user?.id) return;
+      toast.info(`Applying bulk action '${action}' to ${selectedArtworkIds.length} artworks... (Feature not fully implemented)`);
+      console.log(`Bulk Action: ${action} for IDs:`, selectedArtworkIds);
+
+      // Example: Bulk delete (replace with actual Supabase calls)
+      if (action === 'delete' && window.confirm('Are you sure you want to delete selected artworks?')) {
+          // Placeholder for actual delete mutation
+          // supabase.from('artworks').delete().in('id', selectedArtworkIds).eq('user_id', user.id);
+          queryClient.invalidateQueries({ queryKey: ['artworks', user.id] });
+          toast.success("Artworks deletion initiated.");
+          setSelectedArtworkIds([]);
+      }
+      // Add logic for 'mark-available', 'mark-sold', 'add-tags' etc.
+  };
+
+  if (isLoading) return <p className="loading-message">Loading artworks...</p>;
+  if (error) return <p className="error-message">Error loading artworks: {error.message}</p>;
+
+  // Empty state for artist without artworks
+  if (!artworks?.length && !isLoading) return (
+    <div className="empty-state-card">
+      <p className="text-muted-foreground">You haven't uploaded any artworks yet.</p>
+      <Link to="/u/artworks/wizard" className="button button-primary mt-4 button-with-icon">
+        <PlusCircle size={16} /> Create Your First Artwork
+      </Link>
+      <button onClick={() => setShowCsvImportModal(true)} className="button button-secondary mt-2 button-with-icon">
+          <Upload size={16} /> Import Artworks from CSV
+      </button>
+    </div>
+  );
+
 
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="page-container artwork-list-page">
+        <CsvImportModal
+            isOpen={showCsvImportModal}
+            onClose={() => setShowCsvImportModal(false)}
+            onImportSuccess={() => queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] })}
+            userId={user!.id}
+        />
+        <BulkActionsModal
+            isOpen={showBulkActionsModal}
+            onClose={() => setShowBulkActionsModal(false)}
+            selectedArtworkIds={selectedArtworkIds}
+            onApplyAction={handleApplyBulkAction}
+        />
+
+      <div className="page-header-row">
         <h1>My Artworks</h1>
-        <Link to="/u/artworks/wizard">+ New Artwork</Link>
+        <div className="actions-group">
+            <button onClick={() => setShowCsvImportModal(true)} className="button button-secondary button-with-icon">
+                <Upload size={16} /> Import CSV
+            </button>
+            <Link to="/u/artworks/wizard" className="button button-primary button-with-icon">+ New Artwork</Link>
+        </div>
       </div>
 
-      <div style={{ display: "flex", gap: 16 }}>
-        <FiltersSidebar artworks={artworks} filters={filters} setFilters={setFilters} />
+      {/* Active Filters Display */}
+      {Object.values(filters).some(val => (Array.isArray(val) && val.length > 0) || (typeof val === 'string' && val !== '' && val !== 'newest') || (typeof val === 'number') || (typeof val === 'boolean' && val !== null)) && (
+          <div className="active-filters-display">
+              <h3 className="text-sm font-semibold mr-2">Active Filters:</h3>
+              {Object.entries(filters).map(([key, value]) => {
+                  if ((Array.isArray(value) && value.length > 0) || (typeof value === 'string' && value !== '' && value !== 'newest') || (typeof value === 'number') || (typeof value === 'boolean' && value !== null)) {
+                      const displayKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                      const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
+                      return (
+                          <span key={key} className="filter-pill">
+                              {displayKey}: {displayValue}
+                              <button onClick={() => setFilters(prev => ({ ...prev, [key]: Array.isArray(prev[key as keyof Filters]) ? [] : (typeof prev[key as keyof Filters] === 'boolean' ? null : (key === 'sort' ? 'newest' : '')) }))} className="filter-pill-clear">
+                                  <XCircle size={14} />
+                              </button>
+                          </span>
+                      );
+                  }
+                  return null;
+              })}
+              <button onClick={() => setFilters({ genre: [], status: [], keyword: [], color: [], medium: [], search: "", sort: "newest", priceMin: undefined, priceMax: undefined, creationYearMin: undefined, creationYearMax: undefined, subjectSearch: "", orientation: [], isFramed: null, isSigned: null, isEdition: null, minHeight: undefined, maxHeight: undefined, minWidth: undefined, maxWidth: undefined, minDepth: undefined, maxDepth: undefined })} className="button button-secondary button-sm ml-4">Clear All</button>
+          </div>
+      )}
 
-        <div
-          style={{
-            display: "grid",
-            gap: 16,
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-            flex: 1,
-          }}
-        >
-          {filtered.map((art) => {
-            const cover =
-              [...(art.artwork_images ?? [])]
-                .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0]?.image_url ??
-              "https://placehold.co/600x450?text=No+Image";
 
-            const cat = art.artwork_catalogue_junction?.[0]?.catalogue;
+      <div className="artwork-list-layout">
+        {/* Mobile Filter Toggle */}
+        <button className="button button-secondary mb-4 md:hidden" onClick={() => setIsSidebarOpen(true)}>
+            <Settings size={16} className="mr-2"/> Toggle Filters
+        </button>
 
-            // Always go to edit page
-            const editHref = `/u/artworks/edit/${art.id}`;
+        {/* Filter Sidebar */}
+        <div className={`filter-sidebar ${isSidebarOpen ? 'open' : ''}`}>
+            <FiltersSidebar artworks={artworks || []} filters={filters} setFilters={setFilters} isArtistView={true} />
+            <button className="close-sidebar-button md:hidden" onClick={() => setIsSidebarOpen(false)}>
+                <XCircle size={24} />
+            </button>
+        </div>
+        {isSidebarOpen && <div className="sidebar-backdrop md:hidden" onClick={() => setIsSidebarOpen(false)}></div>}
 
-            return (
-              <div key={art.id} style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-                <img src={cover} alt={art.title ?? "Artwork"} style={{ width: "100%", height: 200, objectFit: "cover" }} />
-                <div style={{ padding: 12 }}>
-                  <h3>{art.title ?? "Untitled"}</h3>
-                  {art.price != null && (
-                    <p>
-                      {(art.currency ?? "ZAR")} {art.price.toLocaleString()}
-                    </p>
-                  )}
-                  {art.genre && <p>Genre: {art.genre}</p>}
-                  {art.keywords?.length ? <p>Keywords: {art.keywords.join(", ")}</p> : null}
-                  {art.color_groups?.length ? <p>Colors: {art.color_groups.join(", ")}</p> : null}
-                  {cat && cat.slug && (
-                    <p>
-                      Part of Catalogue: <Link to={`/u/${cat.slug}`}>{cat.title}</Link>
-                    </p>
-                  )}
-                  <p>Status: {String(art.status)}</p>
+        <div className="artwork-list-main-content">
+            {/* Bulk Actions Bar */}
+            {selectedArtworkIds.length > 0 && (
+                <div className="bulk-actions-bar mb-4">
+                    <span>{selectedArtworkIds.length} artworks selected</span>
+                    <button onClick={() => setShowBulkActionsModal(true)} className="button button-secondary button-sm button-with-icon">
+                        <Tag size={16} /> Apply Bulk Action
+                    </button>
+                    {/* Add more direct bulk actions if needed, e.g., Mark Available */}
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px 12px" }}>
-                  <Link to={editHref}>Edit</Link>
-                  <ArtworkActionsMenu artwork={{ id: art.id, slug: art.slug }} />
-                </div>
-              </div>
-            );
-          })}
+            )}
+
+            <div className="artwork-grid">
+                {filteredArtworks.length > 0 ? (
+                    filteredArtworks.map((art) => {
+                        const primaryImage = art.artwork_images?.[0]?.image_url ?? "https://placehold.co/600x450?text=No+Image";
+                        const catalogue = art.artwork_catalogue_junction?.[0]?.catalogue;
+
+                        const editHref = `/u/artworks/edit/${art.id}`;
+                        const publicUrl = profile?.slug && art.slug ? `${window.location.origin}/u/${profile.slug}/artwork/${art.slug}` : null;
+
+                        return (
+                            <div key={art.id} className="artwork-card">
+                                <div className="artwork-card-image-wrapper">
+                                    <img src={primaryImage} alt={art.title ?? "Artwork"} className="artwork-card-image" />
+                                    <div className="artwork-card-status-badge">{String(art.status)}</div>
+                                    {art.status === 'draft' && <div className="artwork-card-draft-prompt">Draft: Complete details to make available.</div>}
+                                    <input
+                                        type="checkbox"
+                                        className="bulk-select-checkbox"
+                                        checked={selectedArtworkIds.includes(art.id)}
+                                        onChange={() => handleSelectArtwork(art.id)}
+                                        title="Select for bulk actions"
+                                    />
+                                </div>
+                                <div className="artwork-card-info">
+                                    <h3>{art.title ?? "Untitled"}</h3>
+                                    {art.price != null && (
+                                        <p className="artwork-card-price">
+                                            {(art.currency ?? "USD")} {art.price.toLocaleString()}
+                                        </p>
+                                    )}
+                                    {art.genre && <p className="artwork-card-meta">Genre: {art.genre}</p>}
+                                    {art.medium && <p className="artwork-card-meta">Medium: {art.medium}</p>}
+                                    {art.subject && <p className="artwork-card-meta">Subject: {art.subject}</p>}
+                                    {catalogue && catalogue.slug && (
+                                        <p className="artwork-card-meta">
+                                            Part of Catalogue: <Link to={`/u/${profile?.slug}/catalogue/${catalogue.slug}`} className="text-link">{catalogue.title}</Link>
+                                        </p>
+                                    )}
+                                     {art.dimensions?.height && art.dimensions?.width && (
+                                        <p className="artwork-card-meta">Dimensions: {art.dimensions.height} x {art.dimensions.width}{art.dimensions.depth ? ` x ${art.dimensions.depth}` : ''} {art.dimensions.unit}</p>
+                                    )}
+                                    {art.framing_info?.is_framed && <p className="artwork-card-meta">Framed: Yes</p>}
+                                </div>
+                                <div className="artwork-card-actions">
+                                    <Link to={editHref} className="button button-secondary button-sm">Edit</Link>
+                                    {publicUrl && <ShareButton
+                                        shareUrl={publicUrl}
+                                        title={art.title || "Artwork"}
+                                        byline={profile?.full_name || ""}
+                                        previewImageUrls={[primaryImage]}
+                                    />}
+                                    <ArtworkActionsMenu artwork={art} />
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : (
+                    <div className="empty-state-card col-span-full">
+                        <p className="text-muted-foreground">No artworks found matching your current filters.</p>
+                        <button onClick={() => setFilters({ genre: [], status: [], keyword: [], color: [], medium: [], search: "", sort: "newest", priceMin: undefined, priceMax: undefined, creationYearMin: undefined, creationYearMax: undefined, subjectSearch: "", orientation: [], isFramed: null, isSigned: null, isEdition: null, minHeight: undefined, maxHeight: undefined, minWidth: undefined, maxWidth: undefined, minDepth: undefined, maxDepth: undefined })} className="button button-secondary mt-4">Clear Filters</button>
+                    </div>
+                )}
+            </div>
         </div>
       </div>
     </div>

@@ -1,9 +1,6 @@
-// src/components/ShareModal.tsx
-
 import React, { useState } from 'react';
-// --- MODIFICATION: Added MoreHorizontal for the new share option ---
 import { X, Copy, Mail, MessageCircle, Twitter, Facebook, MoreHorizontal } from 'lucide-react';
-import '../../index.css';
+import '@/styles/app.css';
 
 // --- SVG Icons for platforms not in lucide-react ---
 

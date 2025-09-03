@@ -32,7 +32,7 @@ import PublicCataloguePage from './pages/public/PublicCataloguePage';
 import ArtistInsightsPage from './pages/dashboard/artist/ArtistInsightsPage';
 import ArtworkWizardPage from './pages/dashboard/artist/ArtworkWizardPage';
 import ContactListPage from './pages/dashboard/artist/ContactListPage';
-import ContactEditorPage from './pages/dashboard/artist/ContactEditorPage';
+import ContactEditorPage from './pages/dashboard/artist/ContactEditorPage'; // Ensure this is imported
 import BrowseArtistsPage from './pages/public/BrowseArtistsPage';
 import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
@@ -196,7 +196,12 @@ const AppRoutes = () => (
           <Route path="/u/artworks" element={<ArtistRoute><ArtworkListPage /></ArtistRoute>} />
           <Route path="/u/catalogues" element={<ArtistRoute><CatalogueListPage /></ArtistRoute>} />
           <Route path="/u/contacts" element={<ArtistRoute><ContactListPage /></ArtistRoute>} />
+
+          {/* New Contact Route */}
+          <Route path="/u/contacts/new" element={<ArtistRoute><ContactEditorPage /></ArtistRoute>} />
+          {/* Existing Contact Edit Route */}
           <Route path="/u/contacts/edit/:contactId" element={<ArtistRoute><ContactEditorPage /></ArtistRoute>} />
+
           <Route path="/u/sales" element={<SalesRoute />} />
           <Route path="/u/messages" element={<MessagesRoute />} />
           <Route path="/u/insights" element={<ArtistRoute><ArtistInsightsPage /></ArtistRoute>} />

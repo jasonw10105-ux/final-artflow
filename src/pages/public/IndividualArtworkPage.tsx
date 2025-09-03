@@ -6,340 +6,267 @@ import { supabase } from '@/lib/supabaseClient';
 import InquiryModal from '@/components/public/InquiryModal';
 import ShareModal from '@/components/public/ShareModal';
 import VisualizationModal from '@/components/public/VisualizationModal';
-import { Database } from '@/types/database.types';
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type Artwork = Database['public']['Tables']['artworks']['Row'] & {
-  artist: Profile | null;
-  artwork_images?: { image_url: string }[]; // Add images to the Artwork type
+// Import directly exported Row types and JSONB types
+import { ArtworkRow, ArtworkImageRow, ProfileRow, DimensionsJson, FramingInfoJson, SignatureInfoJson, DateInfoJson, HistoricalEntryJson, LocationJson } from '@/types/database.types';
+import { v4 as uuidv4 } from 'uuid'; // For similar artworks mapping
+
+import { Share2, Eye, Heart, ShoppingBag, Camera } from 'lucide-react';
+import '@/styles/app.css';
+
+// --- APPLICATION-SPECIFIC TYPES ---
+// AppArtwork now extends ArtworkRow and adds relations (e.g., artist, artwork_images)
+export interface AppArtwork extends ArtworkRow {
+  artist?: ProfileRow | null; // Joined artist data
+  artwork_images?: ArtworkImageRow[]; // Joined images
+}
+
+// --- TYPE DEFINITIONS for RPCs ---
+interface ArtworkInsights {
+  view_count_wow: number; // wow = week-over-week
+  list_add_count: number;
+}
+
+
+// --- DATA FETCHING ---
+const fetchArtworkBySlug = async (slug: string): Promise<AppArtwork> => {
+    const { data, error } = await supabase
+        .from('artworks')
+        .select(`
+            *,
+            artist:profiles!user_id ( id, full_name, slug ),
+            artwork_images ( id, image_url, watermarked_image_url, visualization_image_url, is_primary )
+        `)
+        .eq('slug', slug)
+        .single();
+
+    if (error) throw new Error(error.message);
+
+    // Filter and ensure primary image is first for consistency
+    if (data?.artwork_images) {
+        data.artwork_images = data.artwork_images.sort((a, b) => {
+            if (a.is_primary && !b.is_primary) return -1;
+            if (!a.is_primary && b.is_primary) return 1;
+            return 0;
+        });
+    }
+
+    return data as AppArtwork;
 };
 
-const fetchArtworkBySlug = async (slug: string): Promise<Artwork> => {
-  const { data, error } = await supabase
-    .from('artworks')
-    .select(`
-      *,
-      artist:profiles(*),
-      artwork_images!artwork_images_artwork_id_fkey(image_url)
-    `)
-    .eq('slug', slug)
-    .single();
 
-  if (error) {
-    console.error("Error fetching artwork by slug:", error);
-    throw new Error(error.message);
-  }
-  if (!data) {
-    throw new Error("Artwork not found.");
-  }
-  return data as Artwork;
+const fetchArtworkInsights = async (artworkId: string): Promise<ArtworkInsights> => {
+    const { data, error } = await supabase.rpc('get_artwork_insights', { p_artwork_id: artworkId });
+    if (error) { console.error("Error fetching insights:", error); return { view_count_wow: 0, list_add_count: 0 }; }
+    return data;
 };
 
-const fetchRelatedArtworks = async (
-  artistId: string,
-  currentArtworkId: string
-): Promise<Artwork[]> => {
-  const { data, error } = await supabase
-    .from('artworks')
-    .select(`
-      *,
-      artwork_images!artwork_images_artwork_id_fkey(image_url)
-    `)
-    .eq('user_id', artistId)
-    .neq('id', currentArtworkId)
-    .eq('status', 'Available')
-    .limit(4);
-
-  if (error) {
-    console.error("Error fetching related artworks:", error);
-    throw new Error(error.message);
-  }
-  return data || [];
+const fetchSimilarArtworks = async (artworkId: string): Promise<AppArtwork[]> => {
+    const { data, error } = await supabase.rpc('get_vector_similar_artworks', {
+        p_artwork_id: artworkId,
+        p_match_count: 4
+    });
+    if (error) { console.error("Error fetching similar artworks:", error); return []; }
+    // The RPC returns { id, title, image_url, slug, artist_id, artist_full_name, artist_slug }
+    // We need to map it to AppArtwork structure
+    return (data || []).map(art => ({
+        ...art,
+        // Populate base ArtworkRow fields from RPC data (some might be null)
+        user_id: art.artist_id, created_at: null, updated_at: null, price: null, currency: null,
+        medium: null, description: null, status: 'available', rarity: null, framing_status: null,
+        condition: null, has_certificate_of_authenticity: null, certificate_of_authenticity_details: null,
+        location: null, genre: null, subject: null, orientation: null, dominant_colors: null,
+        keywords: null, provenance: null, provenance_notes: null, inventory_number: null,
+        private_note: null, dimensions: null, date_info: null, signature_info: null,
+        framing_info: null, edition_info: null, exhibitions: null, literature: null,
+        embedding: null, // assuming embedding from RPC is not mapped directly to ArtworkRow
+        artwork_images: [{
+          id: uuidv4(), // Generate unique ID for this placeholder image
+          artwork_id: art.id,
+          image_url: art.image_url,
+          watermarked_image_url: null, visualization_image_url: null,
+          position: 0, is_primary: true, created_at: null, updated_at: null
+        }],
+        artist: { id: art.artist_id, full_name: art.artist_full_name, slug: art.artist_slug }
+    })) as AppArtwork[];
 };
 
+// --- MAIN COMPONENT ---
 const IndividualArtworkPage = () => {
   const { artworkSlug } = useParams<{ artworkSlug: string }>();
   const { addArtwork } = useRecentlyViewed();
-
   const [showInquiryModal, setShowInquiryModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showVisualizationModal, setShowVisualizationModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('about');
-
-  const {
-    data: artwork,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
+  
+  const { data: artwork, isLoading, isError, error } = useQuery<AppArtwork, Error>({
     queryKey: ['artwork', artworkSlug],
     queryFn: () => fetchArtworkBySlug(artworkSlug!),
     enabled: !!artworkSlug,
-    retry: 1,
   });
 
-  const {
-    data: relatedArtworks,
-    isLoading: isLoadingRelated,
-  } = useQuery({
-    queryKey: ['relatedArtworks', artwork?.artist?.id],
-    queryFn: () => fetchRelatedArtworks(artwork!.artist!.id, artwork!.id),
-    enabled: !!artwork?.artist?.id,
+  const { data: insights } = useQuery<ArtworkInsights, Error>({
+    queryKey: ['artworkInsights', artwork?.id],
+    queryFn: () => fetchArtworkInsights(artwork!.id),
+    enabled: !!artwork,
+  });
+  const { data: similarArtworks } = useQuery<AppArtwork[], Error>({
+    queryKey: ['similarArtworks', artwork?.id],
+    queryFn: () => fetchSimilarArtworks(artwork!.id),
+    enabled: !!artwork,
   });
 
   useEffect(() => {
-    if (artwork && typeof addArtwork === 'function') {
-      addArtwork(artwork);
-    }
+    if (artwork) addArtwork(artwork);
   }, [artwork, addArtwork]);
 
   useEffect(() => {
-    const isModalOpen =
-      showInquiryModal || showShareModal || showVisualizationModal;
+    const isModalOpen = showInquiryModal || showShareModal || showVisualizationModal;
     document.body.style.overflow = isModalOpen ? 'hidden' : 'auto';
-    return () => {
-      document.body.style.overflow = 'auto';
-    };
+    return () => { document.body.style.overflow = 'auto'; };
   }, [showInquiryModal, showShareModal, showVisualizationModal]);
 
-  if (isLoading) {
-    return (
-      <div className="page-container">
-        <p style={{ textAlign: 'center', padding: '5rem' }}>
-          Loading Artwork...
-        </p>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="page-container"><p className="loading-message">Loading Artwork...</p></div>;
+  if (isError || !artwork) return <div className="page-container text-center py-8"><h1 className="page-title text-red-500">Artwork Not Found</h1></div>;
 
-  if (isError || !artwork) {
-    return (
-      <div
-        className="page-container"
-        style={{ textAlign: 'center', padding: '5rem' }}
-      >
-        <h1>Artwork Not Found</h1>
-        <p>The piece you are looking for does not exist or has been moved.</p>
-        {error && (
-          <p
-            style={{
-              color: 'var(--color-red-danger)',
-              fontSize: '0.8rem',
-              marginTop: '1rem',
-            }}
-          >
-            Error: {error.message}
-          </p>
-        )}
-        <Link to="/artworks" className="button button-primary" style={{ marginTop: '1.5rem' }}>
-          Browse All Artworks
-        </Link>
-      </div>
-    );
-  }
-
-  // Pick the first artwork image url or placeholder
-  const firstImageUrl =
-    artwork.artwork_images?.[0]?.image_url ||
-    'https://placehold.co/800x800?text=Image+Not+Available';
-
+  const firstImage = artwork.artwork_images?.[0];
+  const imageUrlForDisplay = firstImage?.watermarked_image_url || firstImage?.image_url || 'https://placehold.co/800x800?text=No+Image';
+  const visualizationImageUrl = firstImage?.visualization_image_url;
   const artist = artwork.artist;
-  const artistLocation = artist?.location
-    ? [(artist.location as any).city, (artist.location as any).country]
-        .filter(Boolean)
-        .join(', ')
-    : null;
-  const artworkDimensions = artwork.dimensions
-    ? [
-        (artwork.dimensions as any).height,
-        (artwork.dimensions as any).width,
-        (artwork.dimensions as any).depth,
-      ]
-        .filter(Boolean)
-        .join(' x ') +
-      ((artwork.dimensions as any).unit ? ` ${(artwork.dimensions as any).unit}` : '')
-    : null;
 
-  const hasAboutTab =
-    artwork.description ||
-    artwork.medium ||
-    artworkDimensions ||
-    (artwork.signature_info as any)?.is_signed ||
-    (artwork.framing_info as any)?.is_framed;
-  const hasProvenanceTab = !!artwork.provenance;
-  const showTabs = hasAboutTab || hasProvenanceTab;
-
-  useEffect(() => {
-    if (showTabs) {
-      if (hasAboutTab) {
-        setActiveTab('about');
-      } else if (hasProvenanceTab) {
-        setActiveTab('provenance');
-      }
+  // Formatting location (artwork.location is TEXT, assuming it stores JSON string)
+  let formattedLocation = 'Not specified';
+  try {
+    if (artwork.location) {
+      const locationData = JSON.parse(artwork.location) as LocationJson; // Cast to LocationJson
+      formattedLocation = [locationData.city, locationData.country].filter(Boolean).join(', ');
     }
-  }, [showTabs, hasAboutTab, hasProvenanceTab]);
+  } catch (e) {
+    console.error("Error parsing artwork location JSON:", e);
+  }
+
+  // Formatting dimensions
+  const dimensions = artwork.dimensions; // Directly from artwork object
+  const formattedDimensions = dimensions ? (
+    `${dimensions.height || '?'} x ${dimensions.width || '?'} ${dimensions.depth ? `x ${dimensions.depth}` : ''} ${dimensions.unit || 'cm'}`
+  ) : 'Dimensions not available';
+
+  // Formatting framing info
+  const framingInfo = artwork.framing_info; // Directly from artwork object
+  const framingStatusText = artwork.framing_status ? artwork.framing_status.replace(/_/g, ' ') : 'Not specified';
+  const framingDetailsText = artwork.framing_status === 'framed' && framingInfo?.details ? `: ${framingInfo.details}` : '';
+
+  // Formatting signature info
+  const signatureInfo = artwork.signature_info; // Directly from artwork object
+  const signatureText = signatureInfo?.is_signed ? `Signed (${signatureInfo.location || 'location not specified'})` : 'Not signed';
 
   return (
     <>
       <div className="page-container">
         <div className="artwork-layout-grid">
           <div className="artwork-image-column">
-            <img
-              src={firstImageUrl}
-              alt={artwork.title || ''}
-              className="main-artwork-image"
-            />
-            {artwork.visualization_image_url && (
-              <button
-                onClick={() => setShowVisualizationModal(true)}
-                className="button-secondary view-in-room-button"
-              >
-                View in a Room
+            <img src={imageUrlForDisplay} alt={artwork.title || ''} className="main-artwork-image" />
+            {visualizationImageUrl ? (
+              <button onClick={() => setShowVisualizationModal(true)} className="button button-secondary view-in-room-button">
+                <Camera size={16} /> View in a Room
+              </button>
+            ) : (
+              <button disabled className="button button-secondary view-in-room-button opacity-50 cursor-not-allowed">
+                <Camera size={16} /> View in a Room (Generating...)
               </button>
             )}
           </div>
-
           <div className="artwork-main-info">
-            {artist ? (
-              <h1>
-                <Link to={`/${artist.slug}`} className="artist-link">
-                  {artist.full_name}
-                </Link>
-              </h1>
-            ) : (
-              <h1>Unknown Artist</h1>
+            {artist && <h1 className="artist-name"><Link to={`/u/${artist.slug}`} className="artist-link">{artist.full_name}</Link></h1>}
+            <h2 className="artwork-title-italic">{artwork.title}</h2>
+            {insights && (insights.view_count_wow > 5 || insights.list_add_count > 0) && (
+              <div className="collector-insights-banner">
+                {insights.view_count_wow > 5 && <span><Eye size={16}/> 🔥 Viewed by <b>{insights.view_count_wow} people</b> this week</span>}
+                {insights.list_add_count > 0 && <span><Heart size={16}/> ❤️ Added to <b>{insights.list_add_count} collector lists</b></span>}
+              </div>
             )}
-            <h2 style={{ fontStyle: 'italic', margin: '0.25rem 0 1.5rem 0' }}>
-              {artwork.title}
-            </h2>
             <div className="price-container">
-              <p className="artwork-price">
-                {artwork.price
-                  ? new Intl.NumberFormat('en-US', {
-                      style: 'currency',
-                      currency: artwork.currency || 'USD',
-                    }).format(artwork.price)
-                  : 'Price on Request'}
-                {artwork.is_price_negotiable && (
-                  <span className="negotiable-badge">Negotiable</span>
-                )}
-              </p>
+              <p className="artwork-price">{artwork.price ? new Intl.NumberFormat('en-US', { style: 'currency', currency: artwork.currency || 'USD' }).format(artwork.price) : 'Price on Request'}</p>
             </div>
             <div className="artwork-actions">
-              <button
-                onClick={() => setShowInquiryModal(true)}
-                className="button button-primary"
-              >
-                Inquire
-              </button>
-              <button
-                onClick={() => setShowShareModal(true)}
-                className="button button-secondary"
-              >
-                Share
-              </button>
+              <button onClick={() => setShowInquiryModal(true)} className="button button-primary"><ShoppingBag size={16}/> Inquire</button>
+              <button onClick={() => setShowShareModal(true)} className="button button-secondary"><Share2 size={16} /> Share</button>
             </div>
+
+            <div className="details-section">
+              <h3>Details</h3>
+              <p><strong>Medium:</strong> {artwork.medium || 'Not specified'}</p>
+              <p><strong>Dimensions:</strong> {formattedDimensions}</p>
+              <p><strong>Date:</strong> {artwork.date_info?.date_value || (artwork.date_info?.start_date && artwork.date_info?.end_date) ? `${artwork.date_info.start_date}-${artwork.date_info.end_date}` : 'Not specified'}</p>
+              <p><strong>Rarity:</strong> {artwork.rarity ? artwork.rarity.replace(/_/g, ' ') : 'Not specified'}</p>
+              <p><strong>Framing:</strong> {framingStatusText}{framingDetailsText}</p>
+              <p><strong>Signature:</strong> {signatureText}</p>
+              {artwork.condition && <p><strong>Condition:</strong> {artwork.condition}</p>}
+              {artwork.has_certificate_of_authenticity && <p><strong>CoA:</strong> Yes{artwork.certificate_of_authenticity_details && `: ${artwork.certificate_of_authenticity_details}`}</p>}
+              {artwork.location && <p><strong>Location:</strong> {formattedLocation}</p>}
+              {artwork.genre && <p><strong>Genre:</strong> {artwork.genre}</p>}
+              {artwork.subject && <p><strong>Subject:</strong> {artwork.subject}</p>}
+              {artwork.orientation && <p><strong>Orientation:</strong> {artwork.orientation}</p>}
+              {artwork.dominant_colors && artwork.dominant_colors.length > 0 && (
+                <p className="flex items-center gap-2">
+                  <strong>Dominant Colors:</strong>
+                  {artwork.dominant_colors.map((color, index) => (
+                    <span key={index} className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: color }}></span>
+                  ))}
+                </p>
+              )}
+              {artwork.keywords && artwork.keywords.length > 0 && (
+                <p>
+                  <strong>Keywords:</strong> {artwork.keywords.join(', ')}
+                </p>
+              )}
+            </div>
+
+            <div className="provenance-section">
+              <h3>Provenance</h3>
+              <p>{artwork.provenance || 'Provenance not available.'}</p>
+              {artwork.provenance_notes && <p className="text-sm text-gray-600">{artwork.provenance_notes}</p>}
+            </div>
+
+            {artwork.exhibitions && artwork.exhibitions.length > 0 && (
+              <div className="exhibitions-section">
+                <h3>Exhibitions</h3>
+                <ul>
+                  {artwork.exhibitions.map((entry, index) => (
+                    <li key={index}>{entry.year}: {entry.description}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {artwork.literature && artwork.literature.length > 0 && (
+              <div className="literature-section">
+                <h3>Literature</h3>
+                <ul>
+                  {artwork.literature.map((entry, index) => (
+                    <li key={index}>{entry.year}: {entry.description}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
-
-        {showTabs && (
-          <div className="artwork-details-section artwork-tabs">
-            <div className="tab-header">
-              {hasAboutTab && (
-                <button
-                  className={`tab-button ${
-                    activeTab === 'about' ? 'active' : ''
-                  }`}
-                  onClick={() => setActiveTab('about')}
-                >
-                  About this Work
-                </button>
-              )}
-              {hasProvenanceTab && (
-                <button
-                  className={`tab-button ${
-                    activeTab === 'provenance' ? 'active' : ''
-                  }`}
-                  onClick={() => setActiveTab('provenance')}
-                >
-                  Provenance
-                </button>
-              )}
-            </div>
-            <div className="tab-content">
-              {activeTab === 'about' && (
-                <div>
-                  {artwork.description && <p>{artwork.description}</p>}
-                  <ul className="details-list">
-                    {artwork.medium && (
-                      <li>
-                        <strong>Medium:</strong> {artwork.medium}
-                      </li>
-                    )}
-                    {artworkDimensions && (
-                      <li>
-                        <strong>Dimensions:</strong> {artworkDimensions}
-                      </li>
-                    )}
-                    {(artwork.signature_info as any)?.is_signed && (
-                      <li>
-                        <strong>Signed:</strong>{' '}
-                        {(artwork.signature_info as any)?.details || 'Yes'}
-                      </li>
-                    )}
-                    {(artwork.framing_info as any)?.is_framed && (
-                      <li>
-                        <strong>Framed:</strong>{' '}
-                        {(artwork.framing_info as any)?.details || 'Yes'}
-                      </li>
-                    )}
-                    {artistLocation && (
-                      <li>
-                        <strong>Artist Location:</strong> {artistLocation}
-                      </li>
-                    )}
-                  </ul>
-                </div>
-              )}
-              {activeTab === 'provenance' && artwork.provenance && (
-                <p>{artwork.provenance}</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {relatedArtworks && relatedArtworks.length > 0 && (
+        
+        {similarArtworks && similarArtworks.length > 0 && (
           <div className="related-artworks-section">
-            <h3>More from this Artist</h3>
+            <h3>You Might Also Like</h3>
+            <p className="section-description">Discover visually and conceptually similar works from other artists.</p>
             <div className="related-artworks-list">
-              {relatedArtworks.map((art) => {
-                const imageUrl =
-                  art.artwork_images?.[0]?.image_url ||
-                  'https://placehold.co/400x400?text=No+Image';
-                if (!art.slug || !artist?.slug) return null;
-
+              {similarArtworks.map((art) => {
+                const imageUrl = art.artwork_images?.[0]?.image_url || 'https://placehold.co/400x400?text=No+Image';
+                if (!art.slug || !art.artist?.slug) return null;
                 return (
-                  <Link
-                    to={`/artwork/${art.slug}`}
-                    key={art.id}
-                    className="artwork-card-link"
-                  >
+                  <Link to={`/u/${art.artist.slug}/artwork/${art.slug}`} key={art.id} className="artwork-card-link">
                     <div className="artwork-card">
-                      <img
-                        src={imageUrl}
-                        alt={art.title || ''}
-                        className="artwork-card-image"
-                      />
+                      <img src={imageUrl} alt={art.title || ''} className="artwork-card-image" />
                       <div className="artwork-card-info">
-                        {art.title && <h4 style={{ fontStyle: 'italic' }}>{art.title}</h4>}
-                        {art.price && (
-                          <p>
-                            {new Intl.NumberFormat('en-US', {
-                              style: 'currency',
-                              currency: art.currency || 'USD',
-                            }).format(art.price)}
-                          </p>
-                        )}
+                        <h4 className="artwork-card-title-italic">{art.title}</h4>
+                        <p className="artwork-card-artist text-sm">{art.artist.full_name}</p>
                       </div>
                     </div>
                   </Link>
@@ -350,26 +277,25 @@ const IndividualArtworkPage = () => {
         )}
       </div>
 
-      {/* Modals */}
       {artwork && (
         <>
           <InquiryModal
-            isOpen={showInquiryModal}
+            isOpen={showInquiryModal} // Corrected prop name
             onClose={() => setShowInquiryModal(false)}
             artwork={artwork}
-            artist={artist}
           />
           <ShareModal
-            isOpen={showShareModal}
+            isOpen={showShareModal} // Corrected prop name
             onClose={() => setShowShareModal(false)}
             artwork={artwork}
+            shareUrl={window.location.href}
           />
-          {artwork.visualization_image_url && (
+          {visualizationImageUrl && (
             <VisualizationModal
-              isOpen={showVisualizationModal}
+              isOpen={showVisualizationModal} // Corrected prop name
               onClose={() => setShowVisualizationModal(false)}
-              imageUrl={artwork.visualization_image_url}
-              artworkTitle={artwork.title || ''}
+              imageUrl={visualizationImageUrl}
+              artworkTitle={artwork.title || 'Untitled'}
             />
           )}
         </>

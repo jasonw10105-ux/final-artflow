@@ -1,137 +1,83 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Database } from '@/types/database.types';
+import { Database, ArtworkRow, ArtworkImageRow, ProfileRow, CatalogueRow, DimensionsJson, DateInfoJson, SignatureInfoJson, FramingInfoJson, EditionInfoJson, HistoricalEntryJson } from '@/types/database.types'; // Correct imports for direct Row types
 import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
 import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
 import { useNavigate } from 'react-router-dom';
+import ColorThief from 'colorthief'; // Client-side dominant color extraction
 
 // D&D imports
 import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// MUI Button Group and Toggle imports
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Switch from '@mui/material/Switch';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Box from '@mui/material/Box'; // For Autocomplete rendering
+
+// Client-side image generation loading
+import LinearProgress from '@mui/material/LinearProgress';
+import Typography from '@mui/material/Typography';
+
 // Custom components/helpers
 import { mediaTaxonomy } from '@/lib/mediaTaxonomy';
 import { getMediaTypes, getMediaSubtypes } from '@/lib/mediaHelpers';
-import SortableImage from './SortableImage'; // Your SortableImage component
-import ImageDropzone from './ImageDropzone'; // Your ImageDropzone component
-import TagManager, { Tag } from './TagManager'; // Your TagManager component
+import SortableImage from './SortableImage';
+import ImageDropzone from './ImageDropzone';
+import TagManager, { Tag } from './TagManager';
 
 
 // ---------------------------------------------------
 // 1. Type Definitions (Matching Supabase Schema + Relations)
 // ---------------------------------------------------
 
-type ArtworkStatus = "pending" | "available" | "on_hold" | "sold"; // 'draft' removed
+type ArtworkStatus = ArtworkRow['status'];
+type Condition = ArtworkRow['condition'];
+type Rarity = ArtworkRow['rarity'];
+type FramingStatus = ArtworkRow['framing_status'];
 
-// For Exhibitions and Literature (year + text combo)
-interface HistoricalEntry {
-  id: string; // For keying and local reordering
-  year: number | null;
-  description: string;
-}
+// Re-using Database types for JSONB structures
+type HistoricalEntry = HistoricalEntryJson; // Direct use from Database types
 
-type Artwork = Database['public']['Tables']['artworks']['Row'] & {
-  artist?: { full_name: string | null } | null;
-  artwork_images?: ArtworkImage[]; // From artwork_images table
-  artwork_catalogue_junction?: { catalogue: Catalogue }[]; // From junction table
-  // Add new fields
-  inventory_number?: string | null;
-  private_note?: string | null;
-  provenance_notes?: string | null; // A separate note field for provenance
-  location?: string | null; // Artwork location
-  exhibitions?: HistoricalEntry[] | null; // Changed to array of HistoricalEntry
-  literature?: HistoricalEntry[] | null;  // Changed to array of HistoricalEntry
-  status?: ArtworkStatus; // New status field
-  subject?: string | null; // New auto-generated field
+type Artwork = ArtworkRow & {
+  artist?: ProfileRow | null; // Joined artist data
+  artwork_images?: ArtworkImage[]; // Fetched images are here
+  artwork_catalogue_junction?: { catalogue: Catalogue }[];
 };
 
-type Catalogue = Database['public']['Tables']['catalogues']['Row'];
+type Catalogue = CatalogueRow;
 
-type ArtworkImage = Database['public']['Tables']['artwork_images']['Row'];
+// Updated ArtworkImage type to include watermarked and visualization URLs, derived from Database
+type ArtworkImage = ArtworkImageRow;
 
 type PricingModel = 'fixed' | 'negotiable' | 'on_request';
 
-// For nested JSONB fields
-type Dimensions = {
-  width?: number | null;
-  height?: number | null;
-  depth?: number | null;
-  unit?: 'cm' | 'inch' | 'variable' | null; // Updated unit type
-};
-
-type FramingInfo = {
-  is_framed?: boolean | null;
-  details?: string | null;
-};
-
-type SignatureInfo = {
-  is_signed?: boolean | null;
-  location?: string | null;
-  details?: string | null;
-};
-
-type EditionInfo = {
-  is_edition?: boolean | null;
-  numeric_size?: number | null;
-  ap_size?: number | null;
-  sold_editions?: string[] | null; // e.g., ["1/50", "AP 1/5"]
-};
-
-// Date Info for Creation Date field
-type DateInfo = {
-  type: 'full_date' | 'year_only' | 'date_range' | 'circa';
-  date_value?: string | null; // For year or full date
-  start_date?: string | null; // For date range
-  end_date?: string | null; // For date range
-};
+// Re-using Database types for nested JSONB structures
+type Dimensions = DimensionsJson;
+type FramingInfo = FramingInfoJson;
+type SignatureInfo = SignatureInfoJson;
+type EditionInfo = EditionInfoJson;
+type DateInfo = DateInfoJson;
 
 
 interface ArtworkFormProps {
-  artworkId?: string; // undefined for new artwork, UUID for editing
-  formId?: string; // Optional form ID for HTML
+  artworkId?: string;
+  formId?: string;
   onSaveSuccess?: (artworkId: string) => void;
   onTitleChange?: (newTitle: string) => void;
 }
 
-// ---------------------------------------------------
-// 2. Image Analysis Placeholder Functions (Actual implementations will be async)
-// ---------------------------------------------------
-// These are *client-side placeholders*. The actual work will be done by Supabase Edge Functions.
-// We keep them to satisfy TypeScript and represent the *intent* of data generation.
-const getDominantColor = async (url: string): Promise<string | null> => {
-  console.log("Placeholder: Analyzing dominant color for:", url);
-  return new Promise(resolve => setTimeout(() => resolve(null), 200)); // Will be updated by backend
-};
-
-const getOrientation = async (url: string): Promise<string | null> => {
-  console.log("Placeholder: Analyzing orientation for:", url);
-  return new Promise(resolve => setTimeout(() => resolve(null), 150)); // Will be updated by backend
-};
-
-const getKeywordsFromImage = async (url: string): Promise<string[]> => {
-  console.log("Placeholder: Analyzing keywords for:", url);
-  return new Promise(resolve => setTimeout(() => resolve([]), 250)); // Will be updated by backend
-};
-
-const getGenreFromImage = async (url: string): Promise<string | null> => {
-  console.log("Placeholder: Analyzing genre for:", url);
-  return new Promise(resolve => setTimeout(() => resolve(null), 200)); // Will be updated by backend
-};
-
-const getSubjectFromImage = async (url: string): Promise<string | null> => {
-  console.log("Placeholder: Analyzing subject for:", url);
-  return new Promise(resolve => setTimeout(() => resolve(null), 300)); // Will be updated by backend
-};
-
 
 // ---------------------------------------------------
-// 3. Helper Functions (Moved to top level of component file for consistent access)
+// 2. Helper Functions (Moved to top level of component file for consistent access)
 // ---------------------------------------------------
 
 const fetchArtworkAndCatalogues = async (artworkId: string, userId: string) => {
@@ -157,7 +103,15 @@ const fetchArtworkAndCatalogues = async (artworkId: string, userId: string) => {
   const assignedCatalogueIds = new Set(assignedJunctions.map((j) => j.catalogue_id));
   const assignedCatalogues = allUserCatalogues.filter((cat) => assignedCatalogueIds.has(cat.id));
 
-  return { artworkData, allUserCatalogues, assignedCatalogues };
+  // Also fetch all artwork_images for this artwork
+  const { data: imgData, error: imgError } = await supabase
+    .from('artwork_images')
+    .select('*') // Fetch all fields for ArtworkImage including generated URLs
+    .eq('artwork_id', artworkId)
+    .order('position', { ascending: true });
+  if (imgError) console.error("Error fetching artwork images:", imgError);
+
+  return { artworkData, allUserCatalogues, assignedCatalogues, imgData };
 };
 
 const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: string, identifier: string, isSold: boolean }) => {
@@ -169,26 +123,10 @@ const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: 
   if (error) throw error;
 };
 
-const triggerImageGeneration = async (artworkId: string, flags: { forceWatermark?: boolean; forceVisualization?: boolean } = {}) => {
-  try {
-    console.log(`[${artworkId}] Triggering backend image generation for metadata & visualizations.`);
-    const { error } = await supabase.functions.invoke('generate-images', { // This calls your edge function
-      body: {
-        artworkId,
-        forceWatermarkUpdate: !!flags.forceWatermark,
-        forceVisualizationUpdate: !!flags.forceVisualization
-      },
-    });
-    if (error) throw error;
-    toast.success("Image processing triggered in background. Metadata will update shortly.");
-  } catch (err) {
-    console.error('Background image generation failed:', (err as Error).message);
-    toast.error('Failed to trigger image processing: ' + (err as Error).message);
-  }
-};
-
 const haveDimensionsChanged = (oldDim: Dimensions | null | undefined, newDim: Dimensions | null | undefined): boolean => {
-  if (!oldDim || !newDim) return false;
+  // Deep compare dimensions, considering nulls and defaults
+  if (!oldDim && !newDim) return false;
+  if (!oldDim || !newDim) return true; // One is null/undefined and the other isn't
   return oldDim.width !== newDim.width || oldDim.height !== newDim.height || oldDim.depth !== newDim.depth || oldDim.unit !== newDim.unit;
 };
 
@@ -212,14 +150,13 @@ const updateNestedState = <T extends object>(prevState: T, path: string, value: 
 
 
 // ---------------------------------------------------
-// 4. Custom Hook: useEditionManagement (Internal to this file)
+// 3. Custom Hook: useEditionManagement (Internal to this file)
 // ---------------------------------------------------
 const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
   const queryClient = useQueryClient();
 
-  // Mutation to update specific edition sale status via RPC
   const saleMutation = useMutation({
-    mutationFn: updateSaleStatus, // Calls the external updateSaleStatus helper
+    mutationFn: updateSaleStatus,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId] });
       queryClient.invalidateQueries({ queryKey: ['artworks'] });
@@ -229,10 +166,11 @@ const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
     },
   });
 
-  // Memoized list of all possible edition identifiers (e.g., "1/50", "AP 1/5")
   const allEditions = useMemo(() => {
+    // Editions are only relevant for 'limited_edition' rarity
+    if (artwork.rarity !== 'limited_edition' || !artwork.edition_info?.is_edition) return [];
+    
     const editionInfo = artwork.edition_info;
-    if (!editionInfo?.is_edition) return [];
     const editions: string[] = [];
     const numericSize = editionInfo.numeric_size || 0;
     const apSize = editionInfo.ap_size || 0;
@@ -240,15 +178,208 @@ const useEditionManagement = (artwork: Partial<Artwork>, artworkId: string) => {
     for (let i = 1; i <= numericSize; i++) editions.push(`${i}/${numericSize}`);
     for (let i = 1; i <= apSize; i++) editions.push(`AP ${i}/${apSize}`);
     return editions;
-  }, [artwork.edition_info?.is_edition, artwork.edition_info?.numeric_size, artwork.edition_info?.ap_size]);
+  }, [artwork.rarity, artwork.edition_info?.is_edition, artwork.edition_info?.numeric_size, artwork.edition_info?.ap_size]);
 
-  // Handler for toggling an edition's sold status
   const handleEditionSaleChange = (identifier: string, isChecked: boolean) => {
     saleMutation.mutate({ artworkId, identifier, isSold: isChecked });
   };
 
   return { saleMutation, handleEditionSaleChange, allEditions };
 };
+
+// ---------------------------------------------------
+// 4. Client-Side Image Processing Helpers
+// ---------------------------------------------------
+// --- CONFIGURE THESE URLs ---
+// You must host these files publicly (e.g., in your Supabase Storage and make them public)
+const ROOM_SCENE_BACKGROUND_IMAGE_URL = 'https://s.mj.run/L8-GjT_F_0E'; // Replace with your hosted room scene image URL
+const WATERMARK_FONT_URL = 'https://fonts.cdnfonts.com/s/43472/Montserrat-Regular.woff'; // A publicly accessible font URL (e.g., from Google Fonts CDN)
+
+// Constants for visualization scaling (adjust these based on your room scene image)
+// You need to measure a known object in your ROOM_SCENE_BACKGROUND_IMAGE_URL
+// For example, if there's a 1.5 meter wide bench in your image, and it appears 500 pixels wide:
+const BENCH_REAL_WIDTH_M = 1.5; // Example: 1.5 meters wide
+const BENCH_PIXEL_WIDTH = 500; // Example: that bench is 500 pixels wide in ROOM_SCENE_BACKGROUND_IMAGE_URL
+const ARTWORK_TARGET_WALL_POS = { x: 0.5, y: 0.4 }; // Percentage of room scene width/height to center artwork
+
+// Fetches image as a Blob for Canvas operations (Cross-Origin compatible)
+async function fetchImageAsBlob(url: string): Promise<Blob> {
+  const response = await fetch(url, { mode: 'cors' }); // Ensure CORS mode
+  if (!response.ok) throw new Error(`Failed to fetch image: ${url} - ${response.statusText}`);
+  return response.blob();
+}
+
+// Converts Blob to ImageBitmap for drawing to canvas
+async function blobToImageBitmap(blob: Blob): Promise<ImageBitmap> {
+  return createImageBitmap(blob);
+}
+
+// Uploads a File/Blob to Supabase Storage and returns its public URL
+async function uploadFileToSupabaseStorage(
+  supabaseClient: ReturnType<typeof createClient>,
+  bucket: string,
+  path: string,
+  file: File | Blob,
+  contentType: string = 'image/webp'
+): Promise<string> {
+  const { data: uploadData, error: uploadErr } = await supabaseClient.storage
+    .from(bucket)
+    .upload(path, file, {
+      contentType: contentType,
+      upsert: true,
+      cacheControl: '3600'
+    });
+
+  if (uploadErr) throw uploadErr;
+
+  const { data: publicUrlData } = supabaseClient.storage.from(bucket).getPublicUrl(uploadData.path);
+  return publicUrlData.publicUrl;
+}
+
+// Generates Dominant Colors (Client-Side)
+const extractDominantColor = async (imageUrl: string): Promise<string[] | null> => {
+  try {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous'; // Required for cross-origin images to prevent tainted canvas
+    img.src = imageUrl;
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = (e) => reject(e);
+    });
+
+    const colorThief = new ColorThief();
+    const dominantColorRGB = colorThief.getColor(img);
+    const toHex = (c: number) => ('0' + c.toString(16)).slice(-2);
+    return [`#${toHex(dominantColorRGB[0])}${toHex(dominantColorRGB[1])}${toHex(dominantColorRGB[2])}`];
+  } catch (error) {
+    console.error("Error extracting dominant color with ColorThief:", error);
+    return null;
+  }
+};
+
+// Generates Watermark (Client-Side)
+async function generateWatermark(
+  primaryImageUrl: string,
+  artworkTitle: string,
+  artistFullName: string,
+  fontUrl: string
+): Promise<File | null> {
+  try {
+    const [imgBlob, fontResponse] = await Promise.all([
+      fetchImageAsBlob(primaryImageUrl),
+      fetch(fontUrl, { mode: 'cors' }),
+    ]);
+
+    if (!fontResponse.ok) throw new Error(`Failed to fetch font: ${fontUrl}`);
+    const fontBlob = await fontResponse.blob();
+
+    // Create a temporary style for the font to be loaded by the browser
+    const fontFace = new FontFace('WatermarkFont', fontBlob);
+    await fontFace.load();
+    document.fonts.add(fontFace);
+
+    const imgBitmap = await blobToImageBitmap(imgBlob);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = imgBitmap.width;
+    canvas.height = imgBitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.drawImage(imgBitmap, 0, 0);
+
+    // Watermark text properties - use loaded font
+    const fontSize = Math.max(16, Math.min(canvas.width / 25, canvas.height / 25)); // Responsive font size
+    ctx.font = `${fontSize}px WatermarkFont, Arial, sans-serif`; // Use loaded font, with fallback
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; // White, semi-transparent
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    const padding = fontSize * 0.75;
+
+    ctx.fillText(`${artworkTitle} by ${artistFullName}`, canvas.width - padding, canvas.height - padding);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(new File([blob], `watermark-${uuidv4()}.webp`, { type: 'image/webp' }));
+        } else {
+          resolve(null);
+        }
+      }, 'image/webp', 0.8); // WebP for good compression
+    });
+  } catch (error) {
+    console.error("Error generating watermark:", error);
+    return null;
+  }
+}
+
+// Generates Visualization (Client-Side)
+async function generateVisualization(
+  primaryImageUrl: string,
+  artworkWidthCm: number,
+  artworkHeightCm: number,
+  roomSceneBackgroundUrl: string,
+  realBenchWidthM: number,
+  benchPixelWidth: number,
+  targetWallPosition: { x: number; y: number }
+): Promise<File | null> {
+  try {
+    const [artworkBlob, roomSceneBlob] = await Promise.all([
+      fetchImageAsBlob(primaryImageUrl),
+      fetchImageAsBlob(roomSceneBackgroundUrl),
+    ]);
+
+    const [artworkBitmap, roomSceneBitmap] = await Promise.all([
+      blobToImageBitmap(artworkBlob),
+      blobToImageBitmap(roomSceneBlob),
+    ]);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = roomSceneBitmap.width;
+    canvas.height = roomSceneBitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.drawImage(roomSceneBitmap, 0, 0);
+
+    // Calculate scaling
+    const pixelsPerMeter = benchPixelWidth / realBenchWidthM;
+    const targetArtworkWidthPx = (artworkWidthCm / 100) * pixelsPerMeter;
+    const targetArtworkHeightPx = (artworkHeightCm / 100) * pixelsPerMeter;
+
+    if (targetArtworkWidthPx <= 0 || targetArtworkHeightPx <= 0) {
+      console.warn("Invalid artwork dimensions for visualization. Skipping.");
+      return null;
+    }
+
+    // Resize artwork for placement (ImageBitmap has resize options)
+    const scaledArtwork = await createImageBitmap(artworkBitmap, {
+        resizeWidth: targetArtworkWidthPx,
+        resizeHeight: targetArtworkHeightPx,
+        resizeQuality: 'high',
+    });
+
+    // Position the artwork on the 'wall'
+    const posX = (canvas.width * targetWallPosition.x) - (scaledArtwork.width / 2);
+    const posY = (canvas.height * targetWallPosition.y) - (scaledArtwork.height / 2);
+
+    ctx.drawImage(scaledArtwork, posX, posY);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(new File([blob], `visualization-${uuidv4()}.webp`, { type: 'image/webp' }));
+        } else {
+          resolve(null);
+        }
+      }, 'image/webp', 0.8);
+    });
+  } catch (error) {
+    console.error("Error generating visualization:", error);
+    return null;
+  }
+}
 
 // ---------------------------------------------------
 // 5. Reusable SortableItem component for Exhibitions/Literature
@@ -271,7 +402,7 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, children }) => {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    zIndex: isDragging ? 10 : 0, // Keep dragging item on top
+    zIndex: isDragging ? 10 : 0,
     opacity: isDragging ? 0.8 : 1,
     background: 'var(--card)',
     padding: '1rem',
@@ -295,7 +426,7 @@ interface HistoricalEntryCardProps {
   entry: HistoricalEntry;
   index: number;
   onUpdate: (index: number, field: keyof HistoricalEntry, value: any) => void;
-  onRemove: (id: string) => void; // Changed to accept id
+  onRemove: (id: string) => void;
 }
 
 const HistoricalEntryCard: React.FC<HistoricalEntryCardProps> = ({ entry, index, onUpdate, onRemove }) => {
@@ -330,109 +461,278 @@ const HistoricalEntryCard: React.FC<HistoricalEntryCardProps> = ({ entry, index,
 // 7. Main Component: ArtworkForm (Handles all creation/editing)
 // ---------------------------------------------------
 const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSuccess, onTitleChange }) => {
-  const { user, profile } = useAuth(); // Use useAuth hook
-  const navigate = useNavigate(); // Added for navigation after new artwork creation
+  const { user, profile } = useAuth(); // Assuming profile contains default_has_certificate_of_authenticity
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   // -------------------- State Management (All hooks at top-level) --------------------
   const [artwork, setArtwork] = useState<Partial<Artwork>>({});
-  const [originalTitle, setOriginalTitle] = useState(''); // To check for slug regeneration
+  const [artistFullName, setArtistFullName] = useState<string>(''); // Explicit state for artist name
+  const [originalTitle, setOriginalTitle] = useState('');
   const [allCatalogues, setAllCatalogues] = useState<Catalogue[]>([]);
   const [selectedCatalogues, setSelectedCatalogues] = useState<Catalogue[]>([]);
-  const [allTags, setAllTags] = useState<Tag[]>([]); // For TagManager (fetch this from DB if global tags exist)
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([]); // For TagManager (artwork's assigned tags)
-  const [images, setImages] = useState<ArtworkImage[]>([]); // For ImageDropzone and SortableImage
-  const [isSaving, setIsSaving] = useState(false);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [images, setImages] = useState<ArtworkImage[]>([]); // All images for the artwork
+  const [primaryArtworkImage, setPrimaryArtworkImage] = useState<ArtworkImage | null>(null); // The actual primary image object
 
-  // For inline validation UX (using name strings for simplicity, more robust with form libraries)
+  // Loading states for client-side image processing
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingNewImage, setIsUploadingNewImage] = useState(false);
+  const [isReplacingExistingImage, setIsReplacingExistingImage] = useState<string | null>(null); // Stores ID of image being replaced
+  const [isProcessingImagesClientSide, setIsProcessingImagesClientSide] = useState(false); // New loading state
+
+  // State for Autocomplete values, derived from artwork.medium
+  const [selectedPrimaryMediumCategory, setSelectedPrimaryMediumCategory] = useState<string | null>(null);
+  const [selectedSecondaryMediumType, setSelectedSecondaryMediumType] = useState<string | null>(null);
+
+  // Form validation/touch state
   const [touched, setTouched] = useState<{
-    title: boolean; description: boolean; price: boolean; images: boolean; medium: boolean; date_info: boolean;
-    dimensions: { width: boolean; height: boolean; depth: boolean; unit: boolean }; // Added unit to touched
-    framing_info: { is_framed: boolean; details: boolean };
+    title: boolean; description: boolean; price: boolean; images: boolean; medium: boolean; date_info: { type: boolean, date_value: boolean, start_date: boolean, end_date: boolean };
+    dimensions: { width: boolean; height: boolean; depth: boolean; unit: boolean };
+    framing_info: { details: boolean }; // Framing details validation
     signature_info: { is_signed: boolean; location: boolean };
-    edition_info: { is_edition: boolean; numeric_size: boolean; ap_size: boolean };
-    status: boolean; // Added status to touched
-    [key: string]: any; // Allow dynamic touched properties
+    edition_info: { numeric_size: boolean; ap_size: boolean };
+    status: boolean;
+    has_certificate_of_authenticity: boolean;
+    certificate_of_authenticity_details: boolean;
+    condition: boolean;
+    condition_notes: boolean;
+    rarity: boolean;
+    framing_status: boolean;
+    genre: boolean; // Add genre to touched state
+    subject: boolean; // Add subject to touched state
+    orientation: boolean; // Add orientation to touched state
+    [key: string]: any;
   }>({
-    title: false, description: false, price: false, images: false, medium: false, date_info: false,
+    title: false, description: false, price: false, images: false, medium: false,
+    date_info: { type: false, date_value: false, start_date: false, end_date: false },
     dimensions: { width: false, height: false, depth: false, unit: false },
-    framing_info: { is_framed: false, details: false },
+    framing_info: { details: false },
     signature_info: { is_signed: false, location: false },
-    edition_info: { is_edition: false, numeric_size: false, ap_size: false },
-    status: false, // Initialized
+    edition_info: { numeric_size: false, ap_size: false },
+    status: false,
+    has_certificate_of_authenticity: false,
+    certificate_of_authenticity_details: false,
+    condition: false,
+    condition_notes: false,
+    rarity: false,
+    framing_status: false,
+    genre: false, subject: false, orientation: false,
   });
 
-  // Declare DND sensors at the top level (Fix for "Rendered more hooks" with DndContext)
-  const dndSensors = useSensors(useSensor(PointerSensor)); // Moved here to be unconditional
+  const dndSensors = useSensors(useSensor(PointerSensor));
+
+
+  // -------------------- Backend Interaction: Orchestrator Trigger --------------------
+  // This function sends metadata to the backend for storage (dominant_colors, genre, subject, orientation, keywords)
+  const triggerMetadataUpdateBackend = useCallback(async (
+    artworkId: string,
+    payload: {
+      dominant_colors?: string[] | null;
+      genre?: string | null;
+      subject?: string | null;
+      orientation?: string | null;
+      keywords_from_image?: string[] | null; // Keywords derived from image (if client-side AI)
+    } = {}
+  ) => {
+    try {
+      console.log(`[${artworkId}] Triggering backend image generation for metadata storage.`);
+      const { error } = await supabase.functions.invoke('generate-images', {
+        body: {
+          artworkId, // Required
+          dominant_colors: payload.dominant_colors,
+          genre: payload.genre,
+          subject: payload.subject,
+          orientation: payload.orientation,
+          keywords_from_image: payload.keywords_from_image,
+        },
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId] }); // Re-fetch to get updated artwork data
+      toast.success("Artwork metadata updated.");
+    } catch (err) {
+      console.error('Backend metadata update failed:', (err as Error).message);
+      toast.error('Failed to update artwork metadata: ' + (err as Error).message);
+    }
+  }, [supabase.functions, queryClient]);
+
+
+  // -------------------- Client-side Image Processing (Dominant Colors, Watermark, Visualization) --------------------
+  const collectImageMetadataAndGenerateImages = useCallback(async (
+    currentPrimaryImage: ArtworkImage,
+    currentArtworkData: Partial<Artwork>, // Data from the form (potentially unsaved)
+    currentArtistFullName: string,
+    force: boolean = false
+  ) => {
+    if (!currentPrimaryImage?.image_url || !artworkId || artworkId === 'new-artwork-temp-id') {
+      console.warn("No primary image URL or artworkId for client-side processing.");
+      return;
+    }
+    setIsProcessingImagesClientSide(true);
+    let latestDominantColors: string[] | null = currentArtworkData.dominant_colors || null;
+
+    try {
+      const imageUpdatePayload: Partial<ArtworkImage> = {};
+      let shouldUpdateArtworkImageRecord = false;
+      let shouldTriggerBackendMetadataUpdate = false;
+
+      // --- 1. Dominant Colors (Client-side via ColorThief) ---
+      // Only run if not already set on artwork or force is true
+      if (force || !currentArtworkData.dominant_colors || currentArtworkData.dominant_colors.length === 0) {
+        console.log("Extracting dominant colors...");
+        const dominantColors = await extractDominantColor(currentPrimaryImage.image_url);
+        if (dominantColors && JSON.stringify(dominantColors) !== JSON.stringify(currentArtworkData.dominant_colors)) {
+          latestDominantColors = dominantColors; // Update local variable for backend payload
+          shouldTriggerBackendMetadataUpdate = true;
+        }
+      }
+
+      // --- 2. Watermark (Client-side via Canvas) ---
+      // Re-generate if force, or URL is null, or primary image URL changes, or artwork title/artist name changes
+      const currentWatermarkText = `${currentArtworkData.title || ''} by ${currentArtistFullName}`;
+      const needsWatermark = force || !currentPrimaryImage.watermarked_image_url ||
+                             !currentPrimaryImage.watermarked_image_url.includes(encodeURIComponent(currentWatermarkText.toLowerCase().replace(/\s/g, '_'))) ||
+                             (currentArtworkData.title !== artwork.title) || (currentArtistFullName !== artistFullName); // Compare against current form state/local artist name
+
+      if (needsWatermark) {
+        console.log("Generating watermark...");
+        const watermarkedFile = await generateWatermark(currentPrimaryImage.image_url, currentArtworkData.title || 'Untitled', currentArtistFullName, WATERMARK_FONT_URL);
+        if (watermarkedFile) {
+          const path = `${artworkId}/watermarked/${uuidv4()}-${watermarkedFile.name}`;
+          const publicUrl = await uploadFileToSupabaseStorage(supabase, 'artworks', path, watermarkedFile, 'image/webp');
+          if (publicUrl !== currentPrimaryImage.watermarked_image_url) {
+            imageUpdatePayload.watermarked_image_url = publicUrl;
+            shouldUpdateArtworkImageRecord = true;
+          }
+        }
+      }
+
+      // --- 3. Visualization (Client-side via Canvas) ---
+      // Re-generate if force, or URL is null, or primary image URL changes, or artwork dimensions change
+      const needsVisualization = force || !currentPrimaryImage.visualization_image_url ||
+                                 haveDimensionsChanged(currentArtworkData.dimensions, artwork.dimensions) || // Compare against current form state dimensions
+                                 (currentPrimaryImage.image_url !== artwork.primary_image_url); // Compare against current artwork's primary_image_url
+
+      if (needsVisualization && artwork.dimensions?.width && artwork.dimensions?.height && artwork.dimensions.width > 0 && artwork.dimensions.height > 0) {
+        console.log("Generating visualization...");
+        const visualizationFile = await generateVisualization(
+          currentPrimaryImage.image_url,
+          artwork.dimensions.width, // Use current form state dimensions
+          artwork.dimensions.height, // Use current form state dimensions
+          ROOM_SCENE_BACKGROUND_IMAGE_URL,
+          BENCH_REAL_WIDTH_M,
+          BENCH_PIXEL_WIDTH,
+          ARTWORK_TARGET_WALL_POS
+        );
+        if (visualizationFile) {
+          const path = `${artworkId}/visualization/${uuidv4()}-${visualizationFile.name}`;
+          const publicUrl = await uploadFileToSupabaseStorage(supabase, 'artworks', path, visualizationFile, 'image/webp');
+          if (publicUrl !== currentPrimaryImage.visualization_image_url) {
+            imageUpdatePayload.visualization_image_url = publicUrl;
+            shouldUpdateArtworkImageRecord = true;
+          }
+        }
+      }
+
+      // Update the primary artwork_images record directly if anything changed
+      if (shouldUpdateArtworkImageRecord) {
+        const { error: updateImgErr } = await supabase.from('artwork_images').update(imageUpdatePayload).eq('id', currentPrimaryImage.id);
+        if (updateImgErr) throw updateImgErr;
+        queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', artworkId] }); // Re-fetch images to update UI
+      }
+
+    } catch (error: any) {
+      console.error("Client-side image processing failed:", error);
+      toast.error("Failed to generate some images: " + error.message);
+    } finally {
+      setIsProcessingImagesClientSide(false);
+      // Always trigger backend to save dominant colors and other metadata that's part of 'artworks' table
+      // This ensures 'dominant_colors' (derived here) is saved, and 'genre', 'subject', 'orientation' (manual input) are saved.
+      if (shouldTriggerBackendMetadataUpdate || latestDominantColors !== currentArtworkData.dominant_colors) { // Trigger only if dominant colors changed or some other backend metadata should update
+          triggerMetadataUpdateBackend(artworkId, {
+              dominant_colors: latestDominantColors,
+              genre: currentArtworkData.genre, // Use the current form state for these
+              subject: currentArtworkData.subject,
+              orientation: currentArtworkData.orientation,
+              keywords_from_image: currentArtworkData.keywords // Assuming client-side AI keywords (or empty)
+          });
+      }
+    }
+  }, [artworkId, queryClient, supabase, triggerMetadataUpdateBackend, artwork.dimensions, artwork.title, artistFullName, artwork.primary_image_url, artwork]);
 
 
   // -------------------- Data Fetching (useQuery) --------------------
   const { data, isLoading } = useQuery({
     queryKey: ['artwork-editor-data', artworkId],
     queryFn: async () => {
-      // Only fetch if editing (artworkId exists and is not a temporary ID) and user is logged in
       if (!artworkId || artworkId === 'new-artwork-temp-id' || !user?.id) {
         return null;
       }
-      return fetchArtworkAndCatalogues(artworkId, user.id);
+      const [{ data: artworkData, error: artworkError }, { data: profileData, error: profileError }] = await Promise.all([
+        supabase.from('artworks').select('*, artist:profiles!user_id(full_name)').eq('id', artworkId).single(),
+        supabase.from('profiles').select('id, full_name, default_has_certificate_of_authenticity').eq('id', user.id).single() // Fetch artist's full_name
+      ]);
+
+      if (artworkError) throw new Error(`Artwork not found: ${artworkError.message}`);
+      if (profileError) console.error("Error fetching user profile:", profileError);
+
+
+      const { data: allUserCatalogues, error: allCatError } = await supabase
+        .from('catalogues')
+        .select('*')
+        .eq('user_id', user.id);
+      if (allCatError) throw new Error(`Could not fetch catalogues: ${allCatError.message}`);
+
+      const { data: assignedJunctions, error: junctionError } = await supabase
+        .from('artwork_catalogue_junction')
+        .select('catalogue_id')
+        .eq('artwork_id', artworkId);
+      if (junctionError) throw new Error(`Could not fetch assignments: ${junctionError.message}`);
+
+      const assignedCatalogueIds = new Set(assignedJunctions.map((j) => j.catalogue_id));
+      const assignedCatalogues = allUserCatalogues.filter((cat) => assignedCatalogueIds.has(cat.id));
+
+      // Fetch all artwork_images for this artwork
+      const { data: imgData, error: imgError } = await supabase
+        .from('artwork_images')
+        .select('*') // Fetch all fields for ArtworkImage including generated URLs
+        .eq('artwork_id', artworkId)
+        .order('position', { ascending: true });
+      if (imgError) console.error("Error fetching artwork images:", imgError);
+
+      return { artworkData, allUserCatalogues, assignedCatalogues, profileData, imgData };
     },
     enabled: !!artworkId && artworkId !== 'new-artwork-temp-id' && !!user?.id,
-    initialData: null, // Always provide initialData to ensure consistent hook calls
+    initialData: null,
   });
 
-  // -------------------- Custom Hooks / Derived Data (Order matters for dependencies) --------------------
 
-  // Edition management hook
-  const { saleMutation, handleEditionSaleChange, allEditions } = useEditionManagement(artwork, artworkId || '');
-
-  // Media types and subtypes for dropdowns
-  const allMediaTypes = useMemo(() => getMediaTypes(), []);
-  const currentMediumParent = useMemo(() => artwork.medium?.split(': ')[0] || '', [artwork.medium]);
-  const currentMediumChild = useMemo(() => artwork.medium?.split(': ')[1] || '', [artwork.medium]);
-  const secondaryMediumOptions = useMemo(() => getMediaSubtypes(currentMediumParent), [currentMediumParent]);
-
-  // Pricing model derived from artwork state
-  const pricingModel: PricingModel = useMemo(() => {
-    if (artwork.is_price_negotiable) return 'negotiable';
-    if (artwork.price != null) return 'fixed';
-    return 'on_request';
-  }, [artwork.is_price_negotiable, artwork.price]);
-
-  // Catalogue selection options (excluding system catalogues for direct user selection)
-  const userSelectableCatalogues = useMemo(() => allCatalogues.filter((cat) => !cat.is_system_catalogue), [allCatalogues]);
-
-  // Compute form validity for disabling save button and showing inline errors
-  // This useMemo depends on artwork, images, and pricingModel, so it must come after their definitions
-  const isFormValid = useMemo(() => {
-    const isTitleValid = (artwork.title || '').trim().length > 0;
-    const isPrimaryMediumValid = (artwork.medium || '').trim().length > 0; // Check the free-form medium field
-    const isPriceValid = (artwork.price !== null && artwork.price! > 0) || (!!artwork.is_price_negotiable) || pricingModel === 'on_request';
-    const isPrimaryImagePresent = images.length > 0; // Primary image is always images[0]
-    const isCreationDateValid = !!artwork.date_info?.type && (artwork.date_info.type === 'year_only' || artwork.date_info.type === 'full_date' || artwork.date_info.type === 'circa' ? !!artwork.date_info.date_value : (artwork.date_info.type === 'date_range' ? (!!artwork.date_info.start_date && !!artwork.date_info.end_date) : true));
-
-    const areDimensionsValid = !(artwork.dimensions?.width === null || artwork.dimensions?.width === undefined || artwork.dimensions?.height === null || artwork.dimensions?.height === undefined);
-
-    const isFramingValid = !(!!(artwork.framing_info?.is_framed) && (artwork.framing_info?.details || '').trim().length === 0);
-    const isSignatureValid = !(!!(artwork.signature_info?.is_signed) && (artwork.signature_info?.location || '').trim().length === 0);
-
-    const isEditionSizeValid = !(!!(artwork.edition_info?.is_edition) && (artwork.edition_info?.numeric_size === null || artwork.edition_info?.numeric_size === undefined || (artwork.edition_info?.numeric_size < 1)));
-    const isAPsValid = !(!!(artwork.edition_info?.is_edition) && (artwork.edition_info?.ap_size === null || artwork.edition_info?.ap_size === undefined || (artwork.edition_info?.ap_size < 0)));
-
-    const isStatusValid = !!artwork.status; // Status should always be set
-
-    return isTitleValid && isPrimaryMediumValid && isPriceValid && isPrimaryImagePresent && areDimensionsValid && isFramingValid && isSignatureValid && isEditionSizeValid && isAPsValid && isCreationDateValid && isStatusValid;
-  }, [artwork, images.length, pricingModel, currentMediumParent]);
-
-
-  // -------------------- Effects (Populate form on data fetch/artworkId change) --------------------
+  // Effect to handle initial artwork data and image processing
   useEffect(() => {
     if (data?.artworkData) {
-      const { artworkData, allUserCatalogues, assignedCatalogues } = data;
-      setArtwork(artworkData);
+      const { artworkData, allUserCatalogues, assignedCatalogues, profileData } = data;
+
+      setArtwork({
+        ...artworkData,
+        dimensions: artworkData.dimensions || { unit: 'cm' },
+        framing_info: artworkData.framing_info || { details: null }, // Only keep details
+        signature_info: artworkData.signature_info || { is_signed: false, location: null, details: null },
+        edition_info: artworkData.edition_info || { is_edition: false, numeric_size: null, ap_size: null, sold_editions: [] },
+        date_info: artworkData.date_info?.type ? artworkData.date_info : { type: 'year_only', date_value: new Date().getFullYear().toString() },
+        has_certificate_of_authenticity: artworkData.has_certificate_of_authenticity ?? (profileData?.default_has_certificate_of_authenticity ?? false),
+        condition: artworkData.condition || null,
+        condition_notes: artworkData.condition_notes || null,
+        rarity: artworkData.rarity || 'unique', // Default to unique if not set
+        framing_status: artworkData.framing_status || 'unframed', // Default to unframed if not set
+        primary_image_url: artworkData.primary_image_url, // From 'artworks' table
+      });
+
+      // Set artist full name for watermark generation
+      setArtistFullName(artworkData.artist?.full_name || profileData?.full_name || 'Artist Unknown'); // Prioritize artwork's artist, then current user profile
       setOriginalTitle(artworkData.title || '');
       setAllCatalogues(allUserCatalogues);
 
-      // Only add system catalogue if artwork status is 'available'
       const systemCatalogue = allUserCatalogues.find((cat) => cat.is_system_catalogue);
       if (assignedCatalogues.length === 0 && systemCatalogue && artworkData.status === 'available') {
         setSelectedCatalogues([systemCatalogue]);
@@ -440,100 +740,286 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         setSelectedCatalogues(assignedCatalogues);
       }
 
-      setSelectedTags((artworkData.keywords || []).map(k => ({ id: k, name: k })));
+      setSelectedTags((artworkData.keywords || []).filter(k => k.trim() !== '').map(k => ({ id: k, name: k })));
 
-      // Fetch images separately after artwork ID is confirmed
-      supabase.from('artwork_images')
-        .select('*')
-        .eq('artwork_id', artworkId!)
-        .order('position', { ascending: true })
-        .then(({ data: imgData, error: imgError }) => {
-          if (imgError) console.error("Error fetching artwork images:", imgError);
-          else setImages(imgData || []);
-        });
+      // Set images state from fetched data
+      const fetchedImages = data?.imgData || [];
+      setImages(fetchedImages);
+      setPrimaryArtworkImage(fetchedImages.find(img => img.is_primary) || fetchedImages[0] || null);
 
     } else if (artworkId === 'new-artwork-temp-id') {
-      // For new artwork, set some initial defaults
       setArtwork({
-        dimensions: { unit: 'cm' }, // Default unit
-        framing_info: { is_framed: false, details: null },
+        dimensions: { unit: 'cm' },
+        framing_info: { details: null },
         signature_info: { is_signed: false, location: null, details: null },
         edition_info: { is_edition: false, numeric_size: null, ap_size: null, sold_editions: [] },
         currency: 'ZAR',
         provenance: 'From the artist',
-        status: 'pending', // Default status for new artwork
-        date_info: { type: 'year_only', date_value: new Date().getFullYear().toString() }, // Default creation date
-        title: '', description: '', price: null, genre: null, dominant_colors: null, keywords: null,
+        status: 'pending',
+        date_info: { type: 'year_only', date_value: new Date().getFullYear().toString() },
+        title: '', description: '', price: null, genre: null, dominant_colors: null, keywords: null, orientation: null,
         inventory_number: null,
         private_note: null,
         provenance_notes: null,
         location: null,
-        exhibitions: [], // Initialized as empty array
-        literature: [],  // Initialized as empty array
-        subject: null, // New field
+        exhibitions: [],
+        literature: [],
+        subject: null,
+        has_certificate_of_authenticity: profile?.default_has_certificate_of_authenticity ?? false,
+        certificate_of_authenticity_details: null,
+        condition: null,
+        condition_notes: null,
+        rarity: 'unique',
+        framing_status: 'unframed',
+        primary_image_url: null, // New artwork starts with no primary image
       });
-      setOriginalTitle(''); // No original title for new artwork
-      setAllCatalogues(data?.allUserCatalogues || []); // Still need catalogue options for new artwork
-      // For a new artwork, it starts as 'pending', so don't auto-assign 'Available Work' catalogue
+      setArtistFullName(profile?.full_name || 'Artist Unknown'); // Default artist name for new artwork
+      setOriginalTitle('');
+      setAllCatalogues(data?.allUserCatalogues || []);
       setSelectedCatalogues([]);
-      setImages([]); // No images for new artwork initially
-      setSelectedTags([]); // No tags for new artwork initially
+      setImages([]);
+      setPrimaryArtworkImage(null);
+      setSelectedTags([]);
+      setSelectedPrimaryMediumCategory(null);
+      setSelectedSecondaryMediumType(null);
     }
-  }, [data, artworkId, user?.id, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, artworkId, user?.id, navigate, supabase, profile?.default_has_certificate_of_authenticity, profile?.full_name]);
+
+
+  // UseEffect to parse artwork.medium into Autocomplete states when artwork.medium changes
+  useEffect(() => {
+    const mediumString = artwork.medium || '';
+    let primaryMatch: string | null = null;
+    let secondaryMatch: string | null = null;
+
+    const parts = mediumString.split(': ').map(p => p.trim());
+    if (parts.length > 0) {
+      const potentialPrimary = parts[0];
+      if (typeof mediaTaxonomy === 'object' && mediaTaxonomy !== null && Object.prototype.hasOwnProperty.call(mediaTaxonomy, potentialPrimary)) {
+        primaryMatch = potentialPrimary;
+        if (parts.length > 1) {
+          const potentialSecondary = parts[1];
+          const subtypes = primaryMatch ? getMediaSubtypes(primaryMatch) : [];
+          if (subtypes.includes(potentialSecondary)) {
+            secondaryMatch = potentialSecondary;
+          }
+        }
+      }
+    }
+
+    setSelectedPrimaryMediumCategory(primaryMatch);
+    setSelectedSecondaryMediumType(secondaryMatch);
+
+  }, [artwork.medium]);
+
+  // Ref to store previous values to detect changes for client-side image processing
+  const prevPrimaryImageUrl = useRef<string | null>(null);
+  const prevArtworkDimensions = useRef<Dimensions | null>(null);
+  const prevArtworkTitle = useRef<string | null>(null);
+  const prevArtistFullName = useRef<string | null>(null);
+
+  // Effect to trigger client-side image processing when relevant data changes
+  // This is the core trigger for watermarks and visualizations
+  useEffect(() => {
+    const currentPrimaryImgUrl = primaryArtworkImage?.image_url || null;
+    const currentArtworkTitle = artwork.title || null;
+    const currentArtistFullName = artistFullName || null; // Use local state
+    const currentArtworkDimensions = artwork.dimensions || null;
+
+    const primaryImageChanged = currentPrimaryImgUrl !== prevPrimaryImageUrl.current;
+    const dimensionsChanged = haveDimensionsChanged(prevArtworkDimensions.current, currentArtworkDimensions);
+    const titleOrArtistChanged = currentArtworkTitle !== prevArtworkTitle.current || currentArtistFullName !== prevArtistFullName.current;
+
+    // Trigger conditions:
+    // 1. Primary image changes
+    // 2. Artwork dimensions change
+    // 3. Artwork title or artist name changes
+    // 4. On initial load IF primary image exists and generated images are missing
+    const initialLoadWithMissingGeneratedImages = !!currentPrimaryImgUrl && artworkId !== 'new-artwork-temp-id' &&
+                                                 (!primaryArtworkImage?.watermarked_image_url || !primaryArtworkImage?.visualization_image_url || !artwork.dominant_colors);
+
+    if (primaryArtworkImage && artworkId && artworkId !== 'new-artwork-temp-id' &&
+        (primaryImageChanged || dimensionsChanged || titleOrArtistChanged || initialLoadWithMissingGeneratedImages)) {
+      console.log("Detected changes for client-side image processing. Triggering `collectImageMetadataAndGenerateImages`.");
+      collectImageMetadataAndGenerateImages(primaryArtworkImage, artwork, currentArtistFullName || '', true); // Force re-generation if any trigger
+    }
+
+    // Update refs for next render
+    prevPrimaryImageUrl.current = currentPrimaryImgUrl;
+    prevArtworkDimensions.current = currentArtworkDimensions;
+    prevArtworkTitle.current = currentArtworkTitle;
+    prevArtistFullName.current = currentArtistFullName;
+  }, [artwork.title, artwork.dimensions, primaryArtworkImage, artworkId, collectImageMetadataAndGenerateImages, artistFullName, artwork]);
+
+
+  // -------------------- Derived Data --------------------
+  const { saleMutation, handleEditionSaleChange, allEditions } = useEditionManagement(artwork, artworkId || '');
+
+  const allMediaTypes = useMemo(() => getMediaTypes(), []);
+  const secondaryMediumOptions = useMemo(() => getMediaSubtypes(selectedPrimaryMediumCategory || ''), [selectedPrimaryMediumCategory]);
+
+  const pricingModel: PricingModel = useMemo(() => {
+    if (artwork.is_price_negotiable) return 'negotiable';
+    if (artwork.price != null && artwork.price > 0) return 'fixed';
+    return 'on_request';
+  }, [artwork.is_price_negotiable, artwork.price]);
+
+  const userSelectableCatalogues = useMemo(() => allCatalogues.filter((cat) => !cat.is_system_catalogue), [allCatalogues]);
+
+  const isFormValid = useMemo(() => {
+    const isTitleValid = (artwork.title || '').trim().length > 0;
+    const isPrimaryMediumValid = (artwork.medium || '').trim().length > 0;
+    const isPriceValid = (pricingModel === 'on_request') || (artwork.price !== null && artwork.price! > 0);
+    const isPrimaryImagePresent = images.length > 0;
+    const isCreationDateValid = !!artwork.date_info?.type && (artwork.date_info.type === 'year_only' || artwork.date_info.type === 'full_date' || artwork.date_info.type === 'circa' ? !!artwork.date_info.date_value : (artwork.date_info.type === 'date_range' ? (!!artwork.date_info.start_date && !!artwork.date_info.end_date) : true));
+    const areDimensionsValid = !(artwork.dimensions?.width === null || artwork.dimensions?.width === undefined || artwork.dimensions?.height === null || artwork.dimensions?.height === undefined);
+
+    // Framing validation based on new framing_status
+    const isFramingDetailsValid = !(artwork.framing_status === 'framed' && (artwork.framing_info?.details || '').trim().length === 0);
+
+    const isSignatureValid = !(!!(artwork.signature_info?.is_signed) && (artwork.signature_info?.location || '').trim().length === 0);
+
+    // Edition validation based on rarity
+    const isEditionSizeValid = !(artwork.rarity === 'limited_edition' && (artwork.edition_info?.numeric_size === null || artwork.edition_info?.numeric_size === undefined || (artwork.edition_info?.numeric_size < 1)));
+    const isAPsValid = !(artwork.rarity === 'limited_edition' && (artwork.edition_info?.ap_size === null || artwork.edition_info?.ap_size === undefined || (artwork.edition_info?.ap_size < 0)));
+
+
+    const isStatusValid = !!artwork.status;
+    const isCoADetailsValid = !(!!(artwork.has_certificate_of_authenticity) && (artwork.certificate_of_authenticity_details || '').trim().length === 0);
+    // Genre, Subject, Orientation are no longer required for form validity, as they are manual or client-AI fields
+    // and the backend will simply store what's provided. If you want to make them required, add checks here.
+
+    return isTitleValid && isPrimaryMediumValid && isPriceValid && isPrimaryImagePresent && areDimensionsValid && isFramingDetailsValid && isSignatureValid && isEditionSizeValid && isAPsValid && isCreationDateValid && isStatusValid && isCoADetailsValid;
+  }, [artwork, images.length, pricingModel]);
 
 
   // -------------------- Handlers --------------------
 
-  // Generic handler for form fields (supports nested fields via dot notation in 'name')
   const handleFormChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    const checked = type === 'checkbox' ? (e.target as HTMLInputElement).checked : undefined;
+    const { name, value, type, checked } = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
     setArtwork((prev: any) => {
-      // Deep update for nested JSONB fields like dimensions.width
       if (name.includes('.')) {
         let updatedValue: any = value;
-        // Parse numbers for numeric fields in dimensions/edition_info
-        if ((name.startsWith('dimensions.') || name.startsWith('edition_info.')) && type === 'number') {
-            updatedValue = parseFloat(value) || null; // Convert to number or null if invalid
-        } else if (name === 'edition_info.is_edition' && type === 'checkbox') {
+        if (type === 'number') {
+            updatedValue = parseFloat(value as string) || null;
+        } else if (type === 'checkbox') {
             updatedValue = checked;
-            // When switching to unique, clear edition sizes and sold editions
-            if (!checked) {
-                prev = updateNestedState(prev, 'edition_info.numeric_size', null);
-                prev = updateNestedState(prev, 'edition_info.ap_size', null);
-                prev = updateNestedState(prev, 'edition_info.sold_editions', []);
-            } else { // When switching to edition, default sizes if they are null
-                prev = updateNestedState(prev, 'edition_info.numeric_size', prev.edition_info?.numeric_size ?? 1);
-                prev = updateNestedState(prev, 'edition_info.ap_size', prev.edition_info?.ap_size ?? 0);
-            }
         }
-        return updateNestedState(prev, name, checked !== undefined ? updatedValue : updatedValue);
+        return updateNestedState(prev, name, updatedValue);
       } else {
-        // Direct update for top-level fields
-        return { ...prev, [name]: checked !== undefined ? checked : value };
+        let updatedValue: any = value;
+        if (type === 'number') {
+            updatedValue = parseFloat(value as string) || null;
+        } else if (type === 'checkbox') {
+            updatedValue = checked;
+        }
+        return { ...prev, [name]: updatedValue };
       }
     });
 
     if (name === 'title' && onTitleChange) onTitleChange(value);
-    // Mark field as touched for validation UX
     setTouched((prev) => {
       if (name.includes('.')) {
         const keys = name.split('.');
         if (keys.length > 1) {
-          // Special handling for nested boolean checkboxes to ensure object is created
-          if (type === 'checkbox' && (keys[1] === 'is_framed' || keys[1] === 'is_signed' || keys[1] === 'is_edition')) {
-            return { ...prev, [keys[0]]: { ...(prev[keys[0]] || {}), [keys[1]]: true, details: (checked ? (artwork.framing_info?.details || '') : null), location: (checked ? (artwork.signature_info?.location || '') : null), numeric_size: (checked ? (artwork.edition_info?.numeric_size || 1) : null), ap_size: (checked ? (artwork.edition_info?.ap_size || 0) : null), sold_editions: (checked ? (artwork.edition_info?.sold_editions || []) : []) } };
+          if (keys[0] === 'date_info') {
+            return { ...prev, [keys[0]]: { ...(prev[keys[0]] || {}), [keys[1]]: true } };
           }
           return { ...prev, [keys[0]]: { ...(prev[keys[0]] || {}), [keys[1]]: true } };
         }
       }
       return { ...prev, [name]: true };
     });
-  }, [onTitleChange, artwork.framing_info?.is_framed, artwork.signature_info?.is_signed, artwork.edition_info?.is_edition, artwork.framing_info?.details, artwork.signature_info?.location, artwork.edition_info?.numeric_size, artwork.edition_info?.ap_size, artwork.edition_info?.sold_editions]);
+  }, [onTitleChange]);
+
+  const handleFramingStatusChange = useCallback((
+    event: React.MouseEvent<HTMLElement>,
+    newStatus: FramingStatus | null,
+  ) => {
+    if (newStatus !== null) {
+      setArtwork(prev => {
+        let updatedArtwork = { ...prev, framing_status: newStatus };
+        // Clear frame details if not 'framed'
+        if (newStatus !== 'framed') {
+          updatedArtwork = updateNestedState(updatedArtwork, 'framing_info.details', null);
+        }
+        return updatedArtwork;
+      });
+      setTouched(prev => ({ ...prev, framing_status: true }));
+    }
+  }, []);
+
+  const handleSignedSwitchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const isChecked = e.target.checked;
+    setArtwork(prev => {
+        let updatedArtwork = updateNestedState(prev, 'signature_info.is_signed', isChecked);
+        if (!isChecked) {
+            updatedArtwork = updateNestedState(updatedArtwork, 'signature_info.location', null);
+            updatedArtwork = updateNestedState(updatedArtwork, 'signature_info.details', null);
+        }
+        return updatedArtwork;
+    });
+    setTouched(prev => ({ ...prev, signature_info: { ...prev.signature_info, is_signed: true } }));
+  }, []);
 
 
-  // Handlers for dynamic HistoricalEntry lists (Exhibitions, Literature)
+  const handleStatusChange = useCallback((
+    event: React.MouseEvent<HTMLElement>,
+    newStatus: ArtworkStatus | null,
+  ) => {
+    if (newStatus !== null) {
+      setArtwork(prev => ({ ...prev, status: newStatus }));
+      setTouched(prev => ({ ...prev, status: true }));
+    }
+  }, []);
+
+  const handleDateTypeChange = useCallback((
+    event: React.MouseEvent<HTMLElement>,
+    newDateType: DateInfo['type'] | null,
+  ) => {
+    if (newDateType !== null) {
+      setArtwork(prev => ({
+        ...prev,
+        date_info: {
+          ...prev.date_info,
+          type: newDateType,
+          date_value: (newDateType === 'year_only' || newDateType === 'circa') ? (new Date().getFullYear().toString()) : null,
+          start_date: null,
+          end_date: null,
+        }
+      }));
+      setTouched(prev => ({ ...prev, date_info: { ...prev.date_info, type: true } }));
+    }
+  }, []);
+
+  const handleRarityChange = useCallback((
+    event: React.MouseEvent<HTMLElement>,
+    newRarity: Rarity | null,
+  ) => {
+    if (newRarity !== null) {
+      setArtwork(prev => {
+        let updatedArtwork = { ...prev, rarity: newRarity };
+        if (newRarity !== 'limited_edition') {
+          // Reset edition specific fields if not limited edition
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.is_edition', false);
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.numeric_size', null);
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.ap_size', null);
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.sold_editions', []);
+        } else {
+          // Set is_edition to true and ensure default sizes if moving to limited edition
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.is_edition', true);
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.numeric_size', prev.edition_info?.numeric_size ?? 1);
+          updatedArtwork = updateNestedState(updatedArtwork, 'edition_info.ap_size', prev.edition_info?.ap_size ?? 0);
+        }
+        return updatedArtwork;
+      });
+      setTouched(prev => ({ ...prev, rarity: true }));
+    }
+  }, []);
+
+
   const handleAddHistoricalEntry = useCallback((fieldName: 'exhibitions' | 'literature') => {
     setArtwork(prev => ({
       ...prev,
@@ -557,7 +1043,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
 
   const handleRemoveHistoricalEntry = useCallback((
     fieldName: 'exhibitions' | 'literature',
-    idToRemove: string // Use id for removal to be robust with reordering
+    idToRemove: string
   ) => {
     setArtwork(prev => {
       const currentList = (prev[fieldName] as HistoricalEntry[]) || [];
@@ -584,23 +1070,35 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
   }, []);
 
 
-  // Handler for setting primary medium (updates artwork state and resets child medium dropdown)
-  const handleMediumChange = useCallback((type: 'parent' | 'child', newValue: string | null) => {
-    setArtwork((prev) => {
-      let newMediumStr = '';
-      let parent = type === 'parent' ? (newValue || '') : (currentMediumParent || '');
-      let child = type === 'child' ? (newValue || '') : (currentMediumChild || '');
-
-      // Reset child if parent changes
-      if (type === 'parent' && newValue !== currentMediumParent) {
-        child = '';
-      }
-
-      newMediumStr = parent ? (child ? `${parent}: ${child}` : parent) : '';
-      return { ...prev, medium: newMediumStr };
+  // Handler for Primary Medium Category Autocomplete
+  const handlePrimaryMediumCategoryChange = useCallback((newValue: string | null) => {
+    setSelectedPrimaryMediumCategory(newValue);
+    // Update artwork.medium directly based on Autocomplete selections
+    setArtwork(prev => {
+      const secondary = selectedSecondaryMediumType;
+      const newMediumString = newValue ? (secondary ? `${newValue}: ${secondary}` : newValue) : (secondary ? secondary : '');
+      return { ...prev, medium: newMediumString || '' };
     });
-    setTouched((prev) => ({ ...prev, medium: true })); // Mark medium as touched
-  }, [currentMediumParent, currentMediumChild]);
+  }, [selectedSecondaryMediumType]);
+
+  // Handler for Secondary Medium Type Autocomplete
+  const handleSecondaryMediumTypeChange = useCallback((newValue: string | null) => {
+    setSelectedSecondaryMediumType(newValue);
+    // Update artwork.medium directly based on Autocomplete selections
+    setArtwork(prev => {
+      const primary = selectedPrimaryMediumCategory;
+      const newMediumString = primary ? (newValue ? `${primary}: ${newValue}` : primary) : (newValue ? newValue : '');
+      return { ...prev, medium: newMediumString || '' };
+    });
+  }, [selectedPrimaryMediumCategory]);
+
+  // Handler for manual medium text field change (parses to update autocompletes)
+  const handleManualMediumChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setArtwork(prev => ({ ...prev, medium: value }));
+    setTouched((prev) => ({ ...prev, medium: true }));
+  }, []);
+
 
   // Handler for image reordering (updates positions in DB)
   const handleImageDragEnd = useCallback(async (event: DragEndEvent) => {
@@ -614,20 +1112,26 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
 
       const finalOrder = reorderedImages.map((img, idx) => ({ ...img, position: idx, is_primary: idx === 0 }));
 
-      // Update positions in DB
       finalOrder.forEach(async (img) => {
         await supabase.from('artwork_images').update({ position: img.position, is_primary: img.position === 0 }).eq('id', img.id);
       });
 
-      // Trigger image generation if the primary image changed or was reordered to be primary
-      if (finalOrder[0]?.id !== prevImages[0]?.id && artworkId && artworkId !== 'new-artwork-temp-id') {
-         triggerImageGeneration(artworkId, { forceWatermark: true, forceVisualization: true });
+      // If the primary image changed (new first element), update artworks.primary_image_url
+      if (artworkId && artworkId !== 'new-artwork-temp-id' && finalOrder.length > 0 && finalOrder[0].image_url !== artwork.primary_image_url) {
+        supabase.from('artworks')
+          .update({ primary_image_url: finalOrder[0].image_url })
+          .eq('id', artworkId)
+          .then(({ error }) => {
+            if (error) console.error("Error updating artwork's primary_image_url:", error.message);
+          });
+        setArtwork(prev => ({ ...prev, primary_image_url: finalOrder[0].image_url })); // Update local artwork state
+        setPrimaryArtworkImage(finalOrder[0]); // Update primary artwork image object
       }
-
       return finalOrder;
     });
     setTouched((prev) => ({ ...prev, images: true }));
-  }, [artworkId]);
+  }, [artworkId, supabase, artwork.primary_image_url]);
+
 
   // Handler for deleting an image
   const handleDeleteImage = useCallback(async (id: string) => {
@@ -637,31 +1141,41 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
     }
     if (images.length === 0) return;
 
-    // Prevent deleting primary image if it's not the only one
     if (images[0]?.id === id && images.length > 1) {
       toast.error("Cannot delete the primary image directly. Set another image as primary first if you wish to remove this one.");
       return;
     }
 
-    // Confirm deletion if it's the last image
     if (images.length === 1 && images[0]?.id === id) {
       if (!confirm("This is the last image. Deleting it will make the artwork invalid. Continue?")) return;
     }
 
     try {
+      // Get the image_url before deleting to clean up storage if needed (optional)
+      const imageToDelete = images.find(img => img.id === id);
+
       const { error } = await supabase.from('artwork_images').delete().eq('id', id);
       if (error) throw error;
+
+      // Also delete from storage if desired (implement actual deletion logic for security/cleanup)
+      // const filePath = imageToDelete?.image_url?.split('artworks/')[1];
+      // if (filePath) { await supabase.storage.from('artworks').remove([filePath]); }
+
       setImages(prevImages => {
         const updatedImages = prevImages.filter(img => img.id !== id);
-        // Re-index and set new primary if the old primary was deleted and there are remaining images
         const finalOrder = updatedImages.map((img, idx) => ({ ...img, position: idx, is_primary: idx === 0 }));
 
-        // If the primary image was deleted and there's a new primary, trigger generation
-        if (finalOrder.length > 0 && artworkId) {
-            triggerImageGeneration(artworkId, { forceWatermark: true, forceVisualization: true });
-        } else if (finalOrder.length === 0 && artworkId) {
-            // If no images left, consider clearing auto-generated metadata on artwork table
-            supabase.from('artworks').update({ genre: null, subject: null, dominant_colors: [], keywords: [] }).eq('id', artworkId);
+        // If the primary image was deleted, or the first image is now different, update artworks.primary_image_url
+        const newPrimaryImageUrl = finalOrder.length > 0 ? finalOrder[0].image_url : null;
+        if (newPrimaryImageUrl !== artwork.primary_image_url) {
+          supabase.from('artworks')
+            .update({ primary_image_url: newPrimaryImageUrl })
+            .eq('id', artworkId)
+            .then(({ error }) => {
+              if (error) console.error("Error updating artwork's primary_image_url:", error.message);
+            });
+          setArtwork(prev => ({ ...prev, primary_image_url: newPrimaryImageUrl }));
+          setPrimaryArtworkImage(finalOrder.length > 0 ? finalOrder[0] : null);
         }
         return finalOrder;
       });
@@ -670,28 +1184,41 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       console.error("Error deleting image:", err.message);
       toast.error(err.message || "Failed to delete image");
     }
-    setTouched((prev) => ({ ...prev, images: true })); // Mark images as touched
-  }, [images.length, images, artworkId]);
+    setTouched((prev) => ({ ...prev.images, images: true }));
+  }, [images.length, images, artworkId, supabase, artwork.primary_image_url, artwork.title]);
 
 
   // Handler for replacing an image
   const handleReplaceImage = useCallback(async (id: string, file: File) => {
+    if (!artworkId || artworkId === 'new-artwork-temp-id') {
+      toast.error("Artwork not saved yet.");
+      return;
+    }
+    setIsReplacingExistingImage(id); // Start loading indicator for this specific image
     try {
-      if (!artworkId || artworkId === 'new-artwork-temp-id') throw new Error("Artwork not saved yet.");
-
       const path = `${artworkId}/${uuidv4()}-${file.name}`;
-      const { error: uploadErr } = await supabase.storage.from('artworks').upload(path, file, { upsert: true });
+      const { data: uploadData, error: uploadErr } = await supabase.storage.from('artworks').upload(path, file, { upsert: true });
       if (uploadErr) throw uploadErr;
       const { data: publicUrlData } = supabase.storage.from('artworks').getPublicUrl(path);
 
+      // Update the artwork_images record
       const { error: updateErr } = await supabase.from('artwork_images').update({ image_url: publicUrlData.publicUrl }).eq('id', id);
       if (updateErr) throw updateErr;
 
+      // Update local state and trigger client-side processing if this was the primary image
       setImages(prevImages => {
         const updatedImages = prevImages.map(img => img.id === id ? { ...img, image_url: publicUrlData.publicUrl } : img);
-        // If the replaced image was primary, trigger image generation
-        if (updatedImages[0]?.id === id && artworkId) {
-            triggerImageGeneration(artworkId, { forceWatermark: true, forceVisualization: true });
+        const replacedImage = updatedImages.find(img => img.id === id);
+
+        if (replacedImage?.is_primary) {
+          supabase.from('artworks')
+            .update({ primary_image_url: publicUrlData.publicUrl })
+            .eq('id', artworkId)
+            .then(({ error }) => {
+              if (error) console.error("Error updating artwork's primary_image_url:", error.message);
+            });
+          setArtwork(prev => ({ ...prev, primary_image_url: publicUrlData.publicUrl }));
+          setPrimaryArtworkImage(replacedImage); // Update primary artwork image object
         }
         return updatedImages;
       });
@@ -699,9 +1226,11 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
     } catch (err: any) {
       console.error("Error replacing image:", err.message);
       toast.error(err.message || "Failed to replace image");
+    } finally {
+        setIsReplacingExistingImage(null); // End loading indicator
     }
-    setTouched((prev) => ({ ...prev, images: true }));
-  }, [artworkId]);
+    setTouched((prev) => ({ ...prev.images, images: true }));
+  }, [artworkId, supabase, artwork.primary_image_url]);
 
 
   // Handler for setting an image as primary
@@ -712,35 +1241,65 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
     }
 
     setImages(prevImages => {
-      const currentPrimary = prevImages.find(img => img.position === 0);
       const newPrimaryCandidate = prevImages.find(img => img.id === id);
+      if (!newPrimaryCandidate || newPrimaryCandidate.is_primary) return prevImages; // Already primary or not found
 
-      if (!newPrimaryCandidate || newPrimaryCandidate.position === 0) return prevImages;
-
-      // Create new order: new primary to position 0, others shift
       const otherImages = prevImages.filter(img => img.id !== id);
       const newOrder = [newPrimaryCandidate, ...otherImages].map((img, idx) => ({ ...img, position: idx, is_primary: idx === 0 }));
 
-      // Update positions in DB
       newOrder.forEach(async (img) => {
         await supabase.from('artwork_images').update({ position: img.position, is_primary: img.position === 0 }).eq('id', img.id);
       });
 
-      // Trigger image generation as primary image has changed
-      triggerImageGeneration(artworkId, { forceWatermark: true, forceVisualization: true });
-
+      // Update artworks.primary_image_url if it changed
+      if (artworkId && artworkId !== 'new-artwork-temp-id' && newOrder.length > 0 && newOrder[0].image_url !== artwork.primary_image_url) {
+        supabase.from('artworks')
+          .update({ primary_image_url: newOrder[0].image_url })
+          .eq('id', artworkId)
+          .then(({ error }) => {
+            if (error) console.error("Error updating artwork's primary_image_url:", error.message);
+          });
+        setArtwork(prev => ({ ...prev, primary_image_url: newOrder[0].image_url }));
+        setPrimaryArtworkImage(newOrder[0]); // Update primary artwork image object
+      }
       return newOrder;
     });
-    setTouched((prev) => ({ ...prev, images: true }));
-  }, [artworkId]);
+    setTouched((prev) => ({ ...prev.images, images: true }));
+  }, [artworkId, supabase, artwork.primary_image_url]);
 
-  // Handler for creating a new tag via TagManager
+  // Handler for ImageDropzone's onUploadSuccess
+  const handleDropzoneImageAdd = useCallback(async (newImage: ArtworkImage) => {
+    setIsUploadingNewImage(true);
+    setImages(prev => {
+        const updatedImages = [...prev, newImage];
+        // After adding, re-map to set positions and primary status
+        const finalOrder = updatedImages.map((img, idx) => ({ ...img, position: idx, is_primary: idx === 0 }));
+        return finalOrder; // return immediately for local state update
+    });
+
+    if (artworkId && artworkId !== 'new-artwork-temp-id' && newImage.image_url) {
+        // If this is the very first image being added, also update artworks.primary_image_url
+        if (images.length === 0) {
+             supabase.from('artworks')
+                .update({ primary_image_url: newImage.image_url })
+                .eq('id', artworkId)
+                .then(({ error }) => {
+                    if (error) console.error("Error updating artwork's primary_image_url from dropzone:", error.message);
+                });
+            setArtwork(prev => ({ ...prev, primary_image_url: newImage.image_url }));
+            setPrimaryArtworkImage(newImage); // This newly added image is now primary
+        }
+    }
+    setIsUploadingNewImage(false);
+  }, [artworkId, images.length, supabase]);
+
+
   const handleTagCreate = useCallback(async (tagName: string): Promise<Tag | null> => {
     try {
       if (!user?.id) throw new Error("User not authenticated for tag creation.");
       const { data: newTag, error } = await supabase.from('tags').insert({ name: tagName, user_id: user.id }).select('*').single();
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ['allArtistTags'] }); // Invalidate global tags list
+      queryClient.invalidateQueries({ queryKey: ['allArtistTags'] });
       return { id: newTag.id, name: newTag.name };
     } catch (err: any) {
       console.error("Error creating tag:", err.message);
@@ -750,20 +1309,18 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
   }, [user?.id, queryClient]);
 
 
-  // Handler for pricing model changes (radio buttons or select)
   const handlePricingModelChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const newModel = e.target.value as PricingModel;
     setArtwork((prev) => {
       const newArtwork = { ...prev };
       if (newModel === 'fixed') {
         newArtwork.is_price_negotiable = false;
-        newArtwork.price = artwork.price; // Keep current price if switching to fixed, or null
+        newArtwork.price = artwork.price ?? null;
         newArtwork.min_price = null;
         newArtwork.max_price = null;
       } else if (newModel === 'negotiable') {
         newArtwork.is_price_negotiable = true;
-        newArtwork.price = artwork.price; // Keep current price as display price, or null
-        // Min/max prices are optional with negotiable
+        newArtwork.price = artwork.price ?? null;
       } else if (newModel === 'on_request') {
         newArtwork.is_price_negotiable = false;
         newArtwork.price = null;
@@ -772,72 +1329,107 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       }
       return newArtwork;
     });
-    setTouched(prev => ({ ...prev, pricing_model: true })); // Mark pricing model as touched
-  }, [artwork.price, artwork.is_price_negotiable]);
+    setTouched(prev => ({ ...prev, pricing_model: true }));
+  }, [artwork.price]);
 
 
-  // Main form submission handler
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) {
       toast.error("Please fill all required fields correctly.");
-      // Manually touch all required fields to display errors
       setTouched(prev => ({
         ...prev,
-        title: true, description: true, price: true, images: true, medium: true, date_info: true, status: true,
+        title: true, description: true, price: true, images: true, medium: true,
+        date_info: {
+            ...prev.date_info,
+            type: true,
+            date_value: artwork.date_info?.type !== 'date_range' && !artwork.date_info?.date_value,
+            start_date: artwork.date_info?.type === 'date_range' && !artwork.date_info?.start_date,
+            end_date: artwork.date_info?.type === 'date_range' && !artwork.date_info?.end_date,
+        },
+        status: true,
         dimensions: { ...prev.dimensions, width: true, height: true, unit: true },
-        framing_info: { ...prev.framing_info, details: Boolean(artwork.framing_info?.is_framed) ? true : false },
-        signature_info: { ...prev.signature_info, location: Boolean(artwork.signature_info?.is_signed) ? true : false },
-        edition_info: { ...prev.edition_info, numeric_size: Boolean(artwork.edition_info?.is_edition) ? true : false, ap_size: true }, // Mark AP size as touched too
+        framing_info: {
+          ...prev.framing_info,
+          details: artwork.framing_status === 'framed' && (artwork.framing_info?.details || '').trim().length === 0,
+        },
+        signature_info: { ...prev.signature_info, location: Boolean(artwork.signature_info?.is_signed) && (artwork.signature_info?.location || '').trim().length === 0 },
+        edition_info: {
+            ...prev.edition_info,
+            numeric_size: artwork.rarity === 'limited_edition' && (artwork.edition_info?.numeric_size === null || artwork.edition_info?.numeric_size === undefined || (artwork.edition_info?.numeric_size < 1)),
+            ap_size: artwork.rarity === 'limited_edition' && (artwork.edition_info?.ap_size === null || artwork.edition_info?.ap_size === undefined || (artwork.edition_info?.ap_size < 0)),
+        },
+        has_certificate_of_authenticity: true,
+        certificate_of_authenticity_details: Boolean(artwork.has_certificate_of_authenticity) && (artwork.certificate_of_authenticity_details || '').trim().length === 0,
+        rarity: true,
+        framing_status: true,
+        genre: true, // Also validate genre if it's required
+        subject: true, // Also validate subject if it's required
+        orientation: true, // Also validate orientation if it's required
       }));
       return;
     }
 
     setIsSaving(true);
     try {
-      // 1. Prepare artwork payload
       const systemCatalogue = allCatalogues.find((cat) => cat.is_system_catalogue);
       const finalCatalogueSelection = new Set(selectedCatalogues.map((cat) => cat.id));
-      // Only add system catalogue if artwork status is 'available'
       if (systemCatalogue && artwork.status === 'available') finalCatalogueSelection.add(systemCatalogue.id);
-      else if (systemCatalogue) finalCatalogueSelection.delete(systemCatalogue.id); // Ensure system catalogue is removed if artwork is not 'available'
+      else if (systemCatalogue) finalCatalogueSelection.delete(systemCatalogue.id);
 
       const finalCatalogueIds = Array.from(finalCatalogueSelection);
 
-      // Handle JSONB fields and default values, ensuring immutability for nested objects
-      let artworkPayload: Partial<Artwork> = { ...artwork }; // Start with a copy of artwork state
+      let artworkPayload: Partial<Artwork> = { ...artwork };
 
-      // Ensure dimensions object is present and unit is set to 'cm' (fixed)
       artworkPayload.dimensions = { ...(artwork.dimensions || {}), unit: 'cm' };
 
-      // Ensure framing_info and signature_info objects are present with defaults
-      artworkPayload.framing_info = artwork.framing_info || { is_framed: false, details: null };
+      artworkPayload.framing_info = {
+        is_framed: artwork.framing_status === 'framed',
+        details: artwork.framing_status === 'framed' ? (artwork.framing_info?.details || null) : null,
+        is_framing_optional: artwork.framing_status === 'frame_optional',
+      };
+
       artworkPayload.signature_info = artwork.signature_info || { is_signed: false, location: null, details: null };
 
-      // Ensure edition_info object is present with defaults
-      artworkPayload.edition_info = artwork.edition_info || { is_edition: false, numeric_size: null, ap_size: null, sold_editions: [] };
-      // Sync selected tags
-      artworkPayload.keywords = selectedTags.map(t => t.name);
+      artworkPayload.edition_info = {
+        ...(artwork.edition_info || {}),
+        is_edition: artwork.rarity === 'limited_edition',
+      };
+      if (artwork.rarity !== 'limited_edition') {
+          artworkPayload.edition_info.numeric_size = null;
+          artworkPayload.edition_info.ap_size = null;
+          artworkPayload.edition_info.sold_editions = [];
+      }
 
-      // Pass exhibitions and literature as arrays of JSONB objects
+      artworkPayload.keywords = Array.from(new Set([...(artwork.keywords || []), ...selectedTags.map(t => t.name)]));
+
       artworkPayload.exhibitions = artwork.exhibitions || [];
       artworkPayload.literature = artwork.literature || [];
 
-      // Add new fields to payload
       artworkPayload.inventory_number = artwork.inventory_number || null;
       artworkPayload.private_note = artwork.private_note || null;
-      artworkPayload.provenance_notes = artwork.provenance_notes || null;
       artworkPayload.location = artwork.location || null;
-      artworkPayload.status = artwork.status || 'pending'; // Ensure status is always set
-      artworkPayload.subject = artwork.subject || null; // Include subject
+      artworkPayload.status = artwork.status || 'pending';
 
-      // Remove transient properties before sending to DB
+      artworkPayload.has_certificate_of_authenticity = artwork.has_certificate_of_authenticity ?? false;
+      artworkPayload.certificate_of_authenticity_details = artwork.has_certificate_of_authenticity ? (artwork.certificate_of_authenticity_details || null) : null;
+      artworkPayload.condition = artwork.condition || null;
+      artworkPayload.condition_notes = artwork.condition_notes || null;
+      artworkPayload.rarity = artwork.rarity || 'unique';
+      artworkPayload.framing_status = artwork.framing_status || 'unframed';
+
+      // Set these to null or current state, as they are managed on artwork_images directly or derived from client
+      artworkPayload.genre = artwork.genre || null;
+      artworkPayload.subject = artwork.subject || null;
+      artworkPayload.orientation = artwork.orientation || null;
+      artworkPayload.dominant_colors = artwork.dominant_colors || null;
+      artworkPayload.primary_image_url = artwork.primary_image_url || null; // Ensure this is also saved if changed elsewhere
+
       artworkPayload.artwork_images = undefined;
       artworkPayload.artwork_catalogue_junction = undefined;
       artworkPayload.artist = undefined;
 
 
-      // Auto-generate slug if title changed or new artwork (if slug is not manually set)
       if (!artworkPayload.slug || artworkPayload.title !== originalTitle || !artworkId || artworkId === 'new-artwork-temp-id') {
         const { data: slugData, error: slugError } = await supabase.rpc('generate_unique_slug', {
           input_text: artworkPayload.title || 'untitled',
@@ -847,9 +1439,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         artworkPayload.slug = slugData;
       }
 
-      // 2. Insert or Update artwork
       let savedArtwork: Artwork;
-      let currentArtworkId = artworkId; // Use a mutable ID for new artwork flow
+      let currentArtworkId = artworkId;
 
       if (currentArtworkId && currentArtworkId !== 'new-artwork-temp-id') {
         const { data: updatedData, error: updateError } = await supabase
@@ -861,7 +1452,6 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         if (updateError) throw updateError;
         savedArtwork = updatedData;
       } else {
-        // Create new artwork, ensure user_id is passed
         if (!user?.id) throw new Error("User not authenticated to create artwork.");
         const { data: insertedData, error: insertError } = await supabase
           .from('artworks')
@@ -870,29 +1460,27 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
           .single();
         if (insertError) throw insertError;
         savedArtwork = insertedData;
-        // If a new artwork, navigate to its edit page so image uploads can use its real ID
-        navigate(`/u/artworks/edit/${savedArtwork.id}`); // navigate to the new artwork's editor
-        currentArtworkId = savedArtwork.id; // Update local scope artworkId for subsequent image uploads
+        navigate(`/u/artworks/edit/${savedArtwork.id}`);
+        currentArtworkId = savedArtwork.id;
       }
 
-      // 3. Update catalogue junctions
       await supabase.from('artwork_catalogue_junction').delete().eq('artwork_id', savedArtwork.id);
       if (finalCatalogueIds.length > 0) {
         const newJunctions = finalCatalogueIds.map((catId) => ({ artwork_id: savedArtwork.id, catalogue_id: catId }));
         const { error: insertError } = await supabase.from('artwork_catalogue_junction').insert(newJunctions);
         if (insertError) throw insertError;
       }
-
-      // 4. Trigger backend image analysis for auto-generated metadata
-      // This happens asynchronously, so the form won't immediately display the results.
-      if (images.length > 0 && savedArtwork.id) {
-        triggerImageGeneration(savedArtwork.id, { forceWatermark: true, forceVisualization: true });
+      
+      // Explicitly trigger client-side processing on save if a primary image exists
+      // This will ensure dominant colors, watermarks, and visualizations are up-to-date
+      if (primaryArtworkImage && savedArtwork.id) {
+        // Force the generation to ensure all fields are up-to-date before showing success
+        await collectImageMetadataAndGenerateImages(primaryArtworkImage, artworkPayload, artistFullName, true);
       }
 
       toast.success('Artwork saved successfully!');
       queryClient.invalidateQueries({ queryKey: ['artwork-editor-data', savedArtwork.id] });
       queryClient.invalidateQueries({ queryKey: ['artworks'] });
-      // Call onSaveSuccess for both new and existing artworks for consistent external navigation
       if (onSaveSuccess) onSaveSuccess(savedArtwork.id);
 
     } catch (err: any) {
@@ -901,56 +1489,97 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
     } finally {
       setIsSaving(false);
     }
-  }, [artwork, artworkId, user?.id, originalTitle, selectedCatalogues, selectedTags, images.length, isFormValid, onSaveSuccess, navigate, pricingModel, allCatalogues]);
+  }, [artwork, artworkId, user?.id, originalTitle, selectedCatalogues, selectedTags, images.length, isFormValid, onSaveSuccess, navigate, pricingModel, allCatalogues, primaryArtworkImage, artistFullName, collectImageMetadataAndGenerateImages]);
 
 
   // -------------------- UI Rendering --------------------
 
-  // Show loading state for initial data fetch
   if (isLoading) return <div style={{ padding: '2rem' }}>Loading artwork details...</div>;
 
   return (
     <form id={formId} onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       {/* PRIMARY INFORMATION */}
       <fieldset className="fieldset">
+        <legend className="legend">Artwork Images</legend>
+
+        {/* Dropzone */}
+        <ImageDropzone artworkId={artworkId || ''} images={images} onUploadSuccess={handleDropzoneImageAdd} isUploading={isUploadingNewImage} />
+        {(touched.images && images.length === 0) && (
+          <p className="text-red-500 text-sm">At least one image is required.</p>
+        )}
+        {(isUploadingNewImage || isProcessingImagesClientSide) && (
+            <div style={{ marginTop: '1rem' }}>
+                <Typography variant="body2" color="textSecondary">
+                    {isUploadingNewImage ? "Uploading new images..." : "Processing images (dominant colors, watermark, visualization)..."}
+                </Typography>
+                <LinearProgress />
+            </div>
+        )}
+
+
+        {/* Sortable Images List */}
+        {images.length > 0 && (
+          <div style={{ marginTop: '1rem' }}>
+            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleImageDragEnd}>
+              <SortableContext items={images.map(img => img.id)} strategy={verticalListSortingStrategy}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
+                  {images.map((img) => (
+                    <SortableImage
+                      key={img.id}
+                      image={img}
+                      onDelete={handleDeleteImage}
+                      onReplace={handleReplaceImage}
+                      onSetPrimary={handleSetPrimary}
+                      isReplacing={isReplacingExistingImage === img.id}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+        )}
+      </fieldset>
+
+
+      <fieldset className="fieldset">
         <legend className="legend">Primary Information</legend>
 
-        {/* Status Field */}
+        {/* Status Field (Button Group) */}
         <label className="label">Artwork Status</label>
-        <select
-          name="status"
-          className={`select ${touched.status && !artwork.status ? 'border-red-500' : ''}`}
-          value={artwork.status || 'pending'} // Default to 'pending'
-          onChange={handleFormChange}
-          onBlur={() => setTouched(prev => ({ ...prev, status: true }))}
-          required
+        <ToggleButtonGroup
+          value={artwork.status || 'pending'}
+          exclusive
+          onChange={handleStatusChange}
+          aria-label="artwork status"
+          fullWidth
+          className={`mt-2 ${touched.status && !artwork.status ? 'border-red-500 rounded-md' : ''}`}
         >
-          <option value="pending">Pending</option>
-          <option value="available">Available</option>
-          <option value="on_hold">On Hold</option>
-          <option value="sold">Sold</option>
-        </select>
+          <ToggleButton value="pending" aria-label="pending">Pending</ToggleButton>
+          <ToggleButton value="available" aria-label="available">Available</ToggleButton>
+          <ToggleButton value="on_hold" aria-label="on hold">On Hold</ToggleButton>
+          <ToggleButton value="sold" aria-label="sold">Sold</ToggleButton>
+        </ToggleButtonGroup>
         {touched.status && !artwork.status && <p className="text-red-500 text-sm mt-1">Status is required</p>}
 
-        {/* Creation Date field (Full date, Year only, Date Range or Circa) */}
-        <label className="label">Creation Date</label>
-        <select
-          name="date_info.type"
-          className={`select ${touched.date_info && !artwork.date_info?.type ? 'border-red-500' : ''}`}
+        {/* Creation Date field (Button Group) */}
+        <label className="label mt-4">Creation Date</label>
+        <ToggleButtonGroup
           value={artwork.date_info?.type || 'year_only'}
-          onChange={handleFormChange}
-          onBlur={() => setTouched(prev => ({ ...prev, date_info: true }))}
-          required
+          exclusive
+          onChange={handleDateTypeChange}
+          aria-label="creation date type"
+          fullWidth
+          className={`mt-2 ${touched.date_info.type && !artwork.date_info?.type ? 'border-red-500 rounded-md' : ''}`}
         >
-          <option value="year_only">Year Only</option>
-          <option value="full_date">Full Date</option>
-          <option value="date_range">Date Range</option>
-          <option value="circa">Circa</option>
-        </select>
-        {touched.date_info && !artwork.date_info?.type && <p className="text-red-500 text-sm mt-1">Creation date type is required</p>}
+          <ToggleButton value="year_only" aria-label="year only">Year Only</ToggleButton>
+          <ToggleButton value="full_date" aria-label="full date">Full Date</ToggleButton>
+          <ToggleButton value="date_range" aria-label="date range">Date Range</ToggleButton>
+          <ToggleButton value="circa" aria-label="circa">Circa</ToggleButton>
+        </ToggleButtonGroup>
+        {touched.date_info.type && !artwork.date_info?.type && <p className="text-red-500 text-sm mt-1">Creation date type is required</p>}
 
 
-        {artwork.date_info?.type === 'year_only' || artwork.date_info?.type === 'full_date' || artwork.date_info?.type === 'circa' ? (
+        {(artwork.date_info?.type === 'year_only' || artwork.date_info?.type === 'full_date' || artwork.date_info?.type === 'circa') ? (
           <TextField
             name="date_info.date_value"
             label={artwork.date_info?.type === 'year_only' ? 'Year' : (artwork.date_info?.type === 'full_date' ? 'Date' : 'Year (Circa)')}
@@ -958,8 +1587,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
             value={artwork.date_info?.date_value || ''}
             onChange={handleFormChange}
             onBlur={() => setTouched(prev => ({ ...prev, date_info: { ...prev.date_info, date_value: true } }))}
-            error={touched.date_info?.date_value && !artwork.date_info?.date_value}
-            helperText={touched.date_info?.date_value && !artwork.date_info?.date_value && 'Date is required'}
+            error={touched.date_info.date_value && !artwork.date_info?.date_value}
+            helperText={touched.date_info.date_value && !artwork.date_info?.date_value && 'Date is required'}
             fullWidth
             margin="normal"
             required
@@ -973,8 +1602,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
               value={artwork.date_info?.start_date || ''}
               onChange={handleFormChange}
               onBlur={() => setTouched(prev => ({ ...prev, date_info: { ...prev.date_info, start_date: true } }))}
-              error={touched.date_info?.start_date && !artwork.date_info?.start_date}
-              helperText={touched.date_info?.start_date && !artwork.date_info?.start_date && 'Start year is required'}
+              error={touched.date_info.start_date && !artwork.date_info?.start_date}
+              helperText={touched.date_info.start_date && !artwork.date_info?.start_date && 'Start year is required'}
               fullWidth
               margin="normal"
               required
@@ -986,8 +1615,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
               value={artwork.date_info?.end_date || ''}
               onChange={handleFormChange}
               onBlur={() => setTouched(prev => ({ ...prev, date_info: { ...prev.date_info, end_date: true } }))}
-              error={touched.date_info?.end_date && !artwork.date_info?.end_date}
-              helperText={touched.date_info?.end_date && !artwork.date_info?.end_date && 'End year is required'}
+              error={touched.date_info.end_date && !artwork.date_info?.end_date}
+              helperText={touched.date_info.end_date && !artwork.date_info?.end_date && 'End year is required'}
               fullWidth
               margin="normal"
               required
@@ -1023,39 +1652,78 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
           onBlur={() => setTouched(prev => ({ ...prev, description: true }))}
           fullWidth
           margin="normal"
-          // Removed 'required' attribute, as it's optional
         />
+
+         {/* Free-form Medium Text Area */}
+        <label className="label">Medium (Free-form Text)</label>
+        <TextField
+          name="medium"
+          label="Detailed Medium / Technique (e.g., 'Oil on canvas', 'Bronze sculpture')"
+          multiline
+          rows={3}
+          value={artwork.medium || ''}
+          onChange={handleManualMediumChange} // This updates artwork.medium and then triggers the useEffect for autocompletes
+          onBlur={() => setTouched(prev => ({ ...prev, medium: true }))}
+          error={touched.medium && (artwork.medium || '').trim().length === 0}
+          helperText={touched.medium && (artwork.medium || '').trim().length === 0 && 'Medium is required'}
+          fullWidth
+          margin="normal"
+          required
+        />
+
       </fieldset>
 
-      {/* IMAGES SECTION */}
+      {/* PRICING */}
       <fieldset className="fieldset">
-        <legend className="legend">Artwork Images</legend>
+        <legend className="legend">Pricing</legend>
+        <label className="label">Pricing Model</label>
+        <select name="pricing_model" className="select" value={pricingModel} onChange={handlePricingModelChange}>
+          <option value="fixed">Fixed Price</option>
+          <option value="negotiable">Negotiable Price</option>
+          <option value="on_request">Price on Request</option>
+        </select>
 
-        {/* Dropzone */}
-        <ImageDropzone artworkId={artworkId || ''} images={images} setImages={setImages} />
-        {(touched.images && images.length === 0) && (
-          <p className="text-red-500 text-sm">At least one image is required.</p>
+        {(pricingModel === 'fixed' || pricingModel === 'negotiable') && (
+          <TextField
+            name="price"
+            label={pricingModel === 'fixed' ? 'Price (USD)' : 'Display Price (USD)'}
+            type="number"
+            step="0.01"
+            value={artwork.price ?? ''}
+            onChange={handleFormChange}
+            onBlur={() => setTouched(prev => ({ ...prev, price: true }))}
+            error={Boolean(touched.price && (artwork.price === null || artwork.price === undefined || artwork.price <= 0))}
+            helperText={touched.price && (artwork.price === null || artwork.price === undefined || artwork.price <= 0) && 'Price is required and must be greater than 0'}
+            fullWidth
+            margin="normal"
+            required={pricingModel !== 'on_request'}
+          />
         )}
 
-        {/* Sortable Images List */}
-        {images.length > 0 && (
-          <div style={{ marginTop: '1rem' }}>
-            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleImageDragEnd}>
-              <SortableContext items={images.map(img => img.id)} strategy={verticalListSortingStrategy}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
-                  {images.map((img, index) => (
-                    <SortableImage
-                      key={img.id}
-                      image={img}
-                      onDelete={handleDeleteImage}
-                      onReplace={handleReplaceImage}
-                      onSetPrimary={handleSetPrimary}
-                      isPrimary={index === 0} // First image in the array is always primary
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+        {pricingModel === 'negotiable' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+            <TextField
+              name="min_price"
+              label="Min Price (Optional)"
+              type="number"
+              step="0.01"
+              value={artwork.min_price ?? ''}
+              onChange={handleFormChange}
+              onBlur={() => setTouched(prev => ({ ...prev, min_price: true }))}
+              fullWidth
+              margin="normal"
+            />
+            <TextField
+              name="max_price"
+              label="Max Price (Optional)"
+              type="number"
+              step="0.01"
+              value={artwork.max_price ?? ''}
+              onChange={handleFormChange}
+              onBlur={() => setTouched(prev => ({ ...prev, max_price: true }))}
+              fullWidth
+              margin="normal"
+            />
           </div>
         )}
       </fieldset>
@@ -1113,34 +1781,54 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
           />
         </div>
 
-        {/* Framing */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginTop: '1rem' }}>
-          <div>
-            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <input type="checkbox" name="framing_info.is_framed" checked={!!(artwork.framing_info?.is_framed)} onChange={handleFormChange} /> Framed
-            </label>
-            {!!(artwork.framing_info?.is_framed) && (
-              <TextField
-                name="framing_info.details"
-                label="Frame Details"
-                multiline
-                rows={2}
-                value={(artwork.framing_info?.details || '')}
-                onChange={handleFormChange}
-                onBlur={() => setTouched(prev => ({ ...prev, framing_info: { ...prev.framing_info, details: true } }))}
-                error={Boolean(touched.framing_info?.details && (artwork.framing_info?.details || '').trim().length === 0)}
-                helperText={touched.framing_info?.details && (artwork.framing_info?.details || '').trim().length === 0 && 'Frame details are required if framed'}
-                fullWidth
-                margin="normal"
-                required
-              />
-            )}
-          </div>
-          {/* Signature */}
-          <div>
-            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <input type="checkbox" name="signature_info.is_signed" checked={!!(artwork.signature_info?.is_signed)} onChange={handleFormChange} /> Signed
-            </label>
+        {/* Framing Status (Toggle Button Group) */}
+        <label className="label mt-4">Framing Status</label>
+        <ToggleButtonGroup
+          value={artwork.framing_status || 'unframed'}
+          exclusive
+          onChange={handleFramingStatusChange}
+          aria-label="framing status"
+          fullWidth
+          className={`mt-2 ${touched.framing_status && !artwork.framing_status ? 'border-red-500 rounded-md' : ''}`}
+        >
+          <ToggleButton value="unframed" aria-label="unframed">Unframed</ToggleButton>
+          <ToggleButton value="framed" aria-label="framed">Framed</ToggleButton>
+          <ToggleButton value="frame_optional" aria-label="frame optional">Frame Optional</ToggleButton>
+        </ToggleButtonGroup>
+        {touched.framing_status && !artwork.framing_status && <p className="text-red-500 text-sm mt-1">Framing status is required</p>}
+
+
+        {/* Conditional Frame Details */}
+        {artwork.framing_status === 'framed' && (
+          <TextField
+            name="framing_info.details"
+            label="Frame Details"
+            multiline
+            rows={2}
+            value={(artwork.framing_info?.details || '')}
+            onChange={handleFormChange}
+            onBlur={() => setTouched(prev => ({ ...prev, framing_info: { ...prev.framing_info, details: true } }))}
+            error={Boolean(touched.framing_info?.details && (artwork.framing_info?.details || '').trim().length === 0)}
+            helperText={touched.framing_info?.details && (artwork.framing_info?.details || '').trim().length === 0 && 'Frame details are required if currently framed'}
+            fullWidth
+            margin="normal"
+            required
+          />
+        )}
+
+
+          {/* Signature (Toggle Switch) */}
+          <div style={{ marginTop: '1rem' }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={!!artwork.signature_info?.is_signed}
+                  onChange={handleSignedSwitchChange}
+                  name="signature_info.is_signed"
+                />
+              }
+              label="Signed"
+            />
             {!!(artwork.signature_info?.is_signed) && (
               <TextField
                 name="signature_info.location"
@@ -1157,7 +1845,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
               />
             )}
           </div>
-        </div>
+
 
         {/* Artwork Location */}
         <label className="label" style={{ marginTop: '1rem' }}>Artwork Location (Optional)</label>
@@ -1172,49 +1860,26 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         />
       </fieldset>
 
-      {/* CATALOGUE ASSIGNMENT */}
+      {/* RARITY & EDITION INFORMATION */}
       <fieldset className="fieldset">
-        <legend className="legend">Catalogue Assignment</legend>
-        <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>
-          This artwork will automatically be in "Available Work" when its status is "Available". You can also add it to your custom catalogues.
-        </p>
-        <Autocomplete
-          multiple
-          options={userSelectableCatalogues}
-          getOptionLabel={(option) => option.title || ''} // Ensure string returned
-          value={selectedCatalogues.filter((cat) => !cat.is_system_catalogue)} // Filter out system catalogue for user selection
-          onChange={(_, newValue: Catalogue[]) => {
-            const systemCatalogue = allCatalogues.find((cat) => cat.is_system_catalogue);
-            // Re-evaluate system catalogue inclusion based on current artwork status
-            const finalSelection = systemCatalogue && artwork.status === 'available' ? [systemCatalogue, ...newValue] : newValue;
-            setSelectedCatalogues(finalSelection);
-          }}
-          isOptionEqualToValue={(option, value) => option.id === value.id}
-          renderInput={(params) => <TextField {...params} placeholder="Select catalogues..." />}
-          renderTags={(value, getTagProps) =>
-            value.map((option, index) => {
-              const { key, ...chipProps } = getTagProps({ index });
-              return <Chip key={key} variant="outlined" label={option.title || ''} {...chipProps} />;
-            })
-          }
-        />
-      </fieldset>
-
-      {/* EDITION INFORMATION */}
-      <fieldset className="fieldset">
-        <legend className="legend">Edition Information</legend>
-        <label className="label">Is this a unique work or part of an edition?</label>
-        <select
-          name="edition_info.is_edition"
-          className="select"
-          value={Boolean(artwork.edition_info?.is_edition) ? 'edition' : 'unique'} // Ensure value is boolean for select
-          onChange={handleFormChange}
+        <legend className="legend">Rarity & Edition Information</legend>
+        <label className="label">Rarity</label>
+        <ToggleButtonGroup
+          value={artwork.rarity || 'unique'}
+          exclusive
+          onChange={handleRarityChange}
+          aria-label="artwork rarity"
+          fullWidth
+          className={`mt-2 ${touched.rarity && !artwork.rarity ? 'border-red-500 rounded-md' : ''}`}
         >
-          <option value="unique">Unique Work</option>
-          <option value="edition">A Set of Editions</option>
-        </select>
+          <ToggleButton value="unique" aria-label="unique work">Unique Work</ToggleButton>
+          <ToggleButton value="limited_edition" aria-label="limited edition">Limited Edition</ToggleButton>
+          <ToggleButton value="open_edition" aria-label="open edition">Open Edition</ToggleButton>
+        </ToggleButtonGroup>
+        {touched.rarity && !artwork.rarity && <p className="text-red-500 text-sm mt-1">Rarity is required</p>}
 
-        {!!(artwork.edition_info?.is_edition) && (
+
+        {artwork.rarity === 'limited_edition' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
             <TextField
               name="edition_info.numeric_size"
@@ -1236,7 +1901,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
               value={(artwork.edition_info?.ap_size ?? '')}
               onChange={handleFormChange}
               onBlur={() => setTouched(prev => ({ ...prev, edition_info: { ...prev.edition_info, ap_size: true } }))}
-              error={Boolean(touched.edition_info?.ap_size && (artwork.edition_info?.ap_size === null || artwork.edition_info?.ap_size === undefined || (artwork.edition_info?.ap_size < 0)))} // APs can be 0
+              error={Boolean(touched.edition_info?.ap_size && (artwork.edition_info?.ap_size === null || artwork.edition_info?.ap_size === undefined || (artwork.edition_info?.ap_size < 0)))}
               helperText={touched.edition_info?.ap_size && (artwork.edition_info?.ap_size === null || artwork.edition_info?.ap_size === undefined || (artwork.edition_info?.ap_size < 0)) && 'APs must be a non-negative number'}
               fullWidth
               margin="normal"
@@ -1245,8 +1910,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         )}
       </fieldset>
 
-      {/* SALES & INVENTORY MANAGEMENT (only if editioned and status is not 'pending') */}
-      {!!(artwork.edition_info?.is_edition) && (artwork.status === 'available' || artwork.status === 'on_hold' || artwork.status === 'sold') && (
+      {/* SALES & INVENTORY MANAGEMENT (only if limited edition and status is not 'pending') */}
+      {(artwork.rarity === 'limited_edition') && (artwork.status === 'available' || artwork.status === 'on_hold' || artwork.status === 'sold') && (
         <fieldset className="fieldset">
           <legend className="legend">Sales & Inventory Management</legend>
           <p>Check the box next to an edition to mark it as sold.</p>
@@ -1269,6 +1934,70 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
           </div>
         </fieldset>
       )}
+
+      {/* CONDITION */}
+      <fieldset className="fieldset">
+        <legend className="legend">Condition</legend>
+        <label className="label">Condition (Optional)</label>
+        <select
+          name="condition"
+          className="select"
+          value={artwork.condition || ''}
+          onChange={handleFormChange}
+          style={{ width: '100%', marginTop: '0.5rem' }}
+        >
+          <option value="">Select Condition</option>
+          <option value="Excellent">Excellent</option>
+          <option value="Good">Good</option>
+          <option value="Fair">Fair</option>
+          <option value="Poor">Poor</option>
+          <option value="Restored">Restored</option>
+          <option value="As Is">As Is</option>
+        </select>
+
+        <label className="label" style={{ marginTop: '1rem' }}>Condition Notes (Optional)</label>
+        <TextField
+          name="condition_notes"
+          label="Notes on Artwork Condition"
+          multiline
+          rows={3}
+          value={artwork.condition_notes || ''}
+          onChange={handleFormChange}
+          fullWidth
+          margin="normal"
+        />
+      </fieldset>
+
+      {/* CERTIFICATE OF AUTHENTICITY */}
+      <fieldset className="fieldset">
+        <legend className="legend">Certificate of Authenticity</legend>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!!artwork.has_certificate_of_authenticity}
+              onChange={(e) => setArtwork(prev => ({ ...prev, has_certificate_of_authenticity: e.target.checked }))}
+              name="has_certificate_of_authenticity"
+            />
+          }
+          label="Includes Certificate of Authenticity (CoA)"
+        />
+        {!!artwork.has_certificate_of_authenticity && (
+          <TextField
+            name="certificate_of_authenticity_details"
+            label="CoA Details (e.g., Issuer, Date)"
+            multiline
+            rows={2}
+            value={artwork.certificate_of_authenticity_details || ''}
+            onChange={handleFormChange}
+            onBlur={() => setTouched(prev => ({ ...prev, certificate_of_authenticity_details: true }))}
+            error={Boolean(touched.certificate_of_authenticity_details && (artwork.certificate_of_authenticity_details || '').trim().length === 0)}
+            helperText={touched.certificate_of_authenticity_details && (artwork.certificate_of_authenticity_details || '').trim().length === 0 && 'CoA details are required if included'}
+            fullWidth
+            margin="normal"
+            required
+          />
+        )}
+      </fieldset>
 
       {/* INVENTORY & NOTES */}
       <fieldset className="fieldset">
@@ -1384,43 +2113,67 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         )}
       </fieldset>
 
-
-      {/* METADATA & DISCOVERY (Tags, Genre, Dominant Colors, Subject) */}
+      {/* CATALOGUE ASSIGNMENT */}
       <fieldset className="fieldset">
-        <legend className="legend">Metadata & Discovery</legend>
-        {/* Free-form Medium Text Area */}
-        <label className="label">Medium (Free-form Text)</label>
-        <TextField
-          name="medium"
-          label="Detailed Medium / Technique"
-          multiline
-          rows={3}
-          value={artwork.medium || ''}
-          onChange={handleFormChange}
-          onBlur={() => setTouched(prev => ({ ...prev, medium: true }))}
-          error={touched.medium && (artwork.medium || '').trim().length === 0}
-          helperText={touched.medium && (artwork.medium || '').trim().length === 0 && 'Medium is required'}
-          fullWidth
-          margin="normal"
-          required
+        <legend className="legend">Catalogue Assignment</legend>
+        <p style={{ margin: 0, color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>
+          This artwork will automatically be in "Available Work" when its status is "Available". You can also add it to your custom catalogues.
+        </p>
+        <Autocomplete
+          multiple
+          options={userSelectableCatalogues}
+          disableCloseOnSelect
+          getOptionLabel={(option) => option.title || ''}
+          value={selectedCatalogues.filter((cat) => !cat.is_system_catalogue)}
+          onChange={(_, newValue: Catalogue[]) => {
+            const systemCatalogue = allCatalogues.find((cat) => cat.is_system_catalogue);
+            const finalSelection = systemCatalogue && artwork.status === 'available' ? [systemCatalogue, ...newValue] : newValue;
+            setSelectedCatalogues(finalSelection);
+          }}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          renderInput={(params) => <TextField {...params} placeholder="Select catalogues..." />}
+          renderTags={(value, getTagProps) =>
+            value.map((option, index) => {
+              const { key, ...chipProps } = getTagProps({ index });
+              return <Chip key={key} variant="outlined" label={option.title || ''} {...chipProps} />;
+            })
+          }
+          renderOption={(props, option) => (
+            <Box component="li" sx={{ '& > img': { mr: 2, flexShrink: 0 } }} {...props}>
+              {option.cover_image_url && (
+                <img
+                  loading="lazy"
+                  width="40"
+                  height="40"
+                  src={option.cover_image_url}
+                  alt={option.title || 'Catalogue cover'}
+                  style={{ borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
+                />
+              )}
+              {option.title}
+            </Box>
+          )}
         />
+      </fieldset>
 
-        {/* Primary/Secondary Medium */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+      {/* METADATA & DISCOVERY (Tags, Genre, Dominant Colors, Subject, Orientation) */}
+      <fieldset className="fieldset">
+        <legend className="legend">Discovery</legend>
+
+        {/* Primary/Secondary Medium Autocompletes */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
           <div>
             <label className="label">Primary Medium Category</label>
             <Autocomplete
               options={allMediaTypes}
-              value={currentMediumParent || null}
-              onChange={(_, newValue) => handleMediumChange('parent', newValue)}
+              value={selectedPrimaryMediumCategory}
+              onChange={(_, newValue) => handlePrimaryMediumCategoryChange(newValue)}
               isOptionEqualToValue={(option, value) => option === value}
               renderInput={(params) => (
                 <TextField
                   {...params}
                   label="Select Primary Category"
-                  onBlur={() => setTouched(prev => ({ ...prev, metadata_medium_parent: true }))}
-                  error={touched.metadata_medium_parent && !currentMediumParent}
-                  helperText={touched.metadata_medium_parent && !currentMediumParent && 'Primary medium category is recommended for discovery'}
+                  onBlur={() => setTouched(prev => ({ ...prev, metadata_medium_parent: true }))} // Not used for validation directly now
                   margin="normal"
                   fullWidth
                 />
@@ -1433,125 +2186,102 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
             <Autocomplete
               freeSolo
               options={secondaryMediumOptions}
-              value={currentMediumChild || null}
-              onInputChange={(_, newInputValue) => handleMediumChange('child', newInputValue)}
-              disabled={!currentMediumParent}
+              value={selectedSecondaryMediumType}
+              onInputChange={(_, newInputValue) => handleSecondaryMediumTypeChange(newInputValue)}
+              disabled={!selectedPrimaryMediumCategory}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label={currentMediumParent ? 'Search or type secondary type' : 'Select a primary category first'}
+                  label={selectedPrimaryMediumCategory ? 'Search or type secondary type' : 'Select a primary category first'}
                   margin="normal"
                   fullWidth
                 />
               )}
               fullWidth
-              margin="normal" // This margin should be on the TextField, not Autocomplete itself
             />
           </div>
         </div>
 
         {/* Tags (using TagManager) */}
         <TagManager
-          allTags={allTags} // Assuming you'd fetch this globally from DB
+          allTags={allTags}
           selectedTags={selectedTags}
           onSelectedTagsChange={setSelectedTags}
           onTagCreate={handleTagCreate}
         />
 
-        {/* Genre */}
+        {/* Genre (now manual input) */}
         <TextField
           name="genre"
-          label="Genre (Auto-generated from image if available)"
+          label="Genre"
           value={artwork.genre || ''}
           onChange={handleFormChange}
           fullWidth
           margin="normal"
+          helperText="Manually input (or integrate a client-side AI for auto-detection if available)."
+          onBlur={() => setTouched(prev => ({ ...prev, genre: true }))}
+          error={touched.genre && (artwork.genre || '').trim().length === 0 && !isFormValid}
         />
 
-        {/* Subject */}
+        {/* Subject (now manual input) */}
         <TextField
           name="subject"
-          label="Subject (Auto-generated from image if available)"
+          label="Subject"
           value={artwork.subject || ''}
-          onChange={handleFormChange} // Allow manual override
+          onChange={handleFormChange}
           fullWidth
           margin="normal"
+          helperText="Manually input (or integrate a client-side AI for auto-detection if available)."
+          onBlur={() => setTouched(prev => ({ ...prev, subject: true }))}
+          error={touched.subject && (artwork.subject || '').trim().length === 0 && !isFormValid}
         />
 
-        {/* Dominant Colors */}
+        {/* Orientation (now manual input) */}
         <TextField
-          name="dominant_colors"
-          label="Dominant Colors (Auto-generated from image)"
-          value={(artwork.dominant_colors || []).join(', ')}
-          onChange={e => setArtwork(prev => ({ ...prev, dominant_colors: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
+          name="orientation"
+          label="Orientation"
+          value={artwork.orientation || ''}
+          onChange={handleFormChange}
           fullWidth
           margin="normal"
+          helperText="Manually input (or integrate a client-side AI for auto-detection if available)."
+          onBlur={() => setTouched(prev => ({ ...prev, orientation: true }))}
+          error={touched.orientation && (artwork.orientation || '').trim().length === 0 && !isFormValid}
         />
-      </fieldset>
 
-      {/* PRICING */}
-      <fieldset className="fieldset">
-        <legend className="legend">Pricing</legend>
-        <label className="label">Pricing Model</label>
-        <select name="pricing_model" className="select" value={pricingModel} onChange={handlePricingModelChange}>
-          <option value="fixed">Fixed Price</option>
-          <option value="negotiable">Negotiable Price</option>
-          <option value="on_request">Price on Request</option>
-        </select>
-
-        {(pricingModel === 'fixed' || pricingModel === 'negotiable') && (
-          <TextField
-            name="price"
-            label={pricingModel === 'fixed' ? 'Price (USD)' : 'Display Price (USD)'}
-            type="number"
-            step="0.01"
-            value={artwork.price ?? ''}
-            onChange={handleFormChange}
-            onBlur={() => setTouched(prev => ({ ...prev, price: true }))}
-            error={Boolean(touched.price && (artwork.price === null || artwork.price === undefined || artwork.price <= 0))}
-            helperText={touched.price && (artwork.price === null || artwork.price === undefined || artwork.price <= 0) && 'Price is required and must be greater than 0'}
-            fullWidth
-            margin="normal"
-            required={pricingModel !== 'on_request'}
-          />
+        {/* Dominant Colors (Read-only, derived from image) */}
+        <label className="label" style={{ marginTop: '1rem' }}>Dominant Colors (Auto-generated from primary image)</label>
+        {(artwork.dominant_colors || []).length > 0 ? (
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {(artwork.dominant_colors || []).map((color, idx) => (
+                    <div
+                        key={idx}
+                        style={{
+                            width: '24px',
+                            height: '24px',
+                            backgroundColor: color,
+                            borderRadius: '50%',
+                            border: '1px solid var(--border)',
+                        }}
+                        title={color}
+                    ></div>
+                ))}
+            </div>
+        ) : (
+            <p className="text-muted-foreground text-sm mt-1">No dominant colors detected from the primary image yet.</p>
         )}
+        <p className="text-muted-foreground text-sm mt-1">Automatically detected from the primary image using ColorThief.</p>
 
-        {pricingModel === 'negotiable' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-            <TextField
-              name="min_price"
-              label="Min Price (Optional)"
-              type="number"
-              step="0.01"
-              value={artwork.min_price ?? ''}
-              onChange={handleFormChange}
-              onBlur={() => setTouched(prev => ({ ...prev, min_price: true }))} // Optional validation
-              fullWidth
-              margin="normal"
-            />
-            <TextField
-              name="max_price"
-              label="Max Price (Optional)"
-              type="number"
-              step="0.01"
-              value={artwork.max_price ?? ''}
-              onChange={handleFormChange}
-              onBlur={() => setTouched(prev => ({ ...prev, max_price: true }))} // Optional validation
-              fullWidth
-              margin="normal"
-            />
-          </div>
-        )}
       </fieldset>
 
       {/* SUBMIT BUTTON */}
       <button
         type="submit"
         className="button button-primary"
-        disabled={!isFormValid || isSaving}
+        disabled={!isFormValid || isSaving || isProcessingImagesClientSide}
         style={{ padding: '0.75rem 1.5rem', fontSize: '1rem' }}
       >
-        {isSaving ? 'Saving...' : 'Save Artwork'}
+        {isSaving ? 'Saving...' : (isProcessingImagesClientSide ? 'Processing Images...' : 'Save Artwork')}
       </button>
     </form>
   );

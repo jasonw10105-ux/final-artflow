@@ -1,66 +1,123 @@
 // src/pages/dashboard/collector/CollectorDashboardPage.tsx
 import React from 'react';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { Link } from 'react-router-dom';
 import { useRecentlyViewed, StoredArtwork } from '@/hooks/useRecentlyViewed';
+import ArtworkReactionButtons from '@/components/ui/ArtworkReactionButtons';
+import { Map, Sparkles, TrendingUp } from 'lucide-react';
+import '@/styles/app.css';
+
+// Type definition for the output of RPC calls
+type IntelligentRecommendation = {
+  id: string; // Changed from artwork_id for consistency with RPC
+  artist_id: string;
+  title: string;
+  slug: string;
+  artist: { slug: string; }; // artist_slug is nested in the new RPC
+  artwork_images: { image_url: string }[]; // image_url is nested in the new RPC
+  price: number;
+  status: string;
+  reaction: 'like' | 'dislike' | null;
+  recommendation_reason: string;
+};
+
+type ArtistRecommendation = {
+    artist_id: string;
+    artist_slug: string;
+    full_name: string;
+    avatar_url: string | null;
+    engagement_score: number;
+};
 
 const StatusBadge = ({ status }: { status?: string }) => (
-  <div style={{
-      padding: '0.2rem 0.5rem',
-      borderRadius: 'var(--radius)',
-      fontSize: '0.75rem',
-      fontWeight: 'bold',
-      position: 'absolute',
-      top: '0.5rem',
-      left: '0.5rem',
-      background: status === 'Available' ? 'rgba(40,167,69,0.8)' : 'rgba(108,117,125,0.8)',
-      color: 'white',
-      zIndex: 1
-  }}>{status}</div>
+  <div className="artwork-card-status-badge">{status || 'Unknown'}</div>
 );
 
 const CollectorDashboardPage = () => {
   const { profile, user } = useAuth();
   const { viewedArtworks: recentlyViewedArtworks } = useRecentlyViewed();
 
-  const { data: learnedData, isLoading: learnedLoading } = useQuery({
-    queryKey: ['collectorLearnedBehavior', user?.id],
+  // --- Fetch Roadmap-driven AND Behavioral recommendations in one call ---
+  const { data: personalizedRecommendations, isLoading: loadingPersonalizedRecs } = useQuery<IntelligentRecommendation[]>({
+    queryKey: ['personalizedRecommendations', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase.rpc('get_collector_learned_behavior', { p_collector_id: user.id });
+      const { data, error } = await supabase.rpc('get_personalized_artworks', {
+          p_collector_id: user.id,
+          p_limit: 20, // Fetch a larger pool to split between sections
+          p_offset: 0
+      });
       if (error) throw error;
-      return data;
+      return data || [];
     },
     enabled: !!user
   });
 
-  // Example: artworks with high score for "You seem interested in"
-  const recommendedArtworks = learnedData?.filter(a => a.total_score >= 5);
+  // --- Rising Talent ---
+  const { data: risingArtists, isLoading: risingLoading } = useQuery<ArtistRecommendation[]>({
+    queryKey: ['risingArtists'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_rising_artists', { limit_count: 10 });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const isLoadingCombined = loadingPersonalizedRecs || risingLoading;
+
+  // Split the personalized recommendations into Roadmap and Behavioral
+  const roadmapRecommendations = personalizedRecommendations?.filter(rec => rec.recommendation_reason === 'Matches your collection roadmap') || [];
+  const behavioralRecommendations = personalizedRecommendations?.filter(rec => rec.recommendation_reason !== 'Matches your collection roadmap') || [];
+
+  const fallbackMessage = "We're still learning your preferences. Create a Collection Roadmap or interact with art to get personalized recommendations!";
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+    <div className="page-container">
       <h1>Collector Dashboard</h1>
-      <p style={{ color: 'var(--muted-foreground)', marginTop: '-0.5rem', marginBottom: '2rem' }}>
-        Welcome, {profile?.full_name}!
-      </p>
+      <p className="page-subtitle">Welcome, {profile?.full_name || 'Collector'}!</p>
 
-      {/* Recommended / Interest */}
-      <div className="widget">
-        <h3>You Seem Interested In</h3>
-        {learnedLoading ? <p>Loading...</p> : (
-          recommendedArtworks?.length ? (
-            <div className="horizontal-scroll-row">
-              {recommendedArtworks.map(art => (
-                <Link key={art.artwork_id} to={`/${art.artist_id}/artwork/${art.artwork_id}`} className="scroll-card">
-                  <StatusBadge status={art.status} />
-                  <img src={art.image_url || '/placeholder.png'} alt="Artwork" />
-                  <p>{art.title}</p>
-                </Link>
+      {/* --- Roadmap Recommendations Section --- */}
+      {roadmapRecommendations.length > 0 && (
+          <div className="widget">
+            <div className="flex justify-between items-center">
+                <h3 className="flex items-center gap-2"><Map size={20}/> For Your Roadmap</h3>
+                <Link to="/u/roadmap" className="button button-secondary button-sm">Edit Roadmap</Link>
+            </div>
+            <div className="horizontal-scroll-row mt-4">
+              {roadmapRecommendations.map(a => (
+                <div key={a.id} className="scroll-card">
+                  <StatusBadge status={a.status} />
+                  <Link to={`/${a.artist.slug}/artwork/${a.slug}`}>
+                    <img src={a.artwork_images?.[0]?.image_url || '/placeholder.png'} alt={a.title || 'Untitled'} />
+                    <p>{a.title}</p>
+                  </Link>
+                  <ArtworkReactionButtons artworkId={a.id} initialReaction={a.reaction} />
+                </div>
               ))}
             </div>
-          ) : <p style={{ color: 'var(--muted-foreground)' }}>We're still gathering data. Check back soon.</p>
+          </div>
+      )}
+
+      {/* Behavioral "You Might Also Like" carousel */}
+      <div className="widget">
+        <h3 className="flex items-center gap-2"><Sparkles size={20} /> You Might Also Like</h3>
+        {isLoadingCombined ? <p className="loading-message">Loading recommendations...</p> : (
+          behavioralRecommendations.length > 0 ? (
+            <div className="horizontal-scroll-row mt-4">
+              {behavioralRecommendations.map(a => (
+                <div key={a.id} className="scroll-card">
+                  <StatusBadge status={a.status} />
+                   <Link to={`/${a.artist.slug}/artwork/${a.slug}`}>
+                    <img src={a.artwork_images?.[0]?.image_url || '/placeholder.png'} alt={a.title || 'Untitled'} />
+                    <p>{a.title}</p>
+                  </Link>
+                  <ArtworkReactionButtons artworkId={a.id} initialReaction={a.reaction} />
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-muted-foreground mt-4">{fallbackMessage}</p>
         )}
       </div>
 
@@ -68,17 +125,32 @@ const CollectorDashboardPage = () => {
       <div className="widget">
         <h3>Recently Viewed Artworks</h3>
         {recentlyViewedArtworks.length > 0 ? (
-          <ul className="vertical-list">
+          <div className="horizontal-scroll-row mt-4">
             {recentlyViewedArtworks.map((art: StoredArtwork) => (
-              <li key={art.id}>
-                <Link to={`/${art.artist_slug}/artwork/${art.slug}`} className="list-item-link">
-                  <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} />
-                  <span>{art.title}</span>
-                </Link>
-              </li>
+              <Link key={art.id} to={`/${art.artist_slug}/artwork/${art.slug}`} className="scroll-card">
+                <img src={art.image_url || '/placeholder.png'} alt={art.title || "Untitled"} />
+                <p>{art.title}</p>
+              </Link>
             ))}
-          </ul>
-        ) : <p style={{ color: 'var(--muted-foreground)' }}>No recently viewed artworks.</p>}
+          </div>
+        ) : <p className="text-muted-foreground mt-4">No recently viewed artworks.</p>}
+      </div>
+
+      {/* Rising Talent */}
+      <div className="widget">
+        <h3 className="flex items-center gap-2"><TrendingUp size={20} /> Rising Talent</h3>
+        {risingLoading ? <p className="loading-message">Discovering new artists...</p> : (
+          risingArtists && risingArtists.length > 0 ? (
+            <div className="horizontal-scroll-row mt-4">
+              {risingArtists.map(artist => (
+                <Link key={artist.artist_id} to={`/${artist.artist_slug}`} className="scroll-card-artist">
+                  <img src={artist.avatar_url || '/placeholder.png'} alt={artist.full_name || 'Artist'} />
+                  <p>{artist.full_name}</p>
+                </Link>
+              ))}
+            </div>
+          ) : <p className="text-muted-foreground mt-4">No rising talent to display yet.</p>
+        )}
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+// src/ArtworkUploadModal.tsx
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { supabase } from "@/lib/supabaseClient";
@@ -31,6 +32,18 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
 
     try {
       const uploadedImages = [];
+      let isFirstImage = false;
+
+      // Check if this artwork currently has no images
+      const { data: existingImages, error: fetchErr } = await supabase
+        .from('artwork_images')
+        .select('id')
+        .eq('artwork_id', artworkId);
+
+      if (fetchErr) throw fetchErr;
+      if (!existingImages || existingImages.length === 0) {
+        isFirstImage = true;
+      }
 
       for (const file of files) {
         const path = `${artworkId}/${crypto.randomUUID()}-${file.name}`;
@@ -45,10 +58,21 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
         const { data, error: dbErr } = await supabase.from("artwork_images").insert({
           artwork_id: artworkId,
           image_url: publicUrl,
+          // If this is the first image being uploaded for this artwork, set it as primary (position 0)
+          position: isFirstImage ? 0 : undefined,
+          is_primary: isFirstImage ? true : undefined,
         }).select("*");
 
         if (dbErr) throw dbErr;
         uploadedImages.push(...data);
+
+        // If this was the very first image for this artwork, update primary_image_url on the artwork itself
+        if (isFirstImage && data.length > 0) {
+            await supabase.from('artworks')
+                .update({ primary_image_url: publicUrl })
+                .eq('id', artworkId);
+            isFirstImage = false; // Only update for the very first image
+        }
       }
 
       addImages(artworkId, uploadedImages);

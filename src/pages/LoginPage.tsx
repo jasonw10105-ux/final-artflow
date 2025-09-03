@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabaseClient';
-import { Eye, EyeOff } from 'lucide-react'; // IMPROVEMENT: Import icons for password toggle
+import { supabase } from '../lib/supabaseClient'; // Updated path
+import { Eye, EyeOff } from 'lucide-react';
+import Button from '../components/ui/Button'; // Import the new Button component
 
 // IMPROVEMENT: Added a simple, inline SVG for the Google icon to avoid new dependencies.
 const GoogleIcon = () => (
@@ -20,25 +21,40 @@ const LoginPage = () => {
     const navigate = useNavigate();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    // IMPROVEMENT: State to manage password visibility
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [emailError, setEmailError] = useState<string | null>(null); // State for email validation error
+
+    const validateEmail = (inputEmail: string) => {
+        if (!inputEmail) return "Email is required.";
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(inputEmail)) return "Please enter a valid email address.";
+        return null;
+    };
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null); // Clear previous server errors
+
+        const validationMessage = validateEmail(email);
+        if (validationMessage) {
+            setEmailError(validationMessage);
+            return;
+        } else {
+            setEmailError(null);
+        }
+
         setLoading(true);
-        setError(null);
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
             setError(error.message);
         } else {
             navigate('/dashboard', { replace: true });
         }
-        setLoading(false); 
+        setLoading(false);
     };
 
-    // IMPROVEMENT: Handler for Google SSO login
     const handleGoogleSignIn = async () => {
         setLoading(true);
         setError(null);
@@ -52,6 +68,7 @@ const LoginPage = () => {
             setError(error.message);
             setLoading(false);
         }
+        // No setLoading(false) here if no error because navigation happens.
     };
 
     return (
@@ -63,34 +80,59 @@ const LoginPage = () => {
             <main className="auth-form-panel">
                 <div className="auth-card">
                     <header className="auth-card-header">
-                        <Link to="/home" className="logo-holder">
+                        <Link to="/" className="logo-holder"> {/* Linked to root path */}
                             <img src="/logo.svg" alt="Artflow" height="50px" />
                         </Link>
                         <h2>Welcome Back</h2>
                         <p>Sign in to continue to your dashboard.</p>
                     </header>
 
-                    {/* IMPROVEMENT: Added Google SSO Button */}
                     <div className="auth-form" style={{gap: '1rem', marginBottom: '1.5rem'}}>
-                        <button onClick={handleGoogleSignIn} className="button button-secondary" style={{display: 'flex', gap: '0.75rem', width: '100%'}} disabled={loading}>
+                        <Button
+                            onClick={handleGoogleSignIn}
+                            variant="secondary"
+                            isLoading={loading}
+                            className="google-button" // Added a class for potential specific styling
+                            disabled={loading}
+                        >
                             <GoogleIcon /> Continue with Google
-                        </button>
+                        </Button>
                     </div>
 
                     <div style={{textAlign: 'center', color: 'var(--muted-foreground)', margin: '1.5rem 0', textTransform: 'uppercase', fontSize: '0.8rem'}}>Or</div>
 
                     <form onSubmit={handleLogin} className="auth-form">
-                        <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required disabled={loading} />
-                        
-                        {/* IMPROVEMENT: Password input with visibility toggle */}
-                        <div style={{ position: 'relative', width: '100%' }}>
-                            <input 
-                                className="input" 
-                                type={isPasswordVisible ? 'text' : 'password'} 
-                                value={password} 
-                                onChange={(e) => setPassword(e.target.value)} 
-                                placeholder="Password" 
-                                required 
+                        <div className="form-group"> {/* Added for consistent styling/grouping */}
+                            <label htmlFor="email-login" className="sr-only">Email</label> {/* Visually hidden label */}
+                            <input
+                                id="email-login"
+                                className={`input ${emailError ? 'input-error' : ''}`}
+                                type="email"
+                                value={email}
+                                onChange={(e) => {
+                                    setEmail(e.target.value);
+                                    if (emailError) setEmailError(null); // Clear error on change
+                                }}
+                                onBlur={() => setEmailError(validateEmail(email))} // Validate on blur
+                                placeholder="Email"
+                                required
+                                disabled={loading}
+                                aria-invalid={emailError ? "true" : "false"}
+                                aria-describedby={emailError ? "email-error-message" : undefined}
+                            />
+                            {emailError && <p id="email-error-message" className="error-message" role="alert">{emailError}</p>}
+                        </div>
+
+                        <div className="form-group" style={{ position: 'relative', width: '100%' }}>
+                            <label htmlFor="password-login" className="sr-only">Password</label> {/* Visually hidden label */}
+                            <input
+                                id="password-login"
+                                className="input"
+                                type={isPasswordVisible ? 'text' : 'password'}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Password"
+                                required
                                 disabled={loading}
                                 style={{ paddingRight: '2.5rem' }}
                             />
@@ -103,10 +145,12 @@ const LoginPage = () => {
                                 {isPasswordVisible ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
-                        <button className="button button-primary" type="submit" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>
+                        <Button type="submit" variant="primary" isLoading={loading} disabled={loading}>
+                            {loading ? 'Logging in...' : 'Login'}
+                        </Button>
                     </form>
 
-                    {error && <p className="error-message">{error}</p>}
+                    {error && <p className="error-message" role="alert">{error}</p>} {/* Added role="alert" */}
                     <footer className="auth-card-footer">
                         <Link to="/forgot-password">Forgot your password?</Link>
                     </footer>

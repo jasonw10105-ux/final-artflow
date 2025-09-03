@@ -1,14 +1,12 @@
-import React from "react";
-import { Trash2, Edit, Move } from "lucide-react"; // These are correct for lucide-react
-import { Star, StarBorder } from "@mui/icons-material"; // <-- CORRECTED IMPORT for Star/StarBorder
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { IconButton } from "@mui/material"; // Assuming you have MUI IconButton
+import React from 'react';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
-interface ArtworkImage {
-  id: string;
-  image_url: string;
-  position: number;
+import { ArtworkImageRow } from '@/types/database.types'; // Correct import for direct Row type
+
+// Use the directly exported ArtworkImageRow type
+interface ArtworkImage extends ArtworkImageRow {
+  // No need to manually add watermarked/visualization_image_url as they are in the DB type
 }
 
 interface SortableImageProps {
@@ -16,72 +14,83 @@ interface SortableImageProps {
   onDelete: (id: string) => void;
   onReplace: (id: string, file: File) => void;
   onSetPrimary: (id: string) => void;
-  isPrimary: boolean;
+  isReplacing: boolean;
 }
 
-export default function SortableImage({ image, onDelete, onReplace, onSetPrimary, isPrimary }: SortableImageProps) {
-  // `disabled: isPrimary` ensures primary image is not draggable by DndContext
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: image.id, disabled: isPrimary });
+const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplace, onSetPrimary, isReplacing }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition: sortableTransition,
+    isDragging,
+  } = useSortable({ id: image.id });
 
-  const style: React.CSSProperties = {
+  const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    border: isPrimary ? "2px solid #3f51b5" : "1px solid #e0e0e0", // Highlight primary
-    borderRadius: 8,
-    padding: 8,
-    background: '#fff',
-    opacity: isDragging ? 0.7 : 1, // Slightly reduce opacity when dragging
-    zIndex: isDragging ? 1000 : 0,
-    boxShadow: isDragging ? '0px 4px 8px rgba(0,0,0,0.1)' : 'none',
-    cursor: isPrimary ? "default" : "grab", // Primary is not directly draggable by its image area
-    touchAction: isPrimary ? "none" : "manipulation", // Prevent default touch actions for draggable
+    transition: sortableTransition,
+    zIndex: isDragging ? 10 : 0,
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative',
+    height: '150px', // Fixed height for consistency in grid
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      onReplace(image.id, e.target.files[0]);
-    }
-  };
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   return (
-    <div ref={setNodeRef} style={style} className="relative flex flex-col items-center gap-2">
-      <img src={image.image_url} alt="Artwork" className="w-full h-32 object-cover rounded" />
-
-      {/* Drag Handle (only for non-primary images, and separated from image click) */}
-      {/* attributes and listeners are placed here to make only this area draggable for non-primary images */}
-      {!isPrimary && (
-        <IconButton {...listeners} {...attributes} size="small" style={{ position: 'absolute', top: 4, left: 4, cursor: 'grab' }}>
-          <Move size={18} />
-        </IconButton>
-      )}
-
-      <div className="absolute top-1 right-1 flex gap-1">
-        {/* Set Primary Button */}
-        <IconButton size="small" onClick={() => onSetPrimary(image.id)} color={isPrimary ? "primary" : "default"}>
-          {isPrimary ? <Star /> : <StarBorder />}
-        </IconButton>
-
-        {/* Delete Button (not for primary, unless it's the only image) */}
-        {!isPrimary && ( // If it's not primary, allow deleting
-          <IconButton size="small" onClick={() => onDelete(image.id)} color="error">
-            <Trash2 size={16} />
-          </IconButton>
+    <div ref={setNodeRef} style={style}>
+      <div className="relative group w-full h-full overflow-hidden rounded-lg border border-gray-200">
+        {isReplacing ? (
+          <div className="flex items-center justify-center w-full h-full bg-gray-100 text-gray-500">
+            Replacing...
+          </div>
+        ) : (
+          <img
+            src={image.image_url} // Always show original in dashboard edit view
+            alt={`Artwork ${image.position}`}
+            className="w-full h-full object-cover"
+          />
         )}
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity space-y-2">
+          <button
+            type="button"
+            onClick={() => onDelete(image.id)}
+            className="text-white bg-red-600 hover:bg-red-700 text-xs px-2 py-1 rounded-md"
+          >
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-white bg-yellow-600 hover:bg-yellow-700 text-xs px-2 py-1 rounded-md"
+          >
+            Replace
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                onReplace(image.id, e.target.files[0]);
+                e.target.value = ''; // Reset file input
+              }
+            }}
+            style={{ display: 'none' }}
+            accept="image/*"
+          />
+          <button
+            type="button"
+            onClick={() => onSetPrimary(image.id)}
+            className={`text-white text-xs px-2 py-1 rounded-md ${image.is_primary ? 'bg-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+            disabled={image.is_primary}
+          >
+            {image.is_primary ? 'Primary' : 'Set as Primary'}
+          </button>
+        </div>
       </div>
-      
-      {/* Replace File Input (always present) */}
-      <label htmlFor={`replace-file-${image.id}`} className="cursor-pointer text-blue-500 flex items-center gap-1 text-sm">
-        <Edit size={16} /> Replace
-        <input
-          id={`replace-file-${image.id}`}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFileChange}
-        />
-      </label>
-
-      {isPrimary && <span className="absolute bottom-1 right-1 bg-blue-600 text-white text-xs px-2 py-0.5 rounded">Primary</span>}
     </div>
   );
-}
+};
+
+export default SortableImage;

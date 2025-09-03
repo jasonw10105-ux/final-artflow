@@ -1,15 +1,17 @@
-// src/pages/dashboard/collector/CollectorSalesPage.tsx
-import React from 'react';
+// src/pages/dashboard/collector/CollectorVaultPage.tsx
+import React, { useState } from 'react';
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from '../../../lib/supabaseClient';
-import { useAuth } from '../../../contexts/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthProvider';
 import { Link } from 'react-router-dom';
 import { Database } from '@/types/database.types';
-import { Award, Eye, ShoppingBag } from 'lucide-react';
+import { Download, Award } from 'lucide-react';
+import VaultAccessPage from './VaultAccessPage';
 import '@/styles/app.css';
 
+// Type Definitions
 type SalesRow = Database['public']['Tables']['sales']['Row'];
-type ArtworkRow = Pick<Database['public']['Tables']['artworks']['Row'], 'title' | 'slug' | 'user_id'>;
+type ArtworkRow = Pick<Database['public']['Tables']['artworks']['Row'], 'title' | 'slug' | 'user_id' | 'year'>;
 type ProfileRow = Pick<Database['public']['Tables']['profiles']['Row'], 'full_name' | 'slug'>;
 type ArtworkImageRow = Pick<Database['public']['Tables']['artwork_images']['Row'], 'image_url'>;
 
@@ -21,20 +23,21 @@ interface DetailedSale extends SalesRow {
     }) | null;
 }
 
-const CollectorSalesPage = () => {
+const CollectorVaultPage = () => {
     const { user } = useAuth();
+    const [isVerified, setIsVerified] = useState(false);
 
     const { data: sales, isLoading, error } = useQuery<DetailedSale[], Error>({
-        queryKey: ['collectorSales', user?.id],
+        queryKey: ['collectorVaultSales', user?.id],
         queryFn: async () => {
             if (!user) return [];
             const { data, error } = await supabase
                 .from('sales')
                 .select(`
-                    id, sale_price, sale_date,
+                    id, sale_price, sale_date, digital_coa_url,
                     artwork:artwork_id (
-                        title, slug, user_id,
-                        images:artwork_images(image_url, position),
+                        title, slug, year,
+                        images:artwork_images(image_url),
                         artist:user_id (full_name, slug)
                     )
                 `)
@@ -47,42 +50,34 @@ const CollectorSalesPage = () => {
                 ...sale,
                 artwork: sale.artwork ? {
                     ...sale.artwork,
-                    image_url: sale.artwork.images?.sort((a,b) => a.position - b.position)[0]?.image_url || 'https://placehold.co/100x100?text=No+Img',
+                    image_url: sale.artwork.images?.[0]?.image_url || 'https://placehold.co/50x50?text=No+Img',
                     artist: sale.artwork.artist || { full_name: 'Unknown', slug: '#' }
                 } : null
             }));
         },
-        enabled: !!user
+        enabled: !!user && isVerified, // Only fetch data once verified
     });
 
-    if (isLoading) return <div className="page-container"><p className="loading-message">Loading your sales history...</p></div>;
+    if (!isVerified) {
+        return <VaultAccessPage onVerified={() => setIsVerified(true)} />;
+    }
+
+    if (isLoading) return <div className="page-container"><p className="loading-message">Loading your vault...</p></div>;
     if (error) return <div className="page-container"><p className="error-message">Error: {error.message}</p></div>;
 
     return (
         <div className="page-container">
-            <div className="page-header-row">
-                <div>
-                    <h1>Sales History</h1>
-                    <p className="page-subtitle">A detailed record of your acquired artworks.</p>
-                </div>
-                <div className="flex gap-2">
-                    <Link to="/u/collection" className="button button-secondary button-with-icon">
-                        <ShoppingBag size={16} /> View My Collection
-                    </Link>
-                     <Link to="/u/vault" className="button button-secondary button-with-icon">
-                        <Eye size={16} /> View Secure Vault
-                    </Link>
-                </div>
-            </div>
+            <h1>My Vault</h1>
+            <p className="page-subtitle">A secure record of your acquired artworks and their official documentation.</p>
             
             <div className="card-table-wrapper mt-8">
                 <table className="data-table">
-                     <thead>
+                    <thead>
                         <tr>
                             <th>Artwork</th>
                             <th>Artist</th>
                             <th>Acquired</th>
-                            <th className="text-right">Purchase Price</th>
+                            <th className="text-center">Certificate</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -92,7 +87,10 @@ const CollectorSalesPage = () => {
                                     <td>
                                         <Link to={`/${sale.artwork?.artist?.slug}/artwork/${sale.artwork?.slug}`} className="flex items-center gap-4 text-link">
                                             <img src={sale.artwork?.image_url} alt={sale.artwork?.title || 'Untitled'} className="table-thumbnail" />
-                                            <span>{sale.artwork?.title}</span>
+                                            <div>
+                                                <span className="font-semibold">{sale.artwork?.title}</span>
+                                                <span className="block text-sm text-muted-foreground">{sale.artwork?.year}</span>
+                                            </div>
                                         </Link>
                                     </td>
                                     <td>
@@ -101,18 +99,29 @@ const CollectorSalesPage = () => {
                                         </Link>
                                     </td>
                                     <td>{new Date(sale.sale_date || '').toLocaleDateString()}</td>
-                                    <td className="text-right font-semibold">
-                                        {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(sale.sale_price as number)}
+                                    <td className="text-center">
+                                        {sale.digital_coa_url ? (
+                                            <a
+                                                href={sale.digital_coa_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="button button-secondary button-sm button-with-icon"
+                                            >
+                                                <Download size={14} /> View Digital CoA
+                                            </a>
+                                        ) : (
+                                            <span className="text-sm text-muted-foreground italic">Physical CoA</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))
                         ) : (
-                           <tr>
+                            <tr>
                                 <td colSpan={4} className="text-center py-12">
                                     <div className="empty-state-card">
                                         <Award size={48} className="text-muted-foreground" />
-                                        <h3 className="text-lg font-semibold mt-4">Your history is empty.</h3>
-                                        <p className="text-muted-foreground">Artworks you purchase will appear here.</p>
+                                        <h3 className="text-lg font-semibold mt-4">Your vault is empty.</h3>
+                                        <p className="text-muted-foreground">Artworks you purchase will appear here, along with their certificates.</p>
                                         <Link to="/artworks" className="button button-primary mt-4">Browse Artworks</Link>
                                     </div>
                                 </td>
@@ -125,4 +134,4 @@ const CollectorSalesPage = () => {
     );
 };
 
-export default CollectorSalesPage;
+export default CollectorVaultPage;

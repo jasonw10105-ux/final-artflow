@@ -3,5 +3,5 @@ export interface UploadState {
   addFiles: (files: File[]) => void;
   removeImage: (index: number) => void;
   setPrimary: (index: number) => void;
-  clear: () => void;
+  clearStore: () => void; // Renamed to clearStore for clarity
 }

@@ -5,94 +5,78 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthProvider';
 import { ArrowLeft, Share2, Edit3, Eye, Lock } from 'lucide-react';
 import InquiryModal from '../../components/public/InquiryModal';
-import ShareModal from '../../components/public/ShareModal';
-import '../../index.css';
-
-type ArtworkImage = {
-  id: string;
-  artwork_id: string;
-  image_url: string | null;
-  watermarked_image_url: string | null;
-  visualization_image_url: string | null;
-  position: number;
-};
-
-type Artwork = {
-  id: string;
-  title: string | null;
-  slug: string;
-  price: number | null;
-  currency: string | null;
-  images: ArtworkImage[];
-};
-
-type Catalogue = {
-  id: string;
-  title: string | null;
-  description: string | null;
-  cover_image_url: string | null;
-  access_type: string;
-  artist: { id: string; full_name: string; slug: string };
-};
+import ShareButton from '../../components/ui/ShareButton'; // Reusable ShareButton component
+import { AppCatalogue, AppArtwork, ProfileRow } from '@/types/app.types';
+import '@/styles/app.css'; // Import the centralized styles
 
 // --- FETCH FUNCTION ---
-const fetchPublicCatalogue = async (artistSlug: string, catalogueSlug: string) => {
-  // 1️⃣ Fetch catalogue with artist
-  const { data: catalogue, error: catErr } = await supabase
+const fetchPublicCatalogue = async (artistSlug: string, catalogueSlug: string): Promise<AppCatalogue> => {
+  // 1️⃣ Fetch catalogue with artist and check if it's published
+  const { data: catalogueData, error: catErr } = await supabase
     .from('catalogues')
-    .select('*, artist:profiles!inner(id, full_name, slug)')
+    .select('*, artist:profiles(id, full_name, slug)')
     .eq('slug', catalogueSlug)
     .eq('artist.slug', artistSlug)
+    .eq('is_published', true) // Ensure only published catalogues are public
     .single();
-  if (!catalogue || catErr) throw new Error('Catalogue not found');
+  
+  if (!catalogueData || catErr) {
+    // Providing a more descriptive error for better debugging if needed
+    throw new Error('Catalogue not found, is private, or is no longer available.');
+  }
 
-  // 2️⃣ Get artwork IDs linked to this catalogue
+  // 2️⃣ Get artwork IDs and positions linked to this catalogue
   const { data: junction, error: junctionErr } = await supabase
     .from('artwork_catalogue_junction')
-    .select('artwork_id')
-    .eq('catalogue_id', catalogue.id);
+    .select('artwork_id, position')
+    .eq('catalogue_id', catalogueData.id)
+    .order('position', { ascending: true }); // Order by position for display
   if (junctionErr) throw new Error('Failed to fetch artwork links');
 
   const artworkIds = junction.map(j => j.artwork_id);
-  if (artworkIds.length === 0) return { catalogue, artworks: [] };
+  if (artworkIds.length === 0) {
+      return { ...catalogueData, artworks: [] } as AppCatalogue;
+  }
 
-  // 3️⃣ Fetch artworks
+  // 3️⃣ Fetch artworks and their primary images
   const { data: artworks, error: artErr } = await supabase
     .from('artworks')
-    .select('id, title, slug, price, currency, status')
+    .select(`
+      id, title, slug, price, currency, status,
+      artwork_images(image_url, is_primary, position)
+    `)
     .in('id', artworkIds)
-    .eq('status', 'Available');
+    .eq('status', 'available'); // Only show available artworks in public catalogue
   if (artErr) throw new Error('Failed to fetch artworks');
 
-  // 4️⃣ Fetch images
-  const { data: images, error: imgErr } = await supabase
-    .from('artwork_images')
-    .select('id, artwork_id, image_url, watermarked_image_url, visualization_image_url, position')
-    .in('artwork_id', artworkIds)
-    .order('position', { ascending: true });
-  if (imgErr) throw new Error('Failed to fetch artwork images');
+  // 4️⃣ Combine artworks with their primary images and reorder by catalogue position
+  const artworksWithImagesAndOrder: AppArtwork[] = junction.map(j => {
+      const artworkDetail = artworks.find(a => a.id === j.artwork_id);
+      if (artworkDetail) {
+          const primaryImage = artworkDetail.artwork_images?.find(img => img.is_primary) || artworkDetail.artwork_images?.[0];
+          return {
+              ...artworkDetail,
+              artwork_images: primaryImage ? [primaryImage] : [], // Only keep primary for quick access
+          } as AppArtwork;
+      }
+      return null;
+  }).filter(Boolean) as AppArtwork[];
 
-  // 5️⃣ Combine artworks with images
-  const artworksWithImages: Artwork[] = artworks.map(a => ({
-    ...a,
-    images: images.filter(img => img.artwork_id === a.id),
-  }));
 
-  return { catalogue, artworks: artworksWithImages };
+  return { ...catalogueData, artworks: artworksWithImagesAndOrder } as AppCatalogue;
 };
 
 const PublicCataloguePage = () => {
   const { artistSlug, catalogueSlug } = useParams<{ artistSlug: string; catalogueSlug: string }>();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const [inquiryArtwork, setInquiryArtwork] = useState<Artwork | null>(null);
-  const [showShareModal, setShowShareModal] = useState(false);
+  const [inquiryArtwork, setInquiryArtwork] = useState<AppArtwork | null>(null);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError } = useQuery<AppCatalogue, Error>({
     queryKey: ['publicCatalogue', artistSlug, catalogueSlug],
     queryFn: () => fetchPublicCatalogue(artistSlug!, catalogueSlug!),
     enabled: !!artistSlug && !!catalogueSlug,
-    retry: 1,
+    retry: 1, // Retry once if it fails to fetch
   });
 
   if (isLoading) return <p className="loading-placeholder">Loading Catalogue...</p>;
@@ -106,14 +90,15 @@ const PublicCataloguePage = () => {
 
   const { catalogue, artworks } = data;
   const isOwner = profile?.id === catalogue.artist.id;
-  const isSharable = catalogue.access_type === 'public';
-  const shareImageUrls = [catalogue.cover_image_url, ...artworks.flatMap(a => a.images.map(i => i.image_url))].filter(Boolean) as string[];
+  const isSharable = catalogue.access_type === 'public'; // Assuming 'public' access_type means sharable
+  const shareImageUrls = [catalogue.cover_image_url, ...(artworks?.flatMap(a => a.artwork_images?.map(i => i.image_url) || []) || [])].filter(Boolean) as string[];
 
   const getBannerInfo = () => {
     switch (catalogue.access_type) {
       case 'public': return { text: 'This is a public catalogue', icon: <Eye size={16} /> };
-      case 'private': return { text: 'This is a private catalogue', icon: <Lock size={16} /> };
-      default: return { text: 'Shared with specific contacts', icon: <Lock size={16} /> };
+      case 'password_protected': return { text: 'This is a password-protected catalogue', icon: <Lock size={16} /> };
+      case 'restricted_audience': return { text: 'This catalogue is shared with specific contacts', icon: <Lock size={16} /> };
+      default: return { text: 'Catalogue access is restricted', icon: <Lock size={16} /> };
     }
   };
   const bannerInfo = getBannerInfo();
@@ -123,44 +108,48 @@ const PublicCataloguePage = () => {
       {isOwner && (
         <div className="owner-preview-banner">
           <div className="banner-info">{bannerInfo.icon}<span>You are viewing your own catalogue. {bannerInfo.text}.</span></div>
-          <Link to={`/artist/catalogues/edit/${catalogue.id}`} className="button button-secondary">
+          <Link to={`/u/catalogues/edit/${catalogue.id}`} className="button button-secondary button-with-icon">
             <Edit3 size={16} /> Manage Catalogue
           </Link>
         </div>
       )}
 
-      <button onClick={() => navigate(-1)} className="button button-secondary back-button">
+      <button onClick={() => navigate(-1)} className="button button-secondary back-button button-with-icon">
         <ArrowLeft size={16} /> Back
       </button>
 
-      <section className="catalogue_header" style={{backgroundImage: `url(${catalogue.cover_image_url})`}}>
+      <section className="catalogue_header" style={{backgroundImage: `url(${catalogue.cover_image_url || 'https://placehold.co/1200x600?text=Catalogue+Cover'})`}}>
         <h1>
-          <Link to={`/${catalogue.artist.slug}`} className="catalogue-artist-link">{catalogue.artist.full_name}</Link><br/>
+          <Link to={`/u/${catalogue.artist.slug}`} className="catalogue-artist-link">{catalogue.artist.full_name}</Link><br/>
           {catalogue.title}
         </h1>
         {catalogue.description && <p className="catalogue-description">{catalogue.description}</p>}
         {isSharable && (
           <div className="catalogue-header-actions">
-            <button className="button button-secondary" onClick={() => setShowShareModal(true)}>
-              <Share2 size={16} /> Share Catalogue
-            </button>
+            <ShareButton
+                shareUrl={window.location.href}
+                title={catalogue.title || "My Catalogue"}
+                byline={catalogue.artist.full_name}
+                previewImageUrls={shareImageUrls}
+                isCatalogue={true}
+            />
           </div>
         )}
         <div className="blurred-overlay"></div>
       </section>
 
-      {artworks.length > 0 ? (
+      {artworks && artworks.length > 0 ? (
         <div className="flex_grid">
           {artworks.map(art => (
-            <div key={art.id} className="card">
-              <img src={art.images[0]?.image_url || 'https://placehold.co/600x450?text=No+Image'} alt={art.title || 'Artwork'} className="artwork-card-image" />
+            <div key={art.id} className="artwork-card">
+              <img src={art.artwork_images?.[0]?.image_url || 'https://placehold.co/600x450?text=No+Image'} alt={art.title || 'Artwork'} className="artwork-card-image" />
               <div className="artwork-card-info">
                 <h4>{art.title || "Untitled"}</h4>
-                <p>{art.price ? new Intl.NumberFormat('en-US', { style: 'currency', currency: art.currency || 'USD' }).format(art.price) : 'Price on Request'}</p>
+                <p className="artwork-card-price">{art.price ? new Intl.NumberFormat('en-US', { style: 'currency', currency: art.currency || 'USD' }).format(art.price) : 'Price on Request'}</p>
               </div>
               <div className="artwork-card-actions">
-                <button className="button button-secondary" onClick={() => setInquiryArtwork(art)}>Inquire</button>
-                <Link to={`/artwork/${art.slug}`} className="button button-primary">View Artwork</Link>
+                <button className="button button-secondary button-sm" onClick={() => setInquiryArtwork(art)}>Inquire</button>
+                <Link to={`/artwork/${art.slug}`} className="button button-primary button-sm">View Artwork</Link>
               </div>
             </div>
           ))}
@@ -169,20 +158,12 @@ const PublicCataloguePage = () => {
 
       {inquiryArtwork && (
         <InquiryModal
-          artworkId={inquiryArtwork.id}
+          isOpen={!!inquiryArtwork}
           onClose={() => setInquiryArtwork(null)}
-          previewImageUrl={inquiryArtwork.images[0]?.image_url || undefined}
+          artworkId={inquiryArtwork.id}
+          previewImageUrl={inquiryArtwork.artwork_images?.[0]?.image_url || undefined}
           previewTitle={inquiryArtwork.title || undefined}
-        />
-      )}
-      {showShareModal && isSharable && (
-        <ShareModal
-          onClose={() => setShowShareModal(false)}
-          title={catalogue.title}
-          byline={catalogue.artist.full_name}
-          shareUrl={window.location.href}
-          previewImageUrls={shareImageUrls}
-          isCatalogue
+          artist={catalogue.artist as ProfileRow} // Pass the catalogue's artist
         />
       )}
     </div>

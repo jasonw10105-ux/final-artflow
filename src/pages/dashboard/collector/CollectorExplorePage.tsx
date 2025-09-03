@@ -1,121 +1,177 @@
-// src/pages/dashboard/collector/ExplorePage.tsx
+// src/pages/dashboard/collector/CollectorExplorePage.tsx
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-import { useAuth } from '@/contexts/AuthProvider';
-import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { Sparkles, Users, Map } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthProvider';
 
-interface Digest {
-  id: bigint;
+// --- TYPE DEFINITIONS ---
+interface SearchResult {
+  id: string;
   title: string;
-  type: 'artwork' | 'artist' | 'catalogue';
-  related_data: any;
-  created_at: string;
+  slug: string;
+  artist_slug: string;
+  image_url: string;
+  price: number;
+  status: string;
 }
 
-const ExplorePage = () => {
-  const { user } = useAuth();
-  const [selectedDigest, setSelectedDigest] = useState<Digest | null>(null);
+interface PublicList {
+    list_id: string;
+    list_title: string;
+    list_description: string;
+    collector_name: string;
+    artwork_previews: { id: string; image_url: string }[];
+}
 
-  // Fetch digests for this collector
-  const { data: digests = [], isLoading: loadingDigests } = useQuery({
-    queryKey: ['collectorDigests', user?.id],
-    queryFn: async (): Promise<Digest[]> => {
-      if (!user) return [];
-      const { data, error } = await supabase
-        .from('digests')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!user,
-  });
+// --- MAIN PAGE COMPONENT ---
+const CollectorExplorePage = () => {
+    const { user } = useAuth();
+    const [searchQuery, setSearchQuery] = useState('');
+    const [submittedQuery, setSubmittedQuery] = useState('');
 
-  return (
-    <div style={{ display: 'flex', maxWidth: '1400px', margin: '0 auto', padding: '2rem', gap: '2rem' }}>
-      {/* Left Sidebar: Digests */}
-      <aside style={{ width: '300px', borderRight: '1px solid var(--border)', paddingRight: '1rem' }}>
-        <h3>Your Digests</h3>
-        {loadingDigests ? (
-          <p>Loading...</p>
-        ) : digests.length === 0 ? (
-          <p>No digests yet. Your notifications will appear here.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {digests.map(d => (
-              <li key={d.id} style={{ marginBottom: '1rem' }}>
-                <button
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '0.5rem 1rem',
-                    borderRadius: 'var(--radius)',
-                    background: selectedDigest?.id === d.id ? 'var(--accent)' : 'var(--card)',
-                    color: selectedDigest?.id === d.id ? 'white' : 'inherit',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelectedDigest(d)}
-                >
-                  {d.title}
-                  <br />
-                  <small style={{ color: 'var(--muted-foreground)' }}>
-                    {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
-                  </small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </aside>
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSubmittedQuery(searchQuery);
+    };
 
-      {/* Right Panel: Digest Details */}
-      <section style={{ flex: 1 }}>
-        {selectedDigest ? (
-          <div>
-            <h2 style={{ marginBottom: '1rem' }}>{selectedDigest.title}</h2>
+    const { data: roadmapRecommendations, isLoading: loadingRoadmapRecs } = useQuery({
+        queryKey: ['roadmapExploreRecommendations', user?.id],
+        queryFn: async () => {
+            if (!user) return [];
+            const { data, error } = await supabase.rpc('get_personalized_artworks', { p_collector_id: user.id, p_limit: 8, p_offset: 0 });
+            if (error) throw error;
+            return (data || []).filter((rec: any) => rec.recommendation_reason === 'Matches your collection roadmap');
+        },
+        enabled: !!user,
+    });
+    
+    const { data: searchResults, isLoading: isSearching } = useQuery<SearchResult[], Error>({
+        queryKey: ['naturalLanguageSearch', submittedQuery],
+        queryFn: async () => {
+            if (!submittedQuery.trim()) return [];
+            const { data, error } = await supabase.rpc('search_artworks_with_natural_language', {
+                query_text: submittedQuery,
+                match_threshold: 0.75,
+                match_count: 20
+            });
+            if (error) throw new Error(error.message);
+            return data || [];
+        },
+        enabled: !!submittedQuery.trim(),
+    });
 
-            {/* Display learned behavior details */}
-            {selectedDigest.type === 'artwork' && selectedDigest.related_data.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-                {selectedDigest.related_data.map((art: any) => (
-                  <Link key={art.id} to={`/artworks/${art.slug}`} className="scroll-card">
-                    <img src={art.image_url || '/placeholder.png'} alt={art.title} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
-                    <p>{art.title}</p>
-                  </Link>
-                ))}
-              </div>
-            ) : selectedDigest.type === 'artist' && selectedDigest.related_data.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
-                {selectedDigest.related_data.map((artist: any) => (
-                  <Link key={artist.id} to={`/artists/${artist.slug}`} className="scroll-card-artist">
-                    <img src={artist.avatar_url || '/placeholder.png'} alt={artist.full_name} style={{ width: '100%', borderRadius: 'var(--radius)' }} />
-                    <p>{artist.full_name}</p>
-                  </Link>
-                ))}
-              </div>
-            ) : selectedDigest.type === 'catalogue' && selectedDigest.related_data.length > 0 ? (
-              <div>
-                {selectedDigest.related_data.map((item: any) => (
-                  <div key={item.id} style={{ marginBottom: '1rem', padding: '1rem', borderRadius: 'var(--radius)', background: 'var(--card)' }}>
-                    <Link to={`/artworks/${item.slug}`} style={{ fontWeight: 'bold' }}>{item.title}</Link>
-                    <p>{item.description}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No related data to display.</p>
-            )}
-          </div>
-        ) : (
-          <p>Select a digest on the left to view curated recommendations based on your learned behavior.</p>
-        )}
-      </section>
-    </div>
-  );
+    const { data: publicLists, isLoading: isLoadingLists } = useQuery<PublicList[], Error>({
+        queryKey: ['publicCollectorLists'],
+        queryFn: async () => {
+            const { data, error } = await supabase.rpc('get_public_collector_lists', { list_limit: 12 });
+            if (error) throw new Error(error.message);
+            return data || [];
+        }
+    });
+
+    return (
+        <div className="page-container">
+            <h1>Explore Art</h1>
+            <p className="page-subtitle">Discover art that resonates, through intelligent search and community curation.</p>
+
+            <div className="concierge-search-bar">
+                <Sparkles size={24} className="concierge-icon" />
+                <form onSubmit={handleSearchSubmit} className="w-full">
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search like you talk... e.g., 'calming blue abstract paintings for a large wall'"
+                        className="concierge-input"
+                    />
+                </form>
+            </div>
+
+            <div className="mt-8">
+                {isSearching ? (
+                    <p className="loading-message">Searching for matches...</p>
+                ) : submittedQuery && searchResults ? (
+                    <div>
+                        <h2 className="section-title">Results for "{submittedQuery}"</h2>
+                        {searchResults.length > 0 ? (
+                            <div className="artwork-grid">
+                                {searchResults.map(art => (
+                                    <div key={art.id} className="artwork-card">
+                                        <Link to={`/${art.artist_slug}/artwork/${art.slug}`}>
+                                            <div className="artwork-card-image-wrapper">
+                                                <img src={art.image_url || 'https://placehold.co/400x300?text=No+Image'} alt={art.title} className="artwork-card-image" />
+                                                <div className="artwork-card-status-badge">{art.status}</div>
+                                            </div>
+                                            <div className="artwork-card-info">
+                                                <h3>{art.title}</h3>
+                                                <p className="artwork-card-price">${art.price?.toLocaleString()}</p>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="empty-state-message">No artworks found matching your search. Try being a bit more general.</p>
+                        )}
+                    </div>
+                ) : (
+                    <>
+                        {loadingRoadmapRecs ? <p className="loading-message">Loading roadmap suggestions...</p> : roadmapRecommendations && roadmapRecommendations.length > 0 && (
+                             <div className="insight-section">
+                                <h2 className="section-title flex items-center gap-2"><Map size={24} /> Artworks for Your Roadmap</h2>
+                                <p className="section-description">Hand-picked by our AI to match your collection goals.</p>
+                                <div className="artwork-grid">
+                                    {roadmapRecommendations.map((art: any) => (
+                                        <div key={art.id} className="artwork-card">
+                                            <Link to={`/${art.artist.slug}/artwork/${art.slug}`}>
+                                                <div className="artwork-card-image-wrapper">
+                                                    <img src={art.artwork_images[0]?.image_url || 'https://placehold.co/400x300?text=No+Image'} alt={art.title} className="artwork-card-image" />
+                                                    <div className="artwork-card-status-badge">{art.status}</div>
+                                                </div>
+                                                <div className="artwork-card-info">
+                                                    <h3>{art.title}</h3>
+                                                    <p className="artwork-card-price">${art.price?.toLocaleString()}</p>
+                                                </div>
+                                            </Link>
+                                        </div>
+                                    ))}
+                                </div>
+                                <hr className="my-8 border-border" />
+                            </div>
+                        )}
+                        
+                        <div className="insight-section">
+                            <h2 className="section-title flex items-center gap-2"><Users size={24} /> Community Curations</h2>
+                            <p className="section-description">Discover art through the eyes of other collectors.</p>
+                            {isLoadingLists ? (
+                                <p className="loading-message">Loading community lists...</p>
+                            ) : publicLists && publicLists.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {publicLists.map(list => (
+                                        <Link to={`/list/${list.list_id}`} key={list.list_id} className="community-list-card">
+                                            <div className="preview-image-grid">
+                                                {list.artwork_previews.slice(0, 4).map((art, index) => (
+                                                    <img key={art.id} src={art.image_url} alt="artwork preview" className={index === 0 ? 'main-preview' : 'thumb-preview'}/>
+                                                ))}
+                                            </div>
+                                            <div className="list-info">
+                                                <h4 className="font-semibold">{list.list_title}</h4>
+                                                <p className="text-sm text-muted-foreground">Curated by {list.collector_name}</p>
+                                            </div>
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="empty-state-message">No public lists have been created yet. Be the first!</p>
+                            )}
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
+    );
 };
 
-export default ExplorePage;
+export default CollectorExplorePage;

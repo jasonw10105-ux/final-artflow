@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabaseClient';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { Navigation, Pagination, Autoplay } from 'swiper/modules';
-import { Palette, BarChart, MessageSquare, ShieldCheck } from 'lucide-react';
+import { Palette, BarChart, MessageSquare, ShieldCheck, Info } from 'lucide-react'; // Added Info icon for empty state
 import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
@@ -35,6 +35,11 @@ interface Artist {
   slug: string;
   short_bio: string | null;
 }
+
+// --- Constants for Fetch Limits ---
+const ARTWORK_LIMIT = 10;
+const CATALOGUE_LIMIT = 8;
+const ARTIST_LIMIT = 8;
 
 // --- Supabase fetchers ---
 const fetchRandomArtworks = async (count: number): Promise<Artwork[]> => {
@@ -69,6 +74,7 @@ const ArtworkCard = ({ item }: { item: Artwork }) => (
       src={item.image_url || 'https://placehold.co/400x400?text=No+Image'}
       alt={item.title || 'Artwork'}
       className="card-image"
+      loading="lazy" // Added lazy loading for images
     />
     <div className="card-info">
       <h4>{item.title || 'Untitled'}</h4>
@@ -84,6 +90,7 @@ const CatalogueCard = ({ item }: { item: Catalogue }) => (
       src={item.cover_image_url || 'https://placehold.co/400x400?text=No+Image'}
       alt={item.title || 'Catalogue'}
       className="card-image"
+      loading="lazy" // Added lazy loading for images
     />
     <div className="card-info">
       <h4>{item.title || 'Untitled Catalogue'}</h4>
@@ -98,6 +105,7 @@ const ArtistCard = ({ item }: { item: Artist }) => (
       src={item.avatar_url || 'https://placehold.co/400x400?text=No+Image'}
       alt={item.full_name || 'Artist'}
       className="card-image"
+      loading="lazy" // Added lazy loading for images
     />
     <div className="card-info">
       <h4>{item.full_name || 'Untitled Artist'}</h4>
@@ -106,16 +114,20 @@ const ArtistCard = ({ item }: { item: Artist }) => (
   </Link>
 );
 
-// --- Reusable Carousel ---
+// --- Reusable Carousel with Error/Empty States ---
 const ContentCarousel = ({
   title,
   data,
   isLoading,
+  isError, // Added for error handling
+  error,   // Added for error message
   renderCard,
 }: {
   title: string;
   data: any[] | undefined;
   isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
   renderCard: (item: any) => React.ReactNode;
 }) => (
   <section className="carousel-section">
@@ -128,6 +140,10 @@ const ContentCarousel = ({
         <p style={{ textAlign: 'center', lineHeight: '250px', color: 'var(--color-neutral-500)' }}>
           Loading {title}...
         </p>
+      </div>
+    ) : isError ? (
+      <div className="carousel-message error" role="alert">
+        <p>Error loading {title}: {error?.message || 'Please try again later.'}</p>
       </div>
     ) : data && data.length > 0 ? (
       <Swiper
@@ -149,7 +165,12 @@ const ContentCarousel = ({
           <SwiperSlide key={item.id}>{renderCard(item)}</SwiperSlide>
         ))}
       </Swiper>
-    ) : null}
+    ) : (
+      <div className="carousel-message empty">
+        <Info size={24} />
+        <p>No {title.toLowerCase()} found at the moment. Check back later!</p>
+      </div>
+    )}
   </section>
 );
 
@@ -172,19 +193,19 @@ const TestimonialCard = ({ quote, author, title }: { quote: string; author: stri
 
 // --- Main Marketing Page ---
 const MarketingPage = () => {
-  const { data: featuredArtworks, isLoading: isLoadingArtworks } = useQuery({
+  const { data: featuredArtworks, isLoading: isLoadingArtworks, isError: isErrorArtworks, error: errorArtworks } = useQuery({
     queryKey: ['featuredArtworks'],
-    queryFn: () => fetchRandomArtworks(10),
+    queryFn: () => fetchRandomArtworks(ARTWORK_LIMIT),
   });
 
-  const { data: featuredCatalogues, isLoading: isLoadingCatalogues } = useQuery({
+  const { data: featuredCatalogues, isLoading: isLoadingCatalogues, isError: isErrorCatalogues, error: errorCatalogues } = useQuery({
     queryKey: ['featuredCatalogues'],
-    queryFn: () => fetchRandomCatalogues(8),
+    queryFn: () => fetchRandomCatalogues(CATALOGUE_LIMIT),
   });
 
-  const { data: featuredArtists, isLoading: isLoadingArtists } = useQuery({
+  const { data: featuredArtists, isLoading: isLoadingArtists, isError: isErrorArtists, error: errorArtists } = useQuery({
     queryKey: ['featuredArtists'],
-    queryFn: () => fetchRandomArtists(8),
+    queryFn: () => fetchRandomArtists(ARTIST_LIMIT),
   });
 
   return (
@@ -205,6 +226,8 @@ const MarketingPage = () => {
         title="Featured Artworks"
         data={featuredArtworks}
         isLoading={isLoadingArtworks}
+        isError={isErrorArtworks}
+        error={errorArtworks}
         renderCard={item => <ArtworkCard item={item} />}
       />
 
@@ -229,14 +252,16 @@ const MarketingPage = () => {
         </div>
       </section>
 
-      {featuredCatalogues && featuredCatalogues.length > 0 && (
-        <ContentCarousel
-          title="Featured Catalogues"
-          data={featuredCatalogues}
-          isLoading={isLoadingCatalogues}
-          renderCard={item => <CatalogueCard item={item} />}
-        />
-      )}
+      {/* Conditional rendering for catalogue carousel only if there might be data */}
+      <ContentCarousel
+        title="Featured Catalogues"
+        data={featuredCatalogues}
+        isLoading={isLoadingCatalogues}
+        isError={isErrorCatalogues}
+        error={errorCatalogues}
+        renderCard={item => <CatalogueCard item={item} />}
+      />
+
 
       <section className="marketing-section">
         <h2 className="text-center">Powerful Tools, Effortless Management</h2>
@@ -276,6 +301,8 @@ const MarketingPage = () => {
         title="Featured Artists"
         data={featuredArtists}
         isLoading={isLoadingArtists}
+        isError={isErrorArtists}
+        error={errorArtists}
         renderCard={item => <ArtistCard item={item} />}
       />
 
