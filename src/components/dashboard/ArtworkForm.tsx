@@ -1,8 +1,12 @@
+// src/components/dashboard/ArtworkForm.tsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthProvider';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Database, ArtworkRow, ArtworkImageRow, ProfileRow, CatalogueRow, DimensionsJson, DateInfoJson, SignatureInfoJson, FramingInfoJson, EditionInfoJson, HistoricalEntryJson } from '@/types/database.types'; // Correct imports for direct Row types
+// Import directly exported Row types and JSONB types from database.types.ts
+import { Database, ArtworkRow, ArtworkImageRow, ProfileRow, CatalogueRow, DimensionsJson, DateInfoJson, SignatureInfoJson, FramingInfoJson, EditionInfoJson, HistoricalEntryJson } from '@/types/database.types';
+import { AppArtwork, AppProfile, AppArtworkImage, AppCatalogue } from '@/types/app-specific.types'; // Import application-specific types
+
 import Autocomplete from '@mui/material/Autocomplete';
 import TextField from '@mui/material/TextField';
 import Chip from '@mui/material/Chip';
@@ -45,18 +49,15 @@ type Rarity = ArtworkRow['rarity'];
 type FramingStatus = ArtworkRow['framing_status'];
 
 // Re-using Database types for JSONB structures
-type HistoricalEntry = HistoricalEntryJson; // Direct use from Database types
+type HistoricalEntry = HistoricalEntryJson;
 
-type Artwork = ArtworkRow & {
-  artist?: ProfileRow | null; // Joined artist data
-  artwork_images?: ArtworkImage[]; // Fetched images are here
-  artwork_catalogue_junction?: { catalogue: Catalogue }[];
-};
+// Extend ArtworkRow with joined relations
+type Artwork = AppArtwork;
 
-type Catalogue = CatalogueRow;
+type Catalogue = AppCatalogue;
 
-// Updated ArtworkImage type to include watermarked and visualization URLs, derived from Database
-type ArtworkImage = ArtworkImageRow;
+// ArtworkImage type derived directly from Database
+type ArtworkImage = AppArtworkImage;
 
 type PricingModel = 'fixed' | 'negotiable' | 'on_request';
 
@@ -80,17 +81,20 @@ interface ArtworkFormProps {
 // 2. Helper Functions (Moved to top level of component file for consistent access)
 // ---------------------------------------------------
 
+// Updated fetchArtworkAndCatalogues to return AppArtwork and AppProfile
 const fetchArtworkAndCatalogues = async (artworkId: string, userId: string) => {
   const { data: artworkData, error: artworkError } = await supabase
     .from('artworks')
-    .select('*, artist:profiles!user_id(full_name)')
+    .select('*, artist:profiles!user_id(id, full_name, slug)') // Select all profile fields needed for AppProfile
     .eq('id', artworkId)
     .single();
+
   if (artworkError) throw new Error(`Artwork not found: ${artworkError.message}`);
+  if (!artworkData) throw new Error(`Artwork with ID ${artworkId} not found.`);
 
   const { data: allUserCatalogues, error: allCatError } = await supabase
     .from('catalogues')
-    .select('*')
+    .select('*, artist:profiles!user_id(id, full_name, slug)') // Select artist for catalogue
     .eq('user_id', userId);
   if (allCatError) throw new Error(`Could not fetch catalogues: ${allCatError.message}`);
 
@@ -101,7 +105,8 @@ const fetchArtworkAndCatalogues = async (artworkId: string, userId: string) => {
   if (junctionError) throw new Error(`Could not fetch assignments: ${junctionError.message}`);
 
   const assignedCatalogueIds = new Set(assignedJunctions.map((j) => j.catalogue_id));
-  const assignedCatalogues = allUserCatalogues.filter((cat) => assignedCatalogueIds.has(cat.id));
+  // Filter and cast to AppCatalogue
+  const assignedCatalogues = (allUserCatalogues || []).filter((cat) => assignedCatalogueIds.has(cat.id)) as AppCatalogue[];
 
   // Also fetch all artwork_images for this artwork
   const { data: imgData, error: imgError } = await supabase
@@ -111,7 +116,12 @@ const fetchArtworkAndCatalogues = async (artworkId: string, userId: string) => {
     .order('position', { ascending: true });
   if (imgError) console.error("Error fetching artwork images:", imgError);
 
-  return { artworkData, allUserCatalogues, assignedCatalogues, imgData };
+  return {
+    artworkData: artworkData as AppArtwork, // Cast to AppArtwork
+    allUserCatalogues: (allUserCatalogues || []) as AppCatalogue[], // Cast to AppCatalogue[]
+    assignedCatalogues,
+    imgData: (imgData || []) as AppArtworkImage[] // Cast to AppArtworkImage[]
+  };
 };
 
 const updateSaleStatus = async ({ artworkId, identifier, isSold }: { artworkId: string, identifier: string, isSold: boolean }) => {
@@ -271,7 +281,7 @@ async function generateWatermark(
       fetch(fontUrl, { mode: 'cors' }),
     ]);
 
-    if (!fontResponse.ok) throw new Error(`Failed to fetch font: ${fontUrl}`);
+    if (!fontResponse.ok) throw new Error(`Failed to fetch font: ${fontResponse.statusText} from ${fontUrl}`);
     const fontBlob = await fontResponse.blob();
 
     // Create a temporary style for the font to be loaded by the browser
@@ -466,15 +476,15 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
   const queryClient = useQueryClient();
 
   // -------------------- State Management (All hooks at top-level) --------------------
-  const [artwork, setArtwork] = useState<Partial<Artwork>>({});
+  const [artwork, setArtwork] = useState<Partial<AppArtwork>>({});
   const [artistFullName, setArtistFullName] = useState<string>(''); // Explicit state for artist name
   const [originalTitle, setOriginalTitle] = useState('');
-  const [allCatalogues, setAllCatalogues] = useState<Catalogue[]>([]);
-  const [selectedCatalogues, setSelectedCatalogues] = useState<Catalogue[]>([]);
+  const [allCatalogues, setAllCatalogues] = useState<AppCatalogue[]>([]);
+  const [selectedCatalogues, setSelectedCatalogues] = useState<AppCatalogue[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
-  const [images, setImages] = useState<ArtworkImage[]>([]); // All images for the artwork
-  const [primaryArtworkImage, setPrimaryArtworkImage] = useState<ArtworkImage | null>(null); // The actual primary image object
+  const [images, setImages] = useState<AppArtworkImage[]>([]); // All images for the artwork
+  const [primaryArtworkImage, setPrimaryArtworkImage] = useState<AppArtworkImage | null>(null); // The actual primary image object
 
   // Loading states for client-side image processing
   const [isSaving, setIsSaving] = useState(false);
@@ -560,8 +570,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
 
   // -------------------- Client-side Image Processing (Dominant Colors, Watermark, Visualization) --------------------
   const collectImageMetadataAndGenerateImages = useCallback(async (
-    currentPrimaryImage: ArtworkImage,
-    currentArtworkData: Partial<Artwork>, // Data from the form (potentially unsaved)
+    currentPrimaryImage: AppArtworkImage,
+    currentArtworkData: Partial<AppArtwork>, // Data from the form (potentially unsaved)
     currentArtistFullName: string,
     force: boolean = false
   ) => {
@@ -573,7 +583,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
     let latestDominantColors: string[] | null = currentArtworkData.dominant_colors || null;
 
     try {
-      const imageUpdatePayload: Partial<ArtworkImage> = {};
+      const imageUpdatePayload: Partial<AppArtworkImage> = {};
       let shouldUpdateArtworkImageRecord = false;
       let shouldTriggerBackendMetadataUpdate = false;
 
@@ -592,7 +602,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       // Re-generate if force, or URL is null, or primary image URL changes, or artwork title/artist name changes
       const currentWatermarkText = `${currentArtworkData.title || ''} by ${currentArtistFullName}`;
       const needsWatermark = force || !currentPrimaryImage.watermarked_image_url ||
-                             !currentPrimaryImage.watermarked_image_url.includes(encodeURIComponent(currentWatermarkText.toLowerCase().replace(/\s/g, '_'))) ||
+                             (currentPrimaryImage.watermarked_image_url && !currentPrimaryImage.watermarked_image_url.includes(encodeURIComponent(currentWatermarkText.toLowerCase().replace(/\s/g, '_')))) ||
                              (currentArtworkData.title !== artwork.title) || (currentArtistFullName !== artistFullName); // Compare against current form state/local artist name
 
       if (needsWatermark) {
@@ -670,8 +680,8 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         return null;
       }
       const [{ data: artworkData, error: artworkError }, { data: profileData, error: profileError }] = await Promise.all([
-        supabase.from('artworks').select('*, artist:profiles!user_id(full_name)').eq('id', artworkId).single(),
-        supabase.from('profiles').select('id, full_name, default_has_certificate_of_authenticity').eq('id', user.id).single() // Fetch artist's full_name
+        supabase.from('artworks').select('*, artist:profiles!user_id(id, full_name, slug)').eq('id', artworkId).single(), // Fetch artist profile for `AppArtwork`
+        supabase.from('profiles').select('id, full_name, default_has_certificate_of_authenticity').eq('id', user.id).single() // Fetch artist's full_name (current user)
       ]);
 
       if (artworkError) throw new Error(`Artwork not found: ${artworkError.message}`);
@@ -680,7 +690,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
 
       const { data: allUserCatalogues, error: allCatError } = await supabase
         .from('catalogues')
-        .select('*')
+        .select('*, artist:profiles!user_id(id, full_name, slug)') // Fetch artist for catalogues
         .eq('user_id', user.id);
       if (allCatError) throw new Error(`Could not fetch catalogues: ${allCatError.message}`);
 
@@ -691,7 +701,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       if (junctionError) throw new Error(`Could not fetch assignments: ${junctionError.message}`);
 
       const assignedCatalogueIds = new Set(assignedJunctions.map((j) => j.catalogue_id));
-      const assignedCatalogues = allUserCatalogues.filter((cat) => assignedCatalogueIds.has(cat.id));
+      const assignedCatalogues = (allUserCatalogues || []).filter((cat) => assignedCatalogueIds.has(cat.id)) as AppCatalogue[];
 
       // Fetch all artwork_images for this artwork
       const { data: imgData, error: imgError } = await supabase
@@ -701,7 +711,13 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         .order('position', { ascending: true });
       if (imgError) console.error("Error fetching artwork images:", imgError);
 
-      return { artworkData, allUserCatalogues, assignedCatalogues, profileData, imgData };
+      return {
+        artworkData: artworkData as AppArtwork, // Cast to AppArtwork
+        allUserCatalogues: (allUserCatalogues || []) as AppCatalogue[], // Cast to AppCatalogue[]
+        assignedCatalogues,
+        profileData: profileData as AppProfile | null, // Cast to AppProfile
+        imgData: (imgData || []) as AppArtworkImage[] // Cast to AppArtworkImage[]
+      };
     },
     enabled: !!artworkId && artworkId !== 'new-artwork-temp-id' && !!user?.id,
     initialData: null,
@@ -729,11 +745,11 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       });
 
       // Set artist full name for watermark generation
-      setArtistFullName(artworkData.artist?.full_name || profileData?.full_name || 'Artist Unknown'); // Prioritize artwork's artist, then current user profile
+      setArtistFullName(artworkData.artist?.full_name || (profileData as AppProfile)?.full_name || 'Artist Unknown'); // Prioritize artwork's artist, then current user profile
       setOriginalTitle(artworkData.title || '');
       setAllCatalogues(allUserCatalogues);
 
-      const systemCatalogue = allUserCatalogues.find((cat) => cat.is_system_catalogue);
+      const systemCatalogue = allCatalogues.find((cat) => cat.is_system_catalogue);
       if (assignedCatalogues.length === 0 && systemCatalogue && artworkData.status === 'available') {
         setSelectedCatalogues([systemCatalogue]);
       } else {
@@ -765,7 +781,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         exhibitions: [],
         literature: [],
         subject: null,
-        has_certificate_of_authenticity: profile?.default_has_certificate_of_authenticity ?? false,
+        has_certificate_of_authenticity: (profile as AppProfile)?.default_has_certificate_of_authenticity ?? false,
         certificate_of_authenticity_details: null,
         condition: null,
         condition_notes: null,
@@ -773,7 +789,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         framing_status: 'unframed',
         primary_image_url: null, // New artwork starts with no primary image
       });
-      setArtistFullName(profile?.full_name || 'Artist Unknown'); // Default artist name for new artwork
+      setArtistFullName((profile as AppProfile)?.full_name || 'Artist Unknown'); // Default artist name for new artwork
       setOriginalTitle('');
       setAllCatalogues(data?.allUserCatalogues || []);
       setSelectedCatalogues([]);
@@ -784,7 +800,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       setSelectedSecondaryMediumType(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, artworkId, user?.id, navigate, supabase, profile?.default_has_certificate_of_authenticity, profile?.full_name]);
+  }, [data, artworkId, user?.id, navigate, supabase, (profile as AppProfile)?.default_has_certificate_of_authenticity, (profile as AppProfile)?.full_name]);
 
 
   // UseEffect to parse artwork.medium into Autocomplete states when artwork.medium changes
@@ -1425,7 +1441,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       artworkPayload.dominant_colors = artwork.dominant_colors || null;
       artworkPayload.primary_image_url = artwork.primary_image_url || null; // Ensure this is also saved if changed elsewhere
 
-      artworkPayload.artwork_images = undefined;
+      artworkPayload.artwork_images = undefined; // Don't send relations back to DB update
       artworkPayload.artwork_catalogue_junction = undefined;
       artworkPayload.artist = undefined;
 
@@ -1439,7 +1455,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
         artworkPayload.slug = slugData;
       }
 
-      let savedArtwork: Artwork;
+      let savedArtwork: Artwork; // Use AppArtwork type
       let currentArtworkId = artworkId;
 
       if (currentArtworkId && currentArtworkId !== 'new-artwork-temp-id') {
@@ -1450,7 +1466,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
           .select()
           .single();
         if (updateError) throw updateError;
-        savedArtwork = updatedData;
+        savedArtwork = updatedData as Artwork; // Cast to Artwork
       } else {
         if (!user?.id) throw new Error("User not authenticated to create artwork.");
         const { data: insertedData, error: insertError } = await supabase
@@ -1459,7 +1475,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
           .select()
           .single();
         if (insertError) throw insertError;
-        savedArtwork = insertedData;
+        savedArtwork = insertedData as Artwork; // Cast to Artwork
         navigate(`/u/artworks/edit/${savedArtwork.id}`);
         currentArtworkId = savedArtwork.id;
       }
@@ -1474,7 +1490,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
       // Explicitly trigger client-side processing on save if a primary image exists
       // This will ensure dominant colors, watermarks, and visualizations are up-to-date
       if (primaryArtworkImage && savedArtwork.id) {
-        // Force the generation to ensure all fields are up-to-date before showing success
+        // Use the saved artwork's data, which now has the latest title/dimensions etc.
         await collectImageMetadataAndGenerateImages(primaryArtworkImage, artworkPayload, artistFullName, true);
       }
 
@@ -1688,7 +1704,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
             name="price"
             label={pricingModel === 'fixed' ? 'Price (USD)' : 'Display Price (USD)'}
             type="number"
-            step="0.01"
+            inputProps={{ step: "0.01" }} // Use inputProps for step
             value={artwork.price ?? ''}
             onChange={handleFormChange}
             onBlur={() => setTouched(prev => ({ ...prev, price: true }))}
@@ -1706,7 +1722,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
               name="min_price"
               label="Min Price (Optional)"
               type="number"
-              step="0.01"
+              inputProps={{ step: "0.01" }} // Use inputProps for step
               value={artwork.min_price ?? ''}
               onChange={handleFormChange}
               onBlur={() => setTouched(prev => ({ ...prev, min_price: true }))}
@@ -1717,7 +1733,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
               name="max_price"
               label="Max Price (Optional)"
               type="number"
-              step="0.01"
+              inputProps={{ step: "0.01" }} // Use inputProps for step
               value={artwork.max_price ?? ''}
               onChange={handleFormChange}
               onBlur={() => setTouched(prev => ({ ...prev, max_price: true }))}
@@ -1836,7 +1852,7 @@ const ArtworkForm: React.FC<ArtworkFormProps> = ({ artworkId, formId, onSaveSucc
                 type="text"
                 value={(artwork.signature_info?.location || '')}
                 onChange={handleFormChange}
-                onBlur={() => setTouched(prev => ({ ...prev, signature_info: { ...prev.signature_info, location: true } }))}
+                onBlur={() => setTouched(prev => ({ ...prev.signature_info, location: true } ))} // Corrected onBlur path
                 error={Boolean(touched.signature_info?.location && (artwork.signature_info?.location || '').trim().length === 0)}
                 helperText={touched.signature_info?.location && (artwork.signature_info?.location || '').trim().length === 0 && 'Signature location is required if signed'}
                 fullWidth

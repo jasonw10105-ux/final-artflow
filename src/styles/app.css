@@ -15,7 +15,7 @@
     --ring: #94a3b8; /* Focus ring color */
 
     /* Primary Accent Color - Dribbble's blue/purple tone */
-    --primary: #6b46c1; /* Deep purple/blue */
+    --primary: #B20A2C; /* Deep purple/blue */
     --primary-foreground: #ffffff; /* White text on primary */
     --primary-hover: #5a3aae; /* Slightly darker primary on hover */
     --primary-rgb: 107, 70, 193; /* RGB for primary for rgba usage */
@@ -446,6 +446,7 @@ nav img {
     display: flex;
     justify-content: center; /* Center form horizontally on mobile */
 }
+
 @media (min-width: 992px) {
     .waitlist-form-side {
         justify-content: flex-end; /* Align form to right on desktop */
@@ -609,17 +610,6 @@ nav img {
 }
 
 /* Final CTA modifications */
-.final-cta.page-container {
-    padding-top: 4rem;
-    padding-bottom: 4rem;
-    background: var(--primary); /* Keep primary background */
-    color: var(--primary-foreground);
-    text-align: center;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    margin-bottom: 3rem;
-    transition: all 0.3s ease-in-out; /* Smoother transition for final CTA */
-}
 .final-cta:hover {
     transform: translateY(-5px); /* Slight lift on hover */
     box-shadow: 0 15px 20px -5px rgba(0, 0, 0, 0.2);
@@ -651,7 +641,7 @@ p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
    3. Reusable Components
    ========================================================================== */
 .page-container {
-    max-width: 1200px;
+    max-width: 1380px;
     margin: 0 auto;
     padding: 2rem;
 }
@@ -936,13 +926,14 @@ p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
 }
 
 .tabbed-feature-section .text-center {
-    max-width: 760px;
+    max-width: 650px;
     display: flex;
     flex: none;
     flex-direction: column;
     flex-wrap: nowrap;
     gap: 16px;
     height: min-content;
+    align-items: center;
 }
 
 .tabbed-feature-section .text-center h2, .tabbed-feature-section .text-center p {
@@ -958,12 +949,13 @@ p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
     height: 32px;
     width: min-content;;
     overflow: hidden;
-    padding: 7px 12px 6px 12px;
+    padding: 8px 15px 6px 15px;
     position: relative;
     white-space: nowrap;
     letter-spacing: 0.4px;
     font-weight: 600;
     align-items: center;
+    margin: 0;
 }
 
 
@@ -974,6 +966,7 @@ p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
     position: fixed;
     top: 0;
     left: 0;
+    max-width: 800px;
     width: 100%;
     z-index: 1000;
     padding: 1rem 2rem;
@@ -3153,6 +3146,7 @@ footer {
     align-items: center;
     display: flex;
     background: linear-gradient(180deg, #FFFBD5 0%, #B20A2C 100%);
+    padding-top: 4rem;
 }
 
 .modal-footer {
@@ -4229,7 +4223,6 @@ position: absolute;
     gap: 2.5rem;
     align-items: center;
     padding: 3rem 2rem 5rem 2rem; /* Adjust padding for hero section */
-    max-width: 1200px; /* Ensure max-width for content */
     margin: 0 auto; /* Center content horizontally */
     flex-grow: 1; /* Allow content to grow and fill space */
 }
@@ -4282,10 +4275,16 @@ position: absolute;
     }
 }
 
+.waitlist-form-side .card {
+    padding: 2rem;
+    width: 500px;
+}
+
 .waitlist-form-side {
     display: flex;
     justify-content: center; /* Center form horizontally on mobile */
 }
+
 @media (min-width: 992px) {
     .waitlist-form-side {
         justify-content: flex-end; /* Align form to right on desktop */
@@ -4456,13 +4455,13 @@ position: absolute;
 .final-cta.page-container {
     padding-top: 4rem;
     max-width: 800px;
+    width: 100%;
     padding-bottom: 4rem;
     background: var(--primary); /* Keep primary background */
     color: var(--primary-foreground);
     text-align: center;
     border-radius: var(--radius);
     box-shadow: var(--shadow);
-    margin-bottom: 3rem;
     transition: all 0.3s ease-in-out; /* Smoother transition for final CTA */
 }
 .final-cta:hover {

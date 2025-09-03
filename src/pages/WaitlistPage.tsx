@@ -183,7 +183,7 @@ const WaitlistPage = () => {
         {
             id: 'artist-connect',
             label: 'Nurture relationships',
-            heading: 'A more human way to connect with collectors',
+            heading: 'A more human way to connect',
             icon: MessageCircleHeart,
             content: (
                 <>
@@ -201,7 +201,7 @@ const WaitlistPage = () => {
     const collectorFeatures: FeatureTab[] = [
         {
             id: 'collector-discovery',
-            label: 'Discover with intent',
+            label: 'Made for you',
             heading: 'Discover art that feels like it was made for you',
             icon: Sparkles,
             content: (
@@ -304,7 +304,7 @@ const WaitlistPage = () => {
             <section className="marketing-section">
                  <FeatureTabSection
                     audience="For collectors"
-                    title="A more considered way to collect."
+                    title="A more considered way to collect"
                     description="Find art that truly moves you. We provide the tools and insights to help you build a collection with passion and purpose."
                     features={collectorFeatures}
                 />

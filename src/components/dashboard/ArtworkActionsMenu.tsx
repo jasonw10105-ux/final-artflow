@@ -1,14 +1,15 @@
-// src/components/dashboard/ArtworkActionsMenu.tsx
 import React, { useState } from 'react';
 import { Menu, MenuItem, Backdrop } from '@mui/material'; // Backdrop for modal like effect
 import { handleDownload } from '../../utils/imageUtils'; // Assuming imageUtils exists
-import { AppArtwork } from '@/types/app.types'; // Use AppArtwork for consistency
+// Import AppArtwork from the new app-specific.types.ts
+import { AppArtwork, AppProfile } from '@/types/app-specific.types';
 import { useAuth } from '@/contexts/AuthProvider';
-import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus, Eye, XCircle } from 'lucide-react'; // --- Fixed: Import XCircle and Eye
+import toast from 'react-hot-toast'; // --- Fixed: import toast directly
 import { Link } from 'react-router-dom';
 import ShareButton from '../ui/ShareButton'; // Reusable ShareButton component
 import '@/styles/app.css'; // Import the centralized styles
+import { ShareButtonProps } from '@/types/modals'; // Import ShareButtonProps from modals.d.ts
 
 interface ArtworkActionsMenuProps {
   artwork: AppArtwork; // Use AppArtwork
@@ -97,7 +98,7 @@ const MarkAsSoldModal: React.FC<MarkAsSoldModalProps> = ({ isOpen, onClose, artw
 
 
 const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
-  const { profile } = useAuth();
+  const { profile } = useAuth(); // profile is now AppProfile
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const isOpen = Boolean(anchorEl);
   const [showMarkAsSoldModal, setShowMarkAsSoldModal] = useState(false); // For "What If" status change
@@ -116,7 +117,7 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
   const primaryImageUrl = primaryImage?.image_url || null;
 
 
-  const publicArtworkUrl = profile?.slug && artwork.slug ? `${window.location.origin}/u/${profile.slug}/artwork/${artwork.slug}` : null;
+  const publicArtworkUrl = (profile as AppProfile)?.slug && artwork.slug ? `${window.location.origin}/u/${(profile as AppProfile).slug}/artwork/${artwork.slug}` : null;
 
   const handleMarkAsSold = () => {
     setShowMarkAsSoldModal(true);
@@ -195,25 +196,35 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
           </MenuItem>
         )}
 
-        {(artwork.status === 'sold' || artwork.status === 'draft' || artwork.status === 'pending' || artwork.status === 'on hold') && (
+        {(artwork.status === 'sold' || artwork.status === 'draft' || artwork.status === 'pending' || artwork.status === 'on_hold') && ( // Fixed status type
           <MenuItem onClick={handleMarkAsAvailable}>
             <CheckCircle size={18} className="mr-2" /> Mark as Available
           </MenuItem>
         )}
 
-        {(artwork.watermarked_image_url || artwork.visualization_image_url) && (
-            <MenuItem onClick={() => { /* This item is just a container for sub-downloads */ }}>
+        {(artwork.artwork_images?.[0]?.watermarked_image_url || artwork.artwork_images?.[0]?.visualization_image_url) && (
+            // This MenuItem acts as a parent for sub-downloads, it should not have its own onClick that closes the menu
+            <MenuItem className="relative group/download">
                 <Download size={18} className="mr-2" /> Download Images
-                {artwork.watermarked_image_url && (
-                    <MenuItem onClick={() => handleDownload(artwork.watermarked_image_url!, `${artwork.slug ?? 'artwork'}-watermarked.png`)} className="sub-menu-item">
-                        <Archive size={18} className="mr-2"/> Watermarked
-                    </MenuItem>
-                )}
-                {artwork.visualization_image_url && (
-                    <MenuItem onClick={() => handleDownload(artwork.visualization_image_url!, `${artwork.slug ?? 'artwork'}-visualization.jpg`)} className="sub-menu-item">
-                        <Archive size={18} className="mr-2"/> Visualization
-                    </MenuItem>
-                )}
+                <Menu
+                    anchorEl={anchorEl} // Use parent menu's anchor
+                    open={isOpen} // Show when parent is open
+                    onClose={handleClose}
+                    anchorOrigin={{ horizontal: 'left', vertical: 'top' }} // Position sub-menu to the right
+                    transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                    PaperProps={{ className: "sub-menu" }} // Apply specific styling if needed
+                >
+                    {artwork.artwork_images?.[0]?.watermarked_image_url && (
+                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.watermarked_image_url!, `${artwork.slug ?? 'artwork'}-watermarked.png`)} className="sub-menu-item">
+                            <Archive size={18} className="mr-2"/> Watermarked
+                        </MenuItem>
+                    )}
+                    {artwork.artwork_images?.[0]?.visualization_image_url && (
+                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.visualization_image_url!, `${artwork.slug ?? 'artwork'}-visualization.jpg`)} className="sub-menu-item">
+                            <Archive size={18} className="mr-2"/> Visualization
+                        </MenuItem>
+                    )}
+                </Menu>
             </MenuItem>
         )}
 
@@ -241,7 +252,7 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
           <ShareButton
             shareUrl={publicArtworkUrl}
             title={artwork.title || "Artwork"}
-            byline={profile?.full_name || ""}
+            byline={(profile as AppProfile)?.full_name || ""}
             previewImageUrls={primaryImageUrl ? [primaryImageUrl] : []}
             isOpen={showShareModal}
             onClose={() => setShowShareModal(false)}
@@ -250,5 +261,6 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
     </>
   );
 };
+
 
 export default ArtworkActionsMenu;

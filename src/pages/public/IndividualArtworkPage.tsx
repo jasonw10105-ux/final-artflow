@@ -1,3 +1,4 @@
+// src/pages/public/IndividualArtworkPage.tsx
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -7,19 +8,33 @@ import InquiryModal from '@/components/public/InquiryModal';
 import ShareModal from '@/components/public/ShareModal';
 import VisualizationModal from '@/components/public/VisualizationModal';
 
-// Import directly exported Row types and JSONB types
+// Import directly exported Row types and JSONB types from database.types.ts
 import { ArtworkRow, ArtworkImageRow, ProfileRow, DimensionsJson, FramingInfoJson, SignatureInfoJson, DateInfoJson, HistoricalEntryJson, LocationJson } from '@/types/database.types';
 import { v4 as uuidv4 } from 'uuid'; // For similar artworks mapping
 
 import { Share2, Eye, Heart, ShoppingBag, Camera } from 'lucide-react';
 import '@/styles/app.css';
 
-// --- APPLICATION-SPECIFIC TYPES ---
-// AppArtwork now extends ArtworkRow and adds relations (e.g., artist, artwork_images)
-export interface AppArtwork extends ArtworkRow {
-  artist?: ProfileRow | null; // Joined artist data
-  artwork_images?: ArtworkImageRow[]; // Joined images
+// --- APPLICATION-SPECIFIC TYPES (Defined here as app.types.ts is absent) ---
+// These are interfaces for the data structure after Supabase joins are applied.
+
+// Profile type, potentially with additional app-specific fields or relations
+export interface AppProfile extends ProfileRow {
+  // Add any specific relations or computed fields you might fetch with profiles
 }
+
+// AppArtwork: Extends the raw ArtworkRow with common joined relations
+export interface AppArtwork extends ArtworkRow {
+  artist?: AppProfile | null; // Joined artist profile data
+  artwork_images?: AppArtworkImage[]; // Joined artwork images
+  // Add any other specific joined relations (e.g., 'catalogues', 'tags' etc.)
+}
+
+// AppArtworkImage: Extends the raw ArtworkImageRow
+export interface AppArtworkImage extends ArtworkImageRow {
+  // If artwork_images ever has further joined data, add it here.
+}
+
 
 // --- TYPE DEFINITIONS for RPCs ---
 interface ArtworkInsights {
@@ -51,7 +66,59 @@ const fetchArtworkBySlug = async (slug: string): Promise<AppArtwork> => {
         });
     }
 
-    return data as AppArtwork;
+    // Explicitly cast to AppArtwork, ensuring all base ArtworkRow fields are present or null/undefined
+    const baseArtwork: ArtworkRow = {
+      id: data?.id || uuidv4(), // Fallback if data?.id is somehow missing
+      user_id: data?.user_id || '', // Must be present
+      created_at: data?.created_at || null,
+      updated_at: data?.updated_at || null,
+      slug: data?.slug || null,
+      title: data?.title || null,
+      description: data?.description || null,
+      price: data?.price || null,
+      status: data?.status || 'available', // Provide a default if possible
+      is_price_negotiable: data?.is_price_negotiable || null,
+      min_price: data?.min_price || null,
+      max_price: data?.max_price || null,
+      dimensions: data?.dimensions || null,
+      location: data?.location || null,
+      medium: data?.medium || null,
+      date_info: data?.date_info || null,
+      signature_info: data?.signature_info || null,
+      framing_info: data?.framing_info || null,
+      provenance: data?.provenance || null,
+      currency: data?.currency || null,
+      edition_info: data?.edition_info || null,
+      genre: data?.genre || null,
+      dominant_colors: data?.dominant_colors || null,
+      keywords: data?.keywords || null,
+      subject: data?.subject || null,
+      orientation: data?.orientation || null,
+      inventory_number: data?.inventory_number || null,
+      private_note: data?.private_note || null,
+      provenance_notes: data?.provenance_notes || null,
+      exhibitions: data?.exhibitions || null,
+      literature: data?.literature || null,
+      has_certificate_of_authenticity: data?.has_certificate_of_authenticity || null,
+      certificate_of_authenticity_details: data?.certificate_of_authenticity_details || null,
+      condition: data?.condition || null,
+      rarity: data?.rarity || null,
+      framing_status: data?.framing_status || null,
+      primary_image_url: data?.primary_image_url || null,
+      embedding: data?.embedding || null,
+      // Any other fields that are part of ArtworkRow must be explicitly mapped or defaulted
+      // e.g. condition_notes
+      condition_notes: data?.condition_notes || null,
+    };
+    
+    // Construct the AppArtwork object with relations
+    const appArtwork: AppArtwork = {
+        ...baseArtwork,
+        artist: data?.artist as AppProfile | null,
+        artwork_images: data?.artwork_images as AppArtworkImage[] | undefined,
+    };
+
+    return appArtwork;
 };
 
 
@@ -68,20 +135,26 @@ const fetchSimilarArtworks = async (artworkId: string): Promise<AppArtwork[]> =>
     });
     if (error) { console.error("Error fetching similar artworks:", error); return []; }
     // The RPC returns { id, title, image_url, slug, artist_id, artist_full_name, artist_slug }
-    // We need to map it to AppArtwork structure
+    // We need to map it to AppArtwork structure, providing defaults for ArtworkRow fields
     return (data || []).map(art => ({
-        ...art,
-        // Populate base ArtworkRow fields from RPC data (some might be null)
-        user_id: art.artist_id, created_at: null, updated_at: null, price: null, currency: null,
-        medium: null, description: null, status: 'available', rarity: null, framing_status: null,
-        condition: null, has_certificate_of_authenticity: null, certificate_of_authenticity_details: null,
-        location: null, genre: null, subject: null, orientation: null, dominant_colors: null,
-        keywords: null, provenance: null, provenance_notes: null, inventory_number: null,
-        private_note: null, dimensions: null, date_info: null, signature_info: null,
-        framing_info: null, edition_info: null, exhibitions: null, literature: null,
-        embedding: null, // assuming embedding from RPC is not mapped directly to ArtworkRow
+        id: art.id,
+        user_id: art.artist_id, // Assuming artist_id from RPC maps to user_id
+        created_at: null, updated_at: null, price: null, currency: null,
+        medium: null, description: null, status: 'available', // Default status
+        is_price_negotiable: null, min_price: null, max_price: null,
+        dimensions: null, location: null, date_info: null, signature_info: null,
+        framing_info: null, provenance: null, edition_info: null, genre: null,
+        dominant_colors: null, keywords: null, subject: null, orientation: null,
+        inventory_number: null, private_note: null, provenance_notes: null,
+        exhibitions: null, literature: null, has_certificate_of_authenticity: null,
+        certificate_of_authenticity_details: null, condition: null, rarity: null,
+        framing_status: null, primary_image_url: art.image_url, embedding: null,
+        condition_notes: null, // Add missing field
+
+        slug: art.slug,
+        title: art.title,
         artwork_images: [{
-          id: uuidv4(), // Generate unique ID for this placeholder image
+          id: uuidv4(),
           artwork_id: art.id,
           image_url: art.image_url,
           watermarked_image_url: null, visualization_image_url: null,
@@ -138,7 +211,7 @@ const IndividualArtworkPage = () => {
   let formattedLocation = 'Not specified';
   try {
     if (artwork.location) {
-      const locationData = JSON.parse(artwork.location) as LocationJson; // Cast to LocationJson
+      const locationData = JSON.parse(artwork.location) as LocationJson;
       formattedLocation = [locationData.city, locationData.country].filter(Boolean).join(', ');
     }
   } catch (e) {
@@ -146,18 +219,18 @@ const IndividualArtworkPage = () => {
   }
 
   // Formatting dimensions
-  const dimensions = artwork.dimensions; // Directly from artwork object
+  const dimensions = artwork.dimensions;
   const formattedDimensions = dimensions ? (
     `${dimensions.height || '?'} x ${dimensions.width || '?'} ${dimensions.depth ? `x ${dimensions.depth}` : ''} ${dimensions.unit || 'cm'}`
   ) : 'Dimensions not available';
 
   // Formatting framing info
-  const framingInfo = artwork.framing_info; // Directly from artwork object
+  const framingInfo = artwork.framing_info;
   const framingStatusText = artwork.framing_status ? artwork.framing_status.replace(/_/g, ' ') : 'Not specified';
   const framingDetailsText = artwork.framing_status === 'framed' && framingInfo?.details ? `: ${framingInfo.details}` : '';
 
   // Formatting signature info
-  const signatureInfo = artwork.signature_info; // Directly from artwork object
+  const signatureInfo = artwork.signature_info;
   const signatureText = signatureInfo?.is_signed ? `Signed (${signatureInfo.location || 'location not specified'})` : 'Not signed';
 
   return (
@@ -280,19 +353,19 @@ const IndividualArtworkPage = () => {
       {artwork && (
         <>
           <InquiryModal
-            isOpen={showInquiryModal} // Corrected prop name
+            isOpen={showInquiryModal}
             onClose={() => setShowInquiryModal(false)}
             artwork={artwork}
           />
           <ShareModal
-            isOpen={showShareModal} // Corrected prop name
+            isOpen={showShareModal}
             onClose={() => setShowShareModal(false)}
             artwork={artwork}
             shareUrl={window.location.href}
           />
           {visualizationImageUrl && (
             <VisualizationModal
-              isOpen={showVisualizationModal} // Corrected prop name
+              isOpen={showVisualizationModal}
               onClose={() => setShowVisualizationModal(false)}
               imageUrl={visualizationImageUrl}
               artworkTitle={artwork.title || 'Untitled'}

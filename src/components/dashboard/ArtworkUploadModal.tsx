@@ -1,18 +1,20 @@
-// src/ArtworkUploadModal.tsx
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { supabase } from "@/lib/supabaseClient";
-import { useArtworkUploadStore } from "@/stores/artworkUploadStore";
+import { useArtworkUploadStore } from "@/stores/artworkUploadStore"; // Assuming this store exists
 import toast from "react-hot-toast";
 
 interface ArtworkUploadModalProps {
   open: boolean;
   onClose: () => void;
   artworkId: string;
+  // If you need to trigger a re-fetch on the ArtworkForm after an image is uploaded and primary_image_url is set,
+  // you might want to add an onUploadSuccess prop here:
+  // onUploadComplete?: (artworkId: string, primaryImageUrl: string) => void;
 }
 
 export default function ArtworkUploadModal({ open, onClose, artworkId }: ArtworkUploadModalProps) {
-  const { addImages } = useArtworkUploadStore();
+  const { addImages } = useArtworkUploadStore(); // Assuming addImages takes ArtworkImageRow[]
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -55,16 +57,17 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
 
         const publicUrl = supabase.storage.from("artworks").getPublicUrl(path).data.publicUrl;
 
+        // Insert new artwork_image record
         const { data, error: dbErr } = await supabase.from("artwork_images").insert({
           artwork_id: artworkId,
           image_url: publicUrl,
-          // If this is the first image being uploaded for this artwork, set it as primary (position 0)
           position: isFirstImage ? 0 : undefined,
           is_primary: isFirstImage ? true : undefined,
-        }).select("*");
+          // watermarked_image_url and visualization_image_url are null initially, client-side will generate them later
+        }).select('*'); // Select all fields to get the full ArtworkImageRow
 
         if (dbErr) throw dbErr;
-        uploadedImages.push(...data);
+        uploadedImages.push(data[0]); // Assuming insert returns an array with one item
 
         // If this was the very first image for this artwork, update primary_image_url on the artwork itself
         if (isFirstImage && data.length > 0) {
@@ -75,7 +78,7 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
         }
       }
 
-      addImages(artworkId, uploadedImages);
+      addImages(uploadedImages); // Add all newly uploaded images to the store
       toast.success("Images uploaded successfully");
       setFiles([]);
       onClose();

@@ -1,4 +1,3 @@
-// src/App.tsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useParams, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
@@ -32,7 +31,7 @@ import PublicCataloguePage from './pages/public/PublicCataloguePage';
 import ArtistInsightsPage from './pages/dashboard/artist/ArtistInsightsPage';
 import ArtworkWizardPage from './pages/dashboard/artist/ArtworkWizardPage';
 import ContactListPage from './pages/dashboard/artist/ContactListPage';
-import ContactEditorPage from './pages/dashboard/artist/ContactEditorPage'; // Ensure this is imported
+import ContactEditorPage from './pages/dashboard/artist/ContactEditorPage';
 import BrowseArtistsPage from './pages/public/BrowseArtistsPage';
 import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
@@ -41,6 +40,9 @@ import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
 
 // Artwork Form
 import ArtworkForm from './components/dashboard/ArtworkForm';
+
+// Import necessary types from app-specific.types.ts
+import { AppProfile } from './types/app-specific.types';
 
 // ---------- Loading Component ----------
 const AuthLoading = () => (
@@ -61,7 +63,8 @@ const ProtectedRoute = () => {
 const RequireProfileCompleted = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (profile && !profile.profile_completed) return <Navigate to="/complete-profile" replace />;
+  // Ensure profile is correctly typed and access `profile_completed` safely
+  if (profile && !(profile as AppProfile).profile_completed) return <Navigate to="/complete-profile" replace />;
   return <Outlet />;
 };
 
@@ -69,13 +72,16 @@ const RequireProfileCompleted = () => {
 const DashboardPage = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (!profile.profile_completed) return <Navigate to="/complete-profile" replace />;
+  // Ensure profile is correctly typed
+  const appProfile = profile as AppProfile | null;
 
-  if (profile.role === 'artist' || profile.role === 'both') {
+  if (!appProfile) return <Navigate to="/login" replace />;
+  if (!appProfile.profile_completed) return <Navigate to="/complete-profile" replace />;
+
+  if (appProfile.role === 'artist' || appProfile.role === 'both') {
     return <ArtistDashboardPage />;
   }
-  if (profile.role === 'collector') {
+  if (appProfile.role === 'collector') {
     return <CollectorDashboardPage />;
   }
   return <Navigate to="/login" replace />;
@@ -85,16 +91,20 @@ const DashboardPage = () => {
 const ArtistRoute = ({ children }: { children: React.ReactElement }) => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (profile.role !== 'artist' && profile.role !== 'both') return <Navigate to="/u/dashboard" replace />;
+  const appProfile = profile as AppProfile | null;
+
+  if (!appProfile) return <Navigate to="/login" replace />;
+  if (appProfile.role !== 'artist' && appProfile.role !== 'both') return <Navigate to="/u/dashboard" replace />;
   return children;
 };
 
 const CollectorRoute = ({ children }: { children: React.ReactElement }) => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (profile.role !== 'collector') return <Navigate to="/u/dashboard" replace />;
+  const appProfile = profile as AppProfile | null;
+
+  if (!appProfile) return <Navigate to="/login" replace />;
+  if (appProfile.role !== 'collector') return <Navigate to="/u/dashboard" replace />;
   return children;
 };
 
@@ -102,27 +112,33 @@ const CollectorRoute = ({ children }: { children: React.ReactElement }) => {
 const SalesRoute = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (profile.role === 'artist' || profile.role === 'both') return <SalesPage />;
-  if (profile.role === 'collector') return <CollectorSalesPage />;
+  const appProfile = profile as AppProfile | null;
+
+  if (!appProfile) return <Navigate to="/login" replace />;
+  if (appProfile.role === 'artist' || appProfile.role === 'both') return <SalesPage />;
+  if (appProfile.role === 'collector') return <CollectorSalesPage />;
   return <Navigate to="/login" replace />;
 };
 
 const MessagesRoute = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (profile.role === 'artist' || profile.role === 'both') return <MessagingCenterPage />;
-  if (profile.role === 'collector') return <CollectorInquiriesPage />;
+  const appProfile = profile as AppProfile | null;
+
+  if (!appProfile) return <Navigate to="/login" replace />;
+  if (appProfile.role === 'artist' || appProfile.role === 'both') return <MessagingCenterPage />;
+  if (appProfile.role === 'collector') return <CollectorInquiriesPage />;
   return <Navigate to="/login" replace />;
 };
 
 const SettingsRoute = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!profile) return <Navigate to="/login" replace />;
-  if (profile.role === 'artist' || profile.role === 'both') return <ArtistSettingsPage />;
-  if (profile.role === 'collector') return <CollectorSettingsPage />;
+  const appProfile = profile as AppProfile | null;
+
+  if (!appProfile) return <Navigate to="/login" replace />;
+  if (appProfile.role === 'artist' || appProfile.role === 'both') return <ArtistSettingsPage />;
+  if (appProfile.role === 'collector') return <CollectorSettingsPage />;
   return <Navigate to="/login" replace />;
 };
 
@@ -208,7 +224,7 @@ const AppRoutes = () => (
           <Route path="/u/settings" element={<SettingsRoute />} />
 
           {/* Collector Routes */}
-          <Route path="/u/collection" element={<CollectorRoute><CollectorSalesPage /></CollectorRoute>} />
+          <Route path="/u/collection" element={<CollectorRoute><></></CollectorRoute>} /> {/* Placeholder for CollectorCollectionPage */}
           <Route path="/u/inquiries" element={<CollectorRoute><CollectorInquiriesPage /></CollectorRoute>} />
         </Route>
       </Route>
@@ -224,11 +240,7 @@ const App = () => (
     <AuthProvider>
       <Toaster
         position="bottom-right"
-        toastOptions={{
-          style: { background: 'var(--color-neutral-700)', color: 'var(--primary-foreground)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)' },
-          success: { duration: 3000, style: { background: 'var(--color-green-success)', color: 'var(--primary-foreground)' } },
-          error: { duration: 5000, style: { background: 'var(--color-red-danger)', color: 'var(--primary-foreground)' } },
-        }}
+        toastOptions={{ style: { background: 'var(--color-neutral-700)', color: 'var(--primary-foreground)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-md)' }, success: { duration: 3000, style: { background: 'var(--color-green-success)', color: 'var(--primary-foreground)' } }, error: { duration: 5000, style: { background: 'var(--color-red-danger)', color: 'var(--primary-foreground)' } }, }}
       />
       <AppRoutes />
     </AuthProvider>

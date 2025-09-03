@@ -1,44 +1,26 @@
-// Imports directly derived types from database.types.ts
-import { ArtworkRow, ArtworkImageRow, ProfileRow, CatalogueRow } from '@/types/database.types';
+// src/types/modals.d.ts
+// Imports directly from the new app-specific types file
+import { AppArtwork, AppCatalogue, AppProfile, CommonModalProps } from '@/types/app-specific.types';
 
-// Define AppArtwork type for modals, extending the database row type
-// and adding the relations (like artwork_images, artist) that are often joined.
-export interface AppArtwork extends ArtworkRow {
-  artwork_images?: ArtworkImageRow[];
-  artist?: ProfileRow | null; // Joined artist data
-  // Add any other joined fields you typically expect here.
-}
-
-export interface AppCatalogue extends CatalogueRow {
-  // Add any joined fields if necessary for catalogue
-}
-
-
-export interface InquiryModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  artwork?: AppArtwork; // Now uses the AppArtwork type
-  artworkId?: string; // ID of the artwork for inquiry
-  artist?: ProfileRow | null; // Artist of the artwork
+export interface InquiryModalProps extends CommonModalProps {
+  artwork?: AppArtwork;
+  artworkId?: string;
+  artist?: AppProfile | null;
   previewImageUrl?: string;
   previewTitle?: string;
 }
 
-export interface ShareModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  artwork?: AppArtwork; // Now uses the AppArtwork type
-  catalogue?: AppCatalogue; // Now uses the AppCatalogue type
-  title?: string | null; // For general sharing, e.g., catalogue title
-  byline?: string | null; // For general sharing, e.g., artist name
+export interface ShareModalProps extends CommonModalProps {
+  artwork?: AppArtwork;
+  catalogue?: AppCatalogue;
+  title?: string | null;
+  byline?: string | null;
   shareUrl: string;
   previewImageUrls?: (string | null)[];
   isCatalogue?: boolean;
 }
 
-export interface VisualizationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  imageUrl: string; // Specific URL for visualization
+export interface VisualizationModalProps extends CommonModalProps {
+  imageUrl: string;
   artworkTitle: string;
 }

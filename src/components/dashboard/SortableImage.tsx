@@ -6,7 +6,8 @@ import { ArtworkImageRow } from '@/types/database.types'; // Correct import for 
 
 // Use the directly exported ArtworkImageRow type
 interface ArtworkImage extends ArtworkImageRow {
-  // No need to manually add watermarked/visualization_image_url as they are in the DB type
+  // is_primary is part of the DB type
+  // watermarked_image_url and visualization_image_url are also part of the DB type
 }
 
 interface SortableImageProps {
