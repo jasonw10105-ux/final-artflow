@@ -10,6 +10,15 @@ export interface InquiryModalProps extends CommonModalProps {
   previewTitle?: string;
 }
 
+// For ShareButton component specifically
+export interface ShareButtonProps extends CommonModalProps { // Inherit CommonModalProps
+  shareUrl: string;
+  title: string | null;
+  byline: string | null;
+  previewImageUrls: (string | null)[];
+  isCatalogue?: boolean;
+}
+
 export interface ShareModalProps extends CommonModalProps {
   artwork?: AppArtwork;
   catalogue?: AppCatalogue;

@@ -4,13 +4,13 @@
 
 // Helper types for JSONB columns, assuming specific structures
 export type LocationJson = { city?: string; country?: string; street?: string; zipcode?: string; state?: string; };
-export type SocialLinkJson = { platform: string; url: string; details?: string; };
+export type SocialLinkJson = { platform: string; url: string; details?: string; }; // Added 'details'
 export type DimensionsJson = { width?: number | null; height?: number | null; depth?: number | null; unit?: 'cm' | 'inch' | 'variable' | null; };
 export type DateInfoJson = { type: 'full_date' | 'year_only' | 'date_range' | 'circa'; date_value?: string | null; start_date?: string | null; end_date?: string | null; };
 export type SignatureInfoJson = { is_signed?: boolean | null; location?: string | null; details?: string | null; };
 export type FramingInfoJson = { is_framed?: boolean | null; details?: string | null; is_framing_optional?: boolean | null; };
 export type EditionInfoJson = { is_edition?: boolean | null; numeric_size?: number | null; ap_size?: number | null; sold_editions?: string[] | null; };
-export type HistoricalEntryJson = { id: string; year: number | null; description: string; };
+export type HistoricalEntryJson = { id: string; year: number | null; description: string; }; // Matches type in ArtworkForm
 
 // Generic helper for Insert/Update types (making all fields optional for flexibility)
 type GenerateInsert<T extends Record<string, any>> = Partial<T>;
@@ -39,10 +39,10 @@ export type Database = {
           slug: string | null;
           profile_completed: boolean | null;
           default_has_certificate_of_authenticity: boolean | null;
-          logo_url?: string | null; // Added based on errors
-          coa_settings?: Json | null; // Added based on errors
-          is_collection_public?: boolean | null; // Added based on errors
-          collector_lists?: Json[] | null; // Added based on errors
+          logo_url: string | null; // Added based on error in ArtistSettingsPage.tsx
+          coa_settings: Json | null; // Added based on error in ArtistSettingsPage.tsx
+          is_collection_public: boolean | null; // Added based on error in CollectorCollectionPage.tsx
+          collector_lists: Json[] | null; // Added based on error in CollectorFavoritesPage.tsx
         };
         Insert: GenerateInsert<Database['public']['Tables']['profiles']['Row']>;
         Update: GenerateUpdate<Database['public']['Tables']['profiles']['Row']>;
@@ -273,8 +273,7 @@ export type Database = {
         Insert: GenerateInsert<Database['public']['Tables']['notifications']['Row']>;
         Update: GenerateUpdate<Database['public']['Tables']['notifications']['Row']>;
       };
-      // Add other tables as needed based on your schema
-      follows: { // Assuming a follows table exists
+      follows: {
         Row: {
           id: string;
           follower_id: string;
@@ -284,7 +283,7 @@ export type Database = {
         Insert: GenerateInsert<Database['public']['Tables']['follows']['Row']>;
         Update: GenerateUpdate<Database['public']['Tables']['follows']['Row']>;
       };
-      likes: { // Assuming a likes table exists for artworks
+      likes: {
         Row: {
           id: string;
           user_id: string;
@@ -383,7 +382,7 @@ export type Database = {
         Returns: Array<{
           id: string; title: string; slug: string; image_url: string;
           artist: { full_name: string; slug: string; } | null;
-          year: string | null; // Assuming year is returned directly or from date_info
+          year: string | null;
         }>;
       };
       get_followed_artists_for_collector: {
@@ -418,8 +417,8 @@ export type NotificationRow = Database['public']['Tables']['notifications']['Row
 export type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 export type MessageRow = Database['public']['Tables']['messages']['Row'];
 export type SaleRow = Database['public']['Tables']['sales']['Row'];
-export type FollowRow = Database['public']['Tables']['follows']['Row']; // Exported for use
-export type LikeRow = Database['public']['Tables']['likes']['Row']; // Exported for use
+export type FollowRow = Database['public']['Tables']['follows']['Row'];
+export type LikeRow = Database['public']['Tables']['likes']['Row'];
 
 
 // --- Generic JSON type for metadata, etc. ---
