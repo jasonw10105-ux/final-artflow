@@ -1,18 +1,19 @@
+// src/components/dashboard/ArtworkActionsMenu.tsx
 import React, { useState } from 'react';
-import { Menu, MenuItem, Backdrop } from '@mui/material'; // Backdrop for modal like effect
-import { handleDownload } from '../../utils/imageUtils'; // Assuming imageUtils exists
-// Import AppArtwork from the new app-specific.types.ts
+import { Menu, MenuItem, Backdrop } from '@mui/material';
+import { handleDownload } from '../../utils/imageUtils';
+// Import AppArtwork and AppProfile from the new app-specific.types.ts
 import { AppArtwork, AppProfile } from '@/types/app-specific.types';
 import { useAuth } from '@/contexts/AuthProvider';
-import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus, Eye, XCircle } from 'lucide-react'; // --- Fixed: Import XCircle and Eye
-import toast from 'react-hot-toast'; // --- Fixed: import toast directly
+import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus, Eye, XCircle } from 'lucide-react'; // Fixed: Import XCircle and Eye
+import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import ShareButton from '../ui/ShareButton'; // Reusable ShareButton component
 import '@/styles/app.css'; // Import the centralized styles
 import { ShareButtonProps } from '@/types/modals'; // Import ShareButtonProps from modals.d.ts
 
 interface ArtworkActionsMenuProps {
-  artwork: AppArtwork; // Use AppArtwork
+  artwork: AppArtwork;
 }
 
 // "What If" Mark as Sold Modal Component
@@ -98,11 +99,11 @@ const MarkAsSoldModal: React.FC<MarkAsSoldModalProps> = ({ isOpen, onClose, artw
 
 
 const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
-  const { profile } = useAuth(); // profile is now AppProfile
+  const { profile } = useAuth();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const isOpen = Boolean(anchorEl);
-  const [showMarkAsSoldModal, setShowMarkAsSoldModal] = useState(false); // For "What If" status change
-  const [showShareModal, setShowShareModal] = useState(false); // For ShareButton
+  const [showMarkAsSoldModal, setShowMarkAsSoldModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
@@ -121,22 +122,18 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
 
   const handleMarkAsSold = () => {
     setShowMarkAsSoldModal(true);
-    handleClose(); // Close main menu
+    handleClose();
   };
 
   const confirmMarkAsSold = (saleDetails: { price: number, buyer: string }) => {
     toast.info(`Artwork "${artwork.title}" marked as sold for ${saleDetails.price} to ${saleDetails.buyer}. (Feature not fully implemented)`);
     console.log("Mark as Sold:", artwork.id, saleDetails);
-    // Invalidate queries to update artwork status (example placeholder)
-    // queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
-    setShowMarkAsSoldModal(false); // Close the "What If" modal
+    setShowMarkAsSoldModal(false);
   };
 
   const handleMarkAsAvailable = () => {
     toast.info(`Artwork "${artwork.title}" marked as available. (Feature not fully implemented)`);
     console.log("Mark as Available:", artwork.id);
-    // Invalidate queries to update artwork status
-    // queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
     handleClose();
   };
 
@@ -144,16 +141,12 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
     if (window.confirm(`Are you sure you want to delete "${artwork.title}"? This action cannot be undone.`)) {
       toast.info(`Artwork "${artwork.title}" deleted. (Feature not fully implemented)`);
       console.log("Delete Artwork:", artwork.id);
-      // Invalidate queries
-      // queryClient.invalidateQueries({ queryKey: ['artworks', user?.id] });
     }
     handleClose();
   };
 
   const handleAssignCatalogue = () => {
     toast.info(`Assigning "${artwork.title}" to catalogue. (Feature not fully implemented)`);
-    // Navigate to catalogue wizard or open a modal to select catalogue
-    // navigate(`/u/artworks/assign-catalogue/${artwork.id}`);
     handleClose();
   };
 
@@ -190,37 +183,37 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
           <Plus size={18} className="mr-2" /> Assign to Catalogue
         </MenuItem>
 
-        {artwork.status === 'available' && ( // Use harmonized status type
+        {artwork.status === 'available' && (
           <MenuItem onClick={handleMarkAsSold}>
             <DollarSign size={18} className="mr-2" /> Mark as Sold (What If?)
           </MenuItem>
         )}
 
-        {(artwork.status === 'sold' || artwork.status === 'draft' || artwork.status === 'pending' || artwork.status === 'on_hold') && ( // Fixed status type
+        {(artwork.status === 'sold' || artwork.status === 'draft' || artwork.status === 'pending' || artwork.status === 'on_hold') && (
           <MenuItem onClick={handleMarkAsAvailable}>
             <CheckCircle size={18} className="mr-2" /> Mark as Available
           </MenuItem>
         )}
 
         {(artwork.artwork_images?.[0]?.watermarked_image_url || artwork.artwork_images?.[0]?.visualization_image_url) && (
-            // This MenuItem acts as a parent for sub-downloads, it should not have its own onClick that closes the menu
-            <MenuItem className="relative group/download">
+            <MenuItem onClick={(e) => e.stopPropagation()}> {/* Prevent closing main menu immediately */}
                 <Download size={18} className="mr-2" /> Download Images
+                {/* Nested Menu for downloads */}
                 <Menu
-                    anchorEl={anchorEl} // Use parent menu's anchor
-                    open={isOpen} // Show when parent is open
+                    anchorEl={anchorEl}
+                    open={isOpen} // Only show when parent menu is also open
                     onClose={handleClose}
-                    anchorOrigin={{ horizontal: 'left', vertical: 'top' }} // Position sub-menu to the right
+                    anchorOrigin={{ horizontal: 'left', vertical: 'top' }}
                     transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-                    PaperProps={{ className: "sub-menu" }} // Apply specific styling if needed
+                    PaperProps={{ className: "sub-menu" }}
                 >
                     {artwork.artwork_images?.[0]?.watermarked_image_url && (
-                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.watermarked_image_url!, `${artwork.slug ?? 'artwork'}-watermarked.png`)} className="sub-menu-item">
+                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.watermarked_image_url!, `${artwork.slug ?? 'artwork'}-watermarked.png`)}>
                             <Archive size={18} className="mr-2"/> Watermarked
                         </MenuItem>
                     )}
                     {artwork.artwork_images?.[0]?.visualization_image_url && (
-                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.visualization_image_url!, `${artwork.slug ?? 'artwork'}-visualization.jpg`)} className="sub-menu-item">
+                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.visualization_image_url!, `${artwork.slug ?? 'artwork'}-visualization.jpg`)}>
                             <Archive size={18} className="mr-2"/> Visualization
                         </MenuItem>
                     )}
