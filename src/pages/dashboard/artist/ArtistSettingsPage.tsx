@@ -106,11 +106,16 @@ const ArtistSettingsPage = () => {
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleAddSocialLink = () => setSocialLinks([...socialLinks, { platform: 'Website', url: '', details: '' }]);
-    const handleRemoveSocialLink = (index: number) => setSocialLinks(socialLinks.filter((_, i) => i !== index));
+    const handleAddSocialLink = () => {
+        setSocialLinks(prev => [...prev, { platform: 'Website', url: '', details: '' }]);
+    };
+
     const handleSocialLinkChange = (index: number, field: keyof SocialLinkJson, value: string) => {
-        const newLinks = socialLinks.map((link, i) => i === index ? { ...link, [field]: value } : link);
-        setSocialLinks(newLinks);
+        setSocialLinks(prev => prev.map((link, i) => (i === index ? { ...link, [field]: value } : link)));
+    };
+
+    const handleRemoveSocialLink = (index: number) => {
+        setSocialLinks(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleUpdateProfile = async (e: FormEvent) => {

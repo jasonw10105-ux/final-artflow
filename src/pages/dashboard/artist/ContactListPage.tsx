@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabaseClient';
 import { useAuth } from '../../../contexts/AuthProvider';
 import { Link } from 'react-router-dom';
-import { PlusCircle, Upload, Trash2, Tag, Mail, Phone, XCircle } from 'lucide-react';
+import { PlusCircle, Upload, Trash2, Tag, Mail, Phone, XCircle, Users as UsersIcon } from 'lucide-react'; // Added UsersIcon for empty state
 import toast from 'react-hot-toast';
 import { AppContact, TagRow } from '@/types/app.types';
 import '@/styles/app.css'; // Import the centralized styles
@@ -122,6 +122,7 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
                 if (newContacts.length > 0) {
                     const { error } = await supabase.from('contacts').insert(newContacts as any[]);
                     if (error) throw error;
+                    toast.success(`Successfully imported ${newContacts.length} new contacts.`);
                     setImportLog(prev => [...prev, `Successfully imported ${newContacts.length} new contacts.`]);
                 }
 
@@ -130,7 +131,6 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
                     setImportLog(prev => [...prev, `Skipped ${updatedContacts.length} existing contacts with matching emails.`]);
                 }
 
-                toast.success(`CSV Import Complete: ${newContacts.length} new contacts added!`);
                 onImportSuccess();
                 onClose();
             } catch (error: any) {
@@ -148,7 +148,7 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
 
     return (
         <div className="modal-backdrop">
-            <div className="modal-content csv-import-modal-content">
+            <div className="modal-content csv-import-modal-content" onClick={e => e.stopPropagation()}> {/* Added stopPropagation */}
                 <div className="modal-header">
                     <h3>Import Contacts from CSV</h3>
                     <button type="button" onClick={onClose} className="button-icon-secondary"><XCircle size={20} /></button>
@@ -235,7 +235,7 @@ const BulkTagModal: React.FC<BulkTagModalProps> = ({ isOpen, onClose, selectedCo
 
     return (
         <div className="modal-backdrop">
-            <div className="modal-content bulk-tag-modal-content">
+            <div className="modal-content bulk-tag-modal-content" onClick={e => e.stopPropagation()}> {/* Added stopPropagation */}
                 <div className="modal-header">
                     <h3>Bulk Tag Contacts ({selectedContactIds.length})</h3>
                     <button type="button" onClick={onClose} className="button-icon-secondary"><XCircle size={20} /></button>
@@ -397,6 +397,12 @@ const ContactListPage = () => {
             });
     };
 
+    const handleSelectContact = (contactId: string) => {
+        setSelectedContactIds(prev =>
+            prev.includes(contactId) ? prev.filter(id => id !== contactId) : [...prev, contactId]
+        );
+    };
+
 
     if (isLoading) return <p className="loading-message">Loading contacts...</p>;
     if (error) return <p className="error-message">Error loading contacts: {error.message}</p>;
@@ -463,8 +469,8 @@ const ContactListPage = () => {
                             />
                             <div className="contact-details">
                                 <h3 className="contact-name">{contact.full_name}</h3>
-                                <p className="contact-info"><Mail size={14} /> {contact.email}</p>
-                                {contact.phone_number && <p className="contact-info"><Phone size={14} /> {contact.phone_number}</p>}
+                                {contact.email && <p className="contact-info"><Mail size={14} /> {contact.email}</p>} {/* Only show if exists */}
+                                {contact.phone_number && <p className="contact-info"><Phone size={14} /> {contact.phone_number}</p>} {/* Only show if exists */}
                                 <div className="contact-tags">
                                     {contact.tags.map(tag => (
                                         <span key={tag.id} className="tag-pill">{tag.name}</span>
@@ -472,21 +478,26 @@ const ContactListPage = () => {
                                 </div>
                             </div>
                             <div className="contact-actions">
-                                <Link to={`/u/contacts/${contact.id}`} className="button button-secondary button-sm">View Details</Link>
                                 <Link to={`/u/contacts/edit/${contact.id}`} className="button button-secondary button-sm">Edit</Link>
+                                <button onClick={() => deleteContactMutation.mutate(contact.id)} className="button button-danger button-sm ml-2">Delete</button>
                             </div>
                         </div>
                     ))
                 ) : (
-                    <div className="empty-state-card">
-                        <p>
-                            {contacts && contacts.length > 0
-                                ? "No contacts match your current search/filters."
-                                : "You haven't added any contacts yet."}
+                    <div className="empty-state-card empty-contacts">
+                        <UsersIcon size={48} className="text-muted-foreground mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">No Contacts Yet</h3>
+                        <p className="text-muted-foreground mb-4">
+                            Start building your network by adding collectors, galleries, or art enthusiasts.
                         </p>
-                        <p className="mt-4">
-                            Click "New Contact" or "Import CSV" to get started.
-                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Link to="/u/contacts/new" className="button button-primary button-with-icon">
+                                <PlusCircle size={16} /> Add New Contact
+                            </Link>
+                            <button onClick={() => setShowImportModal(true)} className="button button-secondary button-with-icon">
+                                <Upload size={16} /> Import from CSV
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

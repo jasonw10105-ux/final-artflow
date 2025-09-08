@@ -10,25 +10,34 @@ import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
 import 'swiper/css/autoplay';
+import { AppArtwork, AppProfile, AppArtworkImage, AppCatalogue } from '@/types/app.types'; // Import from centralized types
+import { v4 as uuidv4 } from 'uuid'; // For generating IDs for images
 
-interface Artwork {
+// Define specific types for data returned by RPCs for clarity and mapping
+interface MarketingArtworkRPCResult {
   id: string;
   title: string | null;
-  image_url: string | null;
+  image_url: string | null; // This is directly from the RPC's select on artworks table for display
   slug: string;
   price: number | null;
-  profiles: { full_name: string | null; slug: string };
+  currency: string | null;
+  profile_full_name: string | null;
+  profile_slug: string;
+  artist_id: string; // Add artist_id as RPC likely returns it
 }
 
-interface Catalogue {
+interface MarketingCatalogueRPCResult {
   id: string;
   title: string | null;
   cover_image_url: string | null;
   slug: string;
-  profiles: { full_name: string | null; slug: string };
+  profile_full_name: string | null;
+  profile_slug: string;
+  artwork_count: number; // Assuming RPC returns this
+  artist_id: string; // Add artist_id as RPC likely returns it
 }
 
-interface Artist {
+interface MarketingArtistRPCResult {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
@@ -42,50 +51,118 @@ const CATALOGUE_LIMIT = 8;
 const ARTIST_LIMIT = 8;
 
 // --- Supabase fetchers ---
-const fetchRandomArtworks = async (count: number): Promise<Artwork[]> => {
+const fetchRandomArtworks = async (count: number): Promise<AppArtwork[]> => {
   const { data, error } = await supabase.rpc('get_random_artworks', { limit_count: count });
   if (error) throw new Error(error.message);
-  return (data || []).map((art: any) => ({
-    ...art,
-    profiles: { full_name: art.profile_full_name, slug: art.profile_slug },
-  }));
+  
+  return (data as MarketingArtworkRPCResult[] || []).map(rpcArt => ({
+    // Explicitly map AppArtwork properties
+    id: rpcArt.id,
+    user_id: rpcArt.artist_id, 
+    created_at: null, updated_at: null, // RPC likely doesn't return, default to null
+    slug: rpcArt.slug,
+    title: rpcArt.title,
+    description: null, 
+    price: rpcArt.price,
+    status: 'available', // Assuming random artworks are available
+    is_price_negotiable: null, min_price: null, max_price: null, 
+    dimensions: null, location: null, medium: null, date_info: null, 
+    signature_info: null, framing_info: null, provenance: null, 
+    currency: rpcArt.currency, 
+    edition_info: null, genre: null, dominant_colors: null, keywords: null, subject: null,
+    orientation: null, inventory_number: null, private_note: null, provenance_notes: null,
+    exhibitions: null, literature: null, has_certificate_of_authenticity: null,
+    certificate_of_authenticity_details: null, condition: null, rarity: null,
+    framing_status: null, primary_image_url: rpcArt.image_url, embedding: null, condition_notes: null,
+
+    // Joined relations
+    artist: { // Map to AppProfile structure
+        id: rpcArt.artist_id, 
+        full_name: rpcArt.profile_full_name, 
+        slug: rpcArt.profile_slug,
+        // Provide defaults for all non-nullable AppProfile fields
+        created_at: null, updated_at: null, username: null, email: '', is_admin: false,
+        display_name: rpcArt.profile_full_name, first_name: null, last_name: null, artist_statement: null,
+        short_bio: null, social_links: null, coa_settings: null, profile_completed: false, bio: null, location: null, role: null,
+    } as AppProfile, 
+    artwork_images: [{ // Create a minimal AppArtworkImage
+        id: uuidv4(), artwork_id: rpcArt.id, image_url: rpcArt.image_url, position: 0, is_primary: true,
+        created_at: null, updated_at: null, watermarked_image_url: null, visualization_image_url: null
+    }] as AppArtworkImage[],
+  })) as AppArtwork[];
 };
 
-const fetchRandomCatalogues = async (count: number): Promise<Catalogue[]> => {
+const fetchRandomCatalogues = async (count: number): Promise<AppCatalogue[]> => {
   const { data, error } = await supabase.rpc('get_random_catalogues', { limit_count: count });
   if (error) throw new Error(error.message);
-  // Only include catalogues that have at least 1 artwork
-  return (data || []).filter((cat: any) => cat.artwork_count > 0).map((cat: any) => ({
-    ...cat,
-    profiles: { full_name: cat.profile_full_name, slug: cat.profile_slug },
-  }));
+  
+  // Only include catalogues that have at least 1 artwork (assuming RPC returns artwork_count)
+  return (data as MarketingCatalogueRPCResult[] || []).filter(cat => cat.artwork_count > 0).map(rpcCat => ({
+    // Explicitly map AppCatalogue properties
+    id: rpcCat.id,
+    user_id: rpcCat.artist_id,
+    created_at: null, updated_at: null,
+    slug: rpcCat.slug,
+    title: rpcCat.title,
+    description: null,
+    is_system_catalogue: false,
+    cover_artwork_id: null,
+    cover_image_url: rpcCat.cover_image_url,
+    access_type: 'public', // Assuming random catalogues are public
+    password: null,
+    scheduled_send_at: null,
+    is_published: true, // Assuming random catalogues are published
+
+    // Joined relations
+    artist: { // Map to AppProfile structure
+        id: rpcCat.artist_id, 
+        full_name: rpcCat.profile_full_name, 
+        slug: rpcCat.profile_slug,
+        // Provide defaults for all non-nullable AppProfile fields
+        created_at: null, updated_at: null, username: null, email: '', is_admin: false,
+        display_name: rpcCat.profile_full_name, first_name: null, last_name: null, artist_statement: null,
+        short_bio: null, social_links: null, coa_settings: null, profile_completed: false, bio: null, location: null, role: null,
+    } as AppProfile,
+  })) as AppCatalogue[];
 };
 
-const fetchRandomArtists = async (count: number): Promise<Artist[]> => {
+const fetchRandomArtists = async (count: number): Promise<AppProfile[]> => {
   const { data, error } = await supabase.rpc('get_random_artists', { limit_count: count });
   if (error) throw new Error(error.message);
-  return data || [];
+  
+  return (data as MarketingArtistRPCResult[] || []).map(rpcArtist => ({
+    // Explicitly map AppProfile properties
+    id: rpcArtist.id,
+    full_name: rpcArtist.full_name,
+    avatar_url: rpcArtist.avatar_url,
+    slug: rpcArtist.slug,
+    short_bio: rpcArtist.short_bio,
+    // Provide defaults for all other required AppProfile fields
+    created_at: null, updated_at: null, username: null, email: '', is_admin: false,
+    display_name: rpcArtist.full_name, first_name: null, last_name: null, artist_statement: null,
+    social_links: null, coa_settings: null, profile_completed: false, bio: null, location: null, role: null,
+  })) as AppProfile[];
 };
 
 // --- Reusable Card Components ---
-const ArtworkCard = ({ item }: { item: Artwork }) => (
+const ArtworkCard = ({ item }: { item: AppArtwork }) => (
   <Link to={`/artwork/${item.slug}`} className="card-link">
     <img
-      src={item.image_url || 'https://placehold.co/400x400?text=No+Image'}
+      src={item.artwork_images?.[0]?.image_url || 'https://placehold.co/400x400?text=No+Image'} // Fixed optional chaining
       alt={item.title || 'Artwork'}
       className="card-image"
       loading="lazy" // Added lazy loading for images
     />
     <div className="card-info">
       <h4>{item.title || 'Untitled'}</h4>
-      <p className="card-subtext">{item.profiles.full_name || 'Unknown Artist'}</p>
+      <p className="card-subtext">{item.artist?.full_name || 'Unknown Artist'}</p>
       {item.price != null && <p className="card-price">${item.price.toLocaleString()}</p>}
     </div>
   </Link>
 );
 
-const CatalogueCard = ({ item }: { item: Catalogue }) => (
-  <Link to={`/${item.profiles.slug}/catalogue/${item.slug}`} className="card-link">
+const CatalogueCard = ({ item }: { item: AppCatalogue }) => (
+  <Link to={`/u/${item.artist?.slug}/catalogue/${item.slug}`} className="card-link">
     <img
       src={item.cover_image_url || 'https://placehold.co/400x400?text=No+Image'}
       alt={item.title || 'Catalogue'}
@@ -94,12 +171,12 @@ const CatalogueCard = ({ item }: { item: Catalogue }) => (
     />
     <div className="card-info">
       <h4>{item.title || 'Untitled Catalogue'}</h4>
-      <p className="card-subtext">{item.profiles.full_name || 'Unknown Artist'}</p>
+      <p className="card-subtext">{item.artist?.full_name || 'Unknown Artist'}</p>
     </div>
   </Link>
 );
 
-const ArtistCard = ({ item }: { item: Artist }) => (
+const ArtistCard = ({ item }: { item: AppProfile }) => (
   <Link to={`/u/${item.slug}`} className="card-link">
     <img
       src={item.avatar_url || 'https://placehold.co/400x400?text=No+Image'}
@@ -193,17 +270,17 @@ const TestimonialCard = ({ quote, author, title }: { quote: string; author: stri
 
 // --- Main Marketing Page ---
 const MarketingPage = () => {
-  const { data: featuredArtworks, isLoading: isLoadingArtworks, isError: isErrorArtworks, error: errorArtworks } = useQuery({
+  const { data: featuredArtworks, isLoading: isLoadingArtworks, isError: isErrorArtworks, error: errorArtworks } = useQuery<AppArtwork[], Error>({
     queryKey: ['featuredArtworks'],
     queryFn: () => fetchRandomArtworks(ARTWORK_LIMIT),
   });
 
-  const { data: featuredCatalogues, isLoading: isLoadingCatalogues, isError: isErrorCatalogues, error: errorCatalogues } = useQuery({
+  const { data: featuredCatalogues, isLoading: isLoadingCatalogues, isError: isErrorCatalogues, error: errorCatalogues } = useQuery<AppCatalogue[], Error>({
     queryKey: ['featuredCatalogues'],
     queryFn: () => fetchRandomCatalogues(CATALOGUE_LIMIT),
   });
 
-  const { data: featuredArtists, isLoading: isLoadingArtists, isError: isErrorArtists, error: errorArtists } = useQuery({
+  const { data: featuredArtists, isLoading: isLoadingArtists, isError: isErrorArtists, error: errorArtists } = useQuery<AppProfile[], Error>({
     queryKey: ['featuredArtists'],
     queryFn: () => fetchRandomArtists(ARTIST_LIMIT),
   });

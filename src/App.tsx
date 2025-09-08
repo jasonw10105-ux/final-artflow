@@ -7,42 +7,54 @@ import { Toaster } from 'react-hot-toast';
 import MarketingLayout from './components/layout/MarketingLayout';
 import DashboardLayout from './components/layout/DashboardLayout';
 
-// Pages
+// Pages (Core Application Pages)
 import WaitlistPage from './pages/WaitlistPage';
 import MarketingPage from './pages/MarketingPage';
-import RegisterPage from './pages/RegisterPage';
-import LoginPage from './pages/LoginPage';
+import StartPage from './pages/StartPage'; // NEW: Use StartPage
+// Removed: RegisterPage, LoginPage
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import UpdatePasswordPage from './pages/UpdatePasswordPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
-import ArtistDashboardPage from './pages/dashboard/artist/ArtistDashboardPage';
-import CollectorDashboardPage from './pages/dashboard/collector/CollectorDashboardPage';
-import IndividualArtworkPage from './pages/public/IndividualArtworkPage';
 import NotFoundPage from './pages/NotFoundPage';
+
+// Pages (Dashboard - Artist)
+import ArtistDashboardPage from './pages/dashboard/artist/ArtistDashboardPage';
 import MessagingCenterPage from './pages/dashboard/artist/MessagingCenterPage';
-import CollectorInquiriesPage from './pages/dashboard/collector/CollectorInquiriesPage';
 import ArtworkListPage from './pages/dashboard/artist/ArtworkListPage';
 import ArtistSettingsPage from './pages/dashboard/artist/ArtistSettingsPage';
-import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
-import ArtistPortfolioPage from './pages/public/ArtistPortfolioPage';
+import ArtistPortfolioPage from './pages/public/ArtistPortfolioPage'; // Public page, but artist-specific
 import CatalogueWizardPage from './pages/dashboard/artist/CatalogueWizardPage';
 import CatalogueListPage from './pages/dashboard/artist/CatalogueListPage';
-import PublicCataloguePage from './pages/public/PublicCataloguePage';
 import ArtistInsightsPage from './pages/dashboard/artist/ArtistInsightsPage';
-import ArtworkWizardPage from './pages/dashboard/artist/ArtworkWizardPage';
+import ReportsPage from './pages/dashboard/artist/ArtistReportsPage';
+import ArtistCalendarPage from './pages/dashboard/artist/ArtistCalendarPage';
 import ContactListPage from './pages/dashboard/artist/ContactListPage';
 import ContactEditorPage from './pages/dashboard/artist/ContactEditorPage';
+import SalesPage from './pages/dashboard/artist/SalesPage';
+
+// Pages (Dashboard - Collector)
+import CollectorDashboardPage from './pages/dashboard/collector/CollectorDashboardPage';
+import CollectorInquiriesPage from './pages/dashboard/collector/CollectorInquiriesPage';
+import CollectorSettingsPage from './pages/dashboard/collector/CollectorSettingsPage';
+import CollectorFavoritesPage from './pages/dashboard/collector/CollectorFavoritesPage';
+import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
+import CollectorExplorePage from './pages/dashboard/collector/CollectorExplorePage'; // New page
+import MyCollectionPage from './pages/dashboard/collector/CollectorCollectionPage';
+import MyVaultPage from './pages/dashboard/collector/CollectorVaultPage';
+import CollectorRoadmapPage from './pages/dashboard/collector/CollectionRoadmapPage';
+
+// Pages (Public)
+import IndividualArtworkPage from './pages/public/IndividualArtworkPage';
+import PublicCataloguePage from './pages/public/PublicCataloguePage';
 import BrowseArtistsPage from './pages/public/BrowseArtistsPage';
 import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
-import SalesPage from './pages/dashboard/artist/SalesPage';
-import CollectorSalesPage from './pages/dashboard/collector/CollectorSalesPage';
+import PublicCommunityCurations from './pages/public/PublicCommunityCurations';
 
-// Artwork Form
+// Components used directly in routes (e.g., for forms without dedicated layouts)
 import ArtworkForm from './components/dashboard/ArtworkForm';
 
-// Import necessary types from app-specific.types.ts
-import { AppProfile } from './types/app-specific.types';
+import { AppProfile } from './types/app.types';
 
 // ---------- Loading Component ----------
 const AuthLoading = () => (
@@ -55,7 +67,7 @@ const AuthLoading = () => (
 const ProtectedRoute = () => {
   const { user, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   return <Outlet />;
 };
 
@@ -63,8 +75,9 @@ const ProtectedRoute = () => {
 const RequireProfileCompleted = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  // Ensure profile is correctly typed and access `profile_completed` safely
-  if (profile && !(profile as AppProfile).profile_completed) return <Navigate to="/complete-profile" replace />;
+  const appProfile = profile as AppProfile | null;
+
+  if (appProfile && !appProfile.profile_completed) return <Navigate to="/complete-profile" replace />;
   return <Outlet />;
 };
 
@@ -72,10 +85,9 @@ const RequireProfileCompleted = () => {
 const DashboardPage = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
-  // Ensure profile is correctly typed
   const appProfile = profile as AppProfile | null;
 
-  if (!appProfile) return <Navigate to="/login" replace />;
+  if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (!appProfile.profile_completed) return <Navigate to="/complete-profile" replace />;
 
   if (appProfile.role === 'artist' || appProfile.role === 'both') {
@@ -84,7 +96,7 @@ const DashboardPage = () => {
   if (appProfile.role === 'collector') {
     return <CollectorDashboardPage />;
   }
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
 };
 
 // ---------- Role Guards ----------
@@ -93,7 +105,7 @@ const ArtistRoute = ({ children }: { children: React.ReactElement }) => {
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
-  if (!appProfile) return <Navigate to="/login" replace />;
+  if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (appProfile.role !== 'artist' && appProfile.role !== 'both') return <Navigate to="/u/dashboard" replace />;
   return children;
 };
@@ -103,8 +115,8 @@ const CollectorRoute = ({ children }: { children: React.ReactElement }) => {
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
-  if (!appProfile) return <Navigate to="/login" replace />;
-  if (appProfile.role !== 'collector') return <Navigate to="/u/dashboard" replace />;
+  if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
+  if (appProfile.role !== 'collector' && appProfile.role !== 'both') return <Navigate to="/u/dashboard" replace />;
   return children;
 };
 
@@ -114,10 +126,10 @@ const SalesRoute = () => {
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
-  if (!appProfile) return <Navigate to="/login" replace />;
+  if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (appProfile.role === 'artist' || appProfile.role === 'both') return <SalesPage />;
   if (appProfile.role === 'collector') return <CollectorSalesPage />;
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
 };
 
 const MessagesRoute = () => {
@@ -125,10 +137,10 @@ const MessagesRoute = () => {
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
-  if (!appProfile) return <Navigate to="/login" replace />;
+  if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (appProfile.role === 'artist' || appProfile.role === 'both') return <MessagingCenterPage />;
   if (appProfile.role === 'collector') return <CollectorInquiriesPage />;
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
 };
 
 const SettingsRoute = () => {
@@ -136,42 +148,62 @@ const SettingsRoute = () => {
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
-  if (!appProfile) return <Navigate to="/login" replace />;
+  if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (appProfile.role === 'artist' || appProfile.role === 'both') return <ArtistSettingsPage />;
   if (appProfile.role === 'collector') return <CollectorSettingsPage />;
-  return <Navigate to="/login" replace />;
+  return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
 };
 
-// ---------- ArtworkForm Wrapper ----------
-const ArtworkFormWrapper: React.FC<{ isNew?: boolean }> = ({ isNew = false }) => {
+// ---------- ArtworkForm Content (NO LAYOUT HERE) ----------
+const ArtworkFormContent: React.FC<{ isNew?: boolean }> = ({ isNew = false }) => {
   const { artworkId } = useParams<{ artworkId: string }>();
   const navigate = useNavigate();
 
-  const effectiveArtworkId = isNew ? artworkId || 'new-artwork-temp-id' : artworkId;
-  if (!effectiveArtworkId) return <p>No artwork selected.</p>;
+  if (!isNew && !artworkId) return <p>No artwork selected for editing.</p>;
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <h1 className="text-3xl mb-6">{isNew ? 'Create Artwork' : 'Edit Artwork'}</h1>
       <ArtworkForm
-        artworkId={effectiveArtworkId}
+        artworkId={artworkId}
         onSaveSuccess={() => navigate('/u/artworks')}
       />
     </div>
   );
 };
 
+// ---------- CatalogueWizard Content (NO LAYOUT HERE) ----------
+const CatalogueWizardContent: React.FC = () => {
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+      <CatalogueWizardPage />
+    </div>
+  );
+};
+
+// ---------- ContactEditor Content (NO LAYOUT HERE) ----------
+const ContactEditorContent: React.FC = () => {
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+      <ContactEditorPage />
+    </div>
+  );
+};
+
+
 // ---------- App Routes ----------
 const AppRoutes = () => (
   <Routes>
-    {/* Public Routes */}
+    {/* Public Auth Routes - No Layout */}
     <Route path="/" element={<WaitlistPage />} />
-    <Route path="/login" element={<LoginPage />} />
-    <Route path="/register" element={<RegisterPage />} />
+    <Route path="/start" element={<StartPage />} /> {/* NEW: Consolidated login/register route */}
+    {/* Removed: <Route path="/login" element={<LoginPage />} /> */}
+    {/* Removed: <Route path="/register" element={<RegisterPage />} /> */}
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/update-password" element={<UpdatePasswordPage />} />
-
-    {/* Marketing/Public */}
+    <Route path="/complete-profile" element={<CompleteProfilePage />} />
+    
+    {/* Marketing/Public Routes - Use MarketingLayout */}
     <Route element={<MarketingLayout />}>
       <Route path="/home" element={<MarketingPage />} />
       <Route path="/artists" element={<BrowseArtistsPage />} />
@@ -180,57 +212,54 @@ const AppRoutes = () => (
       <Route path="/u/:artistSlug" element={<ArtistPortfolioPage />} />
       <Route path="/artwork/:artworkSlug" element={<IndividualArtworkPage />} />
       <Route path="/u/:artistSlug/catalogue/:catalogueSlug" element={<PublicCataloguePage />} />
+      <Route path="/explore" element={<CollectorExplorePage />} />
+      <Route path="/explore/community-curations" element={<PublicCommunityCurations />} />
     </Route>
 
-    {/* Protected Dashboard */}
+    {/* Protected Dashboard Routes (requires login and completed profile) */}
     <Route element={<ProtectedRoute />}>
-      <Route path="/complete-profile" element={<CompleteProfilePage />} />
       <Route element={<RequireProfileCompleted />}>
-        <Route element={<DashboardLayout />}>
-          <Route path="/u/dashboard" element={<DashboardPage />} />
+        <>
+          <Route path="/u" element={<DashboardLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
 
-          {/* Artist Wizard / Editor now uses ArtworkForm */}
-          <Route
-            path="/u/artworks/wizard"
-            element={
-              <ArtistRoute>
-                <ArtworkFormWrapper isNew />
-              </ArtistRoute>
-            }
-          />
-          <Route
-            path="/u/artworks/edit/:artworkId"
-            element={
-              <ArtistRoute>
-                <ArtworkFormWrapper />
-              </ArtistRoute>
-            }
-          />
-          <Route path="/u/catalogues/new" element={<ArtistRoute><CatalogueWizardPage /></ArtistRoute>} />
-          <Route path="/u/catalogues/edit/:catalogueId" element={<ArtistRoute><CatalogueWizardPage /></ArtistRoute>} />
+            {/* Artist Specific Routes (within DashboardLayout) */}
+            <Route element={<ArtistRoute />}>
+              <Route path="artworks" element={<ArtworkListPage />} />
+              <Route path="catalogues" element={<CatalogueListPage />} />
+              <Route path="contacts" element={<ContactListPage />} />
+              <Route path="insights" element={<ArtistInsightsPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="calendar" element={<ArtistCalendarPage />} />
+            </Route>
 
-          <Route path="/u/artworks" element={<ArtistRoute><ArtworkListPage /></ArtistRoute>} />
-          <Route path="/u/catalogues" element={<ArtistRoute><CatalogueListPage /></ArtistRoute>} />
-          <Route path="/u/contacts" element={<ArtistRoute><ContactListPage /></ArtistRoute>} />
+            {/* Collector Specific Routes (within DashboardLayout) */}
+            <Route element={<CollectorRoute />}>
+              <Route path="collection" element={<MyCollectionPage />} />
+              <Route path="vault" element={<MyVaultPage />} />
+              <Route path="favorites" element={<CollectorFavoritesPage />} />
+              <Route path="roadmap" element={<CollectorRoadmapPage />} />
+            </Route>
 
-          {/* New Contact Route */}
-          <Route path="/u/contacts/new" element={<ArtistRoute><ContactEditorPage /></ArtistRoute>} />
-          {/* Existing Contact Edit Route */}
-          <Route path="/u/contacts/edit/:contactId" element={<ArtistRoute><ContactEditorPage /></ArtistRoute>} />
+            {/* Shared Routes (role-based content handled internally, within DashboardLayout) */}
+            <Route path="sales" element={<SalesRoute />} />
+            <Route path="messages" element={<MessagesRoute />} />
+            <Route path="settings" element={<SettingsRoute />} />
+          </Route>
 
-          <Route path="/u/sales" element={<SalesRoute />} />
-          <Route path="/u/messages" element={<MessagesRoute />} />
-          <Route path="/u/insights" element={<ArtistRoute><ArtistInsightsPage /></ArtistRoute>} />
-          <Route path="/u/settings" element={<SettingsRoute />} />
-
-          {/* Collector Routes */}
-          <Route path="/u/collection" element={<CollectorRoute><></></CollectorRoute>} /> {/* Placeholder for CollectorCollectionPage */}
-          <Route path="/u/inquiries" element={<CollectorRoute><CollectorInquiriesPage /></CollectorRoute>} />
-        </Route>
+          {/* Routes that are protected but render their own "no-nav" layout (full width) */}
+          <Route path="/u/artworks/new" element={<ArtistRoute><ArtworkFormContent isNew /></ArtistRoute>} />
+          <Route path="/u/artworks/edit/:artworkId" element={<ArtistRoute><ArtworkFormContent /></ArtistRoute>} />
+          <Route path="/u/catalogues/new" element={<ArtistRoute><CatalogueWizardContent /></ArtistRoute>} />
+          <Route path="/u/catalogues/edit/:catalogueId" element={<ArtistRoute><CatalogueWizardContent /></ArtistRoute>} />
+          <Route path="/u/contacts/new" element={<ArtistRoute><ContactEditorContent /></ArtistRoute>} />
+          <Route path="/u/contacts/edit/:contactId" element={<ArtistRoute><ContactEditorContent /></ArtistRoute>} />
+        </>
       </Route>
     </Route>
 
-    {/* Catch All */}
+    {/* Catch All - 404 Page */}
     <Route path="*" element={<NotFoundPage />} />
   </Routes>
 );

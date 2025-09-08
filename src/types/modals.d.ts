@@ -1,6 +1,5 @@
 // src/types/modals.d.ts
-// Imports directly from the new app-specific types file
-import { AppArtwork, AppCatalogue, AppProfile, CommonModalProps } from '@/types/app-specific.types';
+import type { AppArtwork, AppCatalogue, AppProfile, CommonModalProps } from '@/types/app-specific.types';
 
 export interface InquiryModalProps extends CommonModalProps {
   artwork?: AppArtwork;
@@ -11,7 +10,7 @@ export interface InquiryModalProps extends CommonModalProps {
 }
 
 // For ShareButton component specifically
-export interface ShareButtonProps extends CommonModalProps { // Inherit CommonModalProps
+export interface ShareButtonProps extends CommonModalProps {
   shareUrl: string;
   title: string | null;
   byline: string | null;

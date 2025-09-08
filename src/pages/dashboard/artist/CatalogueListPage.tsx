@@ -7,17 +7,20 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { PlusCircle, ImageOff, CheckCircle, Archive, Lock, Share2 } from 'lucide-react'; // Added Share2 icon
 import { Database } from '@/types/database.types';
 import ShareModal from '@/components/public/ShareModal'; // Import the ShareModal
+import '@/styles/app.css';
 
 type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
     total_count: number; available_count: number; sold_count: number;
 };
 
 const fetchCataloguesWithStatusCounts = async (userId: string): Promise<CatalogueWithCounts[]> => {
+    console.log("CatalogueListPage: Fetching catalogues for user:", userId); // Query Log 1 (Initiated)
     const { data, error } = await supabase.rpc('get_catalogues_with_status_counts', { auth_user_id: userId });
     if (error) {
-        console.error("Error fetching catalogues with RPC:", error);
+        console.error("CatalogueListPage: Supabase RPC error fetching catalogues:", error); // Query Log 2 (Error)
         throw new Error(error.message);
     }
+    console.log("CatalogueListPage: Supabase RPC returned catalogues (raw):", data); // Query Log 2 (Success)
     return data || [];
 };
 
@@ -27,81 +30,77 @@ const CatalogueListItem = React.memo(({ cat, profileSlug, onShare }: {
     cat: CatalogueWithCounts; 
     profileSlug: string | null | undefined;
     onShare: (catalogue: CatalogueWithCounts) => void; // Callback to open share modal
-}) => (
-    <div style={{
-        background: 'var(--card)', borderRadius: 'var(--radius)',
-        display: 'flex', alignItems: 'center', gap: '1.5rem',
-        border: '1px solid var(--border)', overflow: 'hidden'
-    }}>
-        {cat.cover_image_url ? (
-            <div className="artwork_preview">
-                <img src={cat.cover_image_url} alt={cat.title} style={{ width: '150px', height: '150px', objectFit: 'cover' }}/>
-            </div>
-        ) : (
-            <div style={{
-                width: '150px', height: '150px', display: 'flex', alignItems: 'center', 
-                justifyContent: 'center', background: 'var(--input)', color: 'var(--muted-foreground)'
-            }}>
-                <ImageOff size={32} />
-            </div>
-        )}
-        <div style={{ flexGrow: 1, padding: '1rem 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-               <h3>{cat.title}</h3>
-                {cat.is_system_catalogue && (
-                    <span title="This system catalogue's details cannot be edited, but you can manage its artworks." style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', background: 'var(--muted)', color: 'var(--muted-foreground)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>
-                        <Lock size={12} /> System
-                    </span>
-                )}
-                {!cat.is_published && !cat.is_system_catalogue && (
-                    <span style={{ fontSize: '0.75rem', background: 'var(--secondary)', padding: '0.1rem 0.5rem', borderRadius: 'var(--radius)', fontWeight: 500 }}>Draft</span>
-                )}
-            </div>
-            <p style={{ marginBottom: '0.5rem' }}>
-                Total of {cat.total_count || 0} artwork(s)
-            </p>
-            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.875rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <CheckCircle size={16} color="var(--color-green-success)" />
-                    <span>{cat.available_count || 0} Available</span>
+}) => {
+    console.log("CatalogueListItem: Rendering item:", cat.title); // Item Render Log
+    return (
+        <div className="catalogue-list-item">
+            {cat.cover_image_url ? (
+                <div className="catalogue-list-image-wrapper">
+                    <img src={cat.cover_image_url} alt={cat.title} className="catalogue-list-image" />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--muted-foreground)' }}>
-                    <Archive size={16} />
-                    <span>{cat.sold_count || 0} Sold</span>
+            ) : (
+                <div className="catalogue-list-image-placeholder">
+                    <ImageOff size={32} />
+                </div>
+            )}
+            <div className="catalogue-list-details">
+                <div className="flex items-center gap-2 mb-2">
+                <h3 className="catalogue-list-title">{cat.title}</h3>
+                    {cat.is_system_catalogue && (
+                        <span title="This system catalogue's details cannot be edited, but you can manage its artworks." className="tag-pill badge-system">
+                            <Lock size={12} /> System
+                        </span>
+                    )}
+                    {!cat.is_published && !cat.is_system_catalogue && (
+                        <span className="tag-pill badge-draft">Draft</span>
+                    )}
+                </div>
+                <p className="catalogue-list-summary">
+                    Total of {cat.total_count || 0} artwork(s)
+                </p>
+                <div className="catalogue-list-stats">
+                    <div className="flex items-center gap-1">
+                        <CheckCircle size={16} className="text-green-success" />
+                        <span>{cat.available_count || 0} Available</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                        <Archive size={16} />
+                        <span>{cat.sold_count || 0} Sold</span>
+                    </div>
                 </div>
             </div>
+            <div className="catalogue-list-actions">
+                {cat.is_published && profileSlug && (
+                    <Link to={`/u/${profileSlug}/catalogue/${cat.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">View</Link>
+                )}
+                <Link to={`/u/catalogues/edit/${cat.id}`} className='button button-secondary'>
+                    {cat.is_system_catalogue ? 'Manage Artworks' : 'Edit'}
+                </Link>
+                {cat.is_published && ( // Only show share button for published catalogues
+                    <button 
+                        onClick={() => onShare(cat)} 
+                        className='button button-secondary button-with-icon' 
+                        title="Share Catalogue"
+                    >
+                        <Share2 size={16} />
+                    </button>
+                )}
+            </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', paddingRight: '1.5rem' }}>
-            {cat.is_published && profileSlug && (
-                <Link to={`/u/${profileSlug}/catalogue/${cat.slug}`} className='button button-secondary' target="_blank" rel="noopener noreferrer">View</Link>
-            )}
-            <Link to={`/u/catalogues/edit/${cat.id}`} className='button button-secondary'>
-                {cat.is_system_catalogue ? 'Manage Artworks' : 'Edit'}
-            </Link>
-            {cat.is_published && ( // Only show share button for published catalogues
-                <button 
-                    onClick={() => onShare(cat)} 
-                    className='button button-secondary' 
-                    title="Share Catalogue"
-                >
-                    <Share2 size={16} />
-                </button>
-            )}
-        </div>
-    </div>
-));
+    );
+});
 
 const CatalogueListSkeleton = () => (
     <>
         {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', background: 'var(--card)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', paddingRight: '1.5rem' }}>
-                <div style={{ width: '150px', height: '150px', background: 'var(--input)' }} />
-                <div style={{ flexGrow: 1, padding: '1rem 0' }}>
-                    <div style={{ height: '24px', width: '40%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '0.5rem' }} />
-                    <div style={{ height: '18px', width: '25%', background: 'var(--input)', borderRadius: 'var(--radius-sm)', marginBottom: '1rem' }} />
-                    <div style={{ display: 'flex', gap: '1.5rem' }}>
-                        <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
-                        <div style={{ height: '20px', width: '80px', background: 'var(--input)', borderRadius: 'var(--radius-sm)' }} />
+            <div key={index} className="catalogue-list-item skeleton">
+                <div className="catalogue-list-image-skeleton" />
+                <div className="catalogue-list-details">
+                    <div className="skeleton-line w-2/3 h-6 mb-2" />
+                    <div className="skeleton-line w-1/4 h-4 mb-4" />
+                    <div className="flex gap-4">
+                        <div className="skeleton-line w-1/5 h-5" />
+                        <div className="skeleton-line w-1/5 h-5" />
                     </div>
                 </div>
             </div>
@@ -110,7 +109,7 @@ const CatalogueListSkeleton = () => (
 );
 
 const CatalogueListPage = () => {
-    const { user, profile } = useAuth();
+    const { user, profile, loading: authLoading } = useAuth(); // Added authLoading
     const [searchQuery, setSearchQuery] = useState('');
     const debouncedSearchQuery = useDebounce(searchQuery, 300);
     const [sortOption, setSortOption] = useState('created_at-desc');
@@ -120,14 +119,21 @@ const CatalogueListPage = () => {
     const [showShareModal, setShowShareModal] = useState(false);
     const [catalogueToShare, setCatalogueToShare] = useState<CatalogueWithCounts | null>(null);
 
-    const { data: catalogues, isLoading } = useQuery({
+    console.log("CatalogueListPage: Component rendered. Auth State:", { user, profile, authLoading }); // Global Log 1
+
+    const { data: catalogues, isLoading, error } = useQuery({
         queryKey: ['cataloguesWithStatusCounts', user?.id],
         queryFn: () => fetchCataloguesWithStatusCounts(user!.id),
         enabled: !!user,
     });
     
     const processedCatalogues = useMemo(() => {
-        if (!catalogues) return [];
+        console.log("CatalogueListPage: useMemo - Catalogues before processing (from query):", catalogues); // Filter Log 1
+
+        if (!catalogues) {
+            console.log("CatalogueListPage: useMemo - No catalogues data yet, returning empty array.");
+            return [];
+        }
         const systemCatalogue = catalogues.find(cat => cat.is_system_catalogue);
         const userCatalogues = catalogues.filter(cat => !cat.is_system_catalogue);
 
@@ -160,7 +166,10 @@ const CatalogueListPage = () => {
             return direction === 'asc' ? comparison : -comparison;
         });
 
-        return systemCatalogue ? [systemCatalogue, ...sorted] : sorted;
+        const finalProcessed = systemCatalogue ? [systemCatalogue, ...sorted] : sorted;
+        console.log("CatalogueListPage: useMemo - Catalogues after processing and sorting:", finalProcessed.length, finalProcessed); // Filter Log 2
+        return finalProcessed;
+
     }, [catalogues, debouncedSearchQuery, sortOption, filterStatus]);
 
     // Handler to open the share modal with specific catalogue data
@@ -177,25 +186,44 @@ const CatalogueListPage = () => {
         };
     }, [showShareModal]);
 
+    console.log("CatalogueListPage: Before rendering main JSX. isLoading:", isLoading, "error:", error, "processedCatalogues count:", processedCatalogues.length); // Render Log 1
+
+    if (authLoading) { // Check auth loading first
+        console.log("CatalogueListPage: Auth is still loading.");
+        return <p className="loading-message">Loading authentication...</p>;
+    }
+
+    if (!user) { // If user is not authenticated, redirect or show message (should be handled by ProtectedRoute)
+        console.log("CatalogueListPage: User not authenticated, redirecting or showing login prompt.");
+        return <p className="error-message">Please log in to view your catalogues.</p>;
+    }
+
+    if (isLoading) {
+        console.log("CatalogueListPage: Data is still loading (isLoading is true).");
+        return <CatalogueListSkeleton />; // Show skeleton during loading
+    }
+    if (error) {
+        console.error("CatalogueListPage: Error in useQuery:", error);
+        return <p className="error-message">Error loading catalogues: {error.message}</p>;
+    }
 
     return (
-        <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div className="page-container">
+            <div className="page-header-row">
                 <h1>Catalogues</h1>
-                <Link to="/u/catalogues/new" className="button button-primary" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <Link to="/u/catalogues/new" className="button button-primary button-with-icon">
                     <PlusCircle size={16} /> Create Catalogue
                 </Link>
             </div>
             
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+            <div className="filter-bar-grid">
                 <input 
                     className="input" 
                     placeholder="Search by title..." 
                     value={searchQuery} 
                     onChange={e => setSearchQuery(e.target.value)}
-                    style={{ flexGrow: 1, minWidth: '200px' }}
                 />
-                <select className="input" value={sortOption} onChange={e => setSortOption(e.target.value)} style={{ flex: '0 0 200px' }}>
+                <select className="input" value={sortOption} onChange={e => setSortOption(e.target.value)}>
                     <option value="created_at-desc">Sort by: Newest</option>
                     <option value="created_at-asc">Sort by: Oldest</option>
                     <option value="title-asc">Sort by: Title (A-Z)</option>
@@ -204,17 +232,15 @@ const CatalogueListPage = () => {
                     <option value="available_count-desc">Sort by: Most Available</option>
                     <option value="sold_count-desc">Sort by: Most Sold</option>
                 </select>
-                <select className="input" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ flex: '0 0 150px' }}>
+                <select className="input" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
                     <option value="all">Show All</option>
                     <option value="published">Show Published</option>
                     <option value="unpublished">Show Drafts</option>
                 </select>
             </div>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                {isLoading ? (
-                    <CatalogueListSkeleton />
-                ) : processedCatalogues.length > 0 ? (
+            <div className="catalogue-list">
+                {processedCatalogues.length > 0 ? (
                     processedCatalogues.map((cat) => (
                         <CatalogueListItem 
                             key={cat.id} 
@@ -224,7 +250,7 @@ const CatalogueListPage = () => {
                         />
                     ))
                 ) : (
-                    <div style={{ textAlign: 'center', padding: '3rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius)' }}>
+                    <div className="empty-state-card">
                         <p>
                             {catalogues && catalogues.length > 0
                                 ? "No catalogues match your current filters."

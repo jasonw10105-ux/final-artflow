@@ -1,8 +1,8 @@
-// src/contexts/AuthProvider.tsx
 import React, { createContext, useState, useEffect, useContext, ReactNode, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Session, User } from '@supabase/supabase-js';
 import { Database } from '@/types/database.types';
+import { HelmetProvider } from 'react-helmet-async'; // Import HelmetProvider
 
 // Profile type from Supabase table
 type Profile = Database['public']['Tables']['profiles']['Row'];
@@ -33,10 +33,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If profile doesn't exist (PGRST116), it's not an error to prevent loading
+        if (error.code === 'PGRST116') {
+            console.warn(`Profile for user ${userId} not found, but session exists.`);
+            return null;
+        }
+        throw error; // Re-throw other database errors
+      }
       return data;
     } catch (err: any) {
-      console.error('Failed to fetch profile:', err.message);
+      // Catch network errors (TypeError) specifically
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        console.error('Failed to fetch profile due to network error (TypeError: Failed to fetch). Check Supabase connection or CORS:', err);
+      } else {
+        console.error('Failed to fetch profile (other error):', err.message);
+      }
       return null;
     }
   };
@@ -64,21 +76,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession()
-      .then(({ data: { session: initialSession }, error }) => {
+      .then(async ({ data: { session: initialSession }, error }) => { // Marked as async here
         if (error) {
           console.error('Error getting initial session:', error.message);
-          handleAuthChange(null);
+          await handleAuthChange(null); // Ensure handleAuthChange is awaited
         } else {
-          handleAuthChange(initialSession);
+          await handleAuthChange(initialSession); // Ensure handleAuthChange is awaited
         }
       })
-      .catch((err) => {
-        console.error('Caught error during getSession:', (err as Error).message);
-        handleAuthChange(null);
+      .catch(async (err) => { // Catch block should be async too
+        // Catch network errors during getSession itself
+        if (err instanceof TypeError && err.message === 'Failed to fetch') {
+            console.error('Initial Supabase session fetch failed due to network error (TypeError: Failed to fetch). Check Supabase connection or CORS:', err);
+        } else {
+            console.error('Caught error during getSession:', (err as Error).message);
+        }
+        await handleAuthChange(null); // Ensure handleAuthChange is awaited
+      })
+      .finally(() => {
+          // In case none of the above caught or completed, ensure loading is set to false
+          if (isInitialLoadRef.current) {
+              setLoading(false);
+              isInitialLoadRef.current = false;
+          }
       });
 
     // Listen for auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      // Don't mark as initial load anymore on subsequent changes
       handleAuthChange(newSession);
     });
 
@@ -88,10 +113,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signOut = async (): Promise<{ error: Error | null }> => {
+    // Set loading to true while signing out
+    setLoading(true);
     const { error } = await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
     setSession(null);
+    setLoading(false); // Set loading to false after signOut completes
     return { error };
   };
 
@@ -99,13 +127,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   if (loading) {
     return (
-      <div className="loading-container">
+      <div className="loading-container" style={{ backgroundColor: 'red', color: 'white', fontSize: '30px', textAlign: 'center', padding: '50px', border: '5px solid yellow', position: 'fixed', top: '0', left: '0', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
         <p>Loading Application...</p>
       </div>
     );
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      <HelmetProvider> {/* Wrap children with HelmetProvider */}
+        {children}
+      </HelmetProvider>
+    </AuthContext.Provider>
+  );
 };
 
 // Custom hook to use auth context

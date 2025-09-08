@@ -230,7 +230,7 @@ const SalesPage = () => {
                                                     <Download size={16} />
                                                 </a>
                                             ) : (
-                                                <span className="text-xs text-muted-foreground italic">Physical</span>
+                                                <span className="text-xs text-muted-foreground italic">Physical CoA</span>
                                             )}
                                         </td>
                                     </tr>

@@ -1,16 +1,15 @@
-// src/components/dashboard/ArtworkActionsMenu.tsx
 import React, { useState } from 'react';
 import { Menu, MenuItem, Backdrop } from '@mui/material';
-import { handleDownload } from '../../utils/imageUtils';
-// Import AppArtwork and AppProfile from the new app-specific.types.ts
+import { handleDownload } from '../../utils/imageUtils'; // Assuming this utility exists
 import { AppArtwork, AppProfile } from '@/types/app-specific.types';
 import { useAuth } from '@/contexts/AuthProvider';
-import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus, Eye, XCircle } from 'lucide-react'; // Fixed: Import XCircle and Eye
+import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus, Eye, XCircle, BookCopy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import ShareButton from '../ui/ShareButton'; // Reusable ShareButton component
-import '@/styles/app.css'; // Import the centralized styles
-import { ShareButtonProps } from '@/types/modals'; // Import ShareButtonProps from modals.d.ts
+import ShareButton from '../ui/ShareButton';
+import AssignCatalogueModal from './AssignCatalogueModal';
+import '@/styles/app.css';
+import { ShareButtonProps } from '@/types/modals';
 
 interface ArtworkActionsMenuProps {
   artwork: AppArtwork;
@@ -104,6 +103,8 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
   const isOpen = Boolean(anchorEl);
   const [showMarkAsSoldModal, setShowMarkAsSoldModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showAssignCatalogueModal, setShowAssignCatalogueModal] = useState(false);
+
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
@@ -113,10 +114,9 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
     setAnchorEl(null);
   };
 
-  // Helper to get primary image for sharing
+  // Corrected optional chaining here:
   const primaryImage = artwork.artwork_images?.find(img => img.is_primary) || artwork.artwork_images?.[0];
   const primaryImageUrl = primaryImage?.image_url || null;
-
 
   const publicArtworkUrl = (profile as AppProfile)?.slug && artwork.slug ? `${window.location.origin}/u/${(profile as AppProfile).slug}/artwork/${artwork.slug}` : null;
 
@@ -126,27 +126,27 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
   };
 
   const confirmMarkAsSold = (saleDetails: { price: number, buyer: string }) => {
-    toast.info(`Artwork "${artwork.title}" marked as sold for ${saleDetails.price} to ${saleDetails.buyer}. (Feature not fully implemented)`);
+    toast.info(`Artwork "${artwork.title}" marked as sold for ${saleDetails.price} to ${saleDetails.buyer}. (This is a simulation. Full backend implementation needed.)`);
     console.log("Mark as Sold:", artwork.id, saleDetails);
     setShowMarkAsSoldModal(false);
   };
 
   const handleMarkAsAvailable = () => {
-    toast.info(`Artwork "${artwork.title}" marked as available. (Feature not fully implemented)`);
+    toast.info(`Artwork "${artwork.title}" marked as available. (Simulation. Full backend implementation needed.)`);
     console.log("Mark as Available:", artwork.id);
     handleClose();
   };
 
   const handleDelete = () => {
     if (window.confirm(`Are you sure you want to delete "${artwork.title}"? This action cannot be undone.`)) {
-      toast.info(`Artwork "${artwork.title}" deleted. (Feature not fully implemented)`);
+      toast.info(`Artwork "${artwork.title}" deleted. (Simulation. Full backend implementation needed.)`);
       console.log("Delete Artwork:", artwork.id);
     }
     handleClose();
   };
 
   const handleAssignCatalogue = () => {
-    toast.info(`Assigning "${artwork.title}" to catalogue. (Feature not fully implemented)`);
+    setShowAssignCatalogueModal(true);
     handleClose();
   };
 
@@ -180,7 +180,7 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
         </MenuItem>
 
         <MenuItem onClick={handleAssignCatalogue}>
-          <Plus size={18} className="mr-2" /> Assign to Catalogue
+          <BookCopy size={18} className="mr-2" /> Assign to Catalogue
         </MenuItem>
 
         {artwork.status === 'available' && (
@@ -195,25 +195,24 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
           </MenuItem>
         )}
 
-        {(artwork.artwork_images?.[0]?.watermarked_image_url || artwork.artwork_images?.[0]?.visualization_image_url) && (
-            <MenuItem onClick={(e) => e.stopPropagation()}> {/* Prevent closing main menu immediately */}
+        {(primaryImage?.watermarked_image_url || primaryImage?.visualization_image_url) && (
+            <MenuItem onClick={(e) => e.stopPropagation()}>
                 <Download size={18} className="mr-2" /> Download Images
-                {/* Nested Menu for downloads */}
                 <Menu
                     anchorEl={anchorEl}
-                    open={isOpen} // Only show when parent menu is also open
+                    open={isOpen}
                     onClose={handleClose}
                     anchorOrigin={{ horizontal: 'left', vertical: 'top' }}
                     transformOrigin={{ horizontal: 'right', vertical: 'top' }}
                     PaperProps={{ className: "sub-menu" }}
                 >
-                    {artwork.artwork_images?.[0]?.watermarked_image_url && (
-                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.watermarked_image_url!, `${artwork.slug ?? 'artwork'}-watermarked.png`)}>
+                    {primaryImage?.watermarked_image_url && (
+                        <MenuItem onClick={() => handleDownload(primaryImage?.watermarked_image_url!, `${artwork.slug ?? 'artwork'}-watermarked.png`)}>
                             <Archive size={18} className="mr-2"/> Watermarked
                         </MenuItem>
                     )}
-                    {artwork.artwork_images?.[0]?.visualization_image_url && (
-                        <MenuItem onClick={() => handleDownload(artwork.artwork_images?.[0]?.visualization_image_url!, `${artwork.slug ?? 'artwork'}-visualization.jpg`)}>
+                    {primaryImage?.visualization_image_url && (
+                        <MenuItem onClick={() => handleDownload(primaryImage?.visualization_image_url!, `${artwork.slug ?? 'artwork'}-visualization.jpg`)}>
                             <Archive size={18} className="mr-2"/> Visualization
                         </MenuItem>
                     )}
@@ -251,9 +250,16 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
             onClose={() => setShowShareModal(false)}
           />
       )}
+
+      {/* Assign to Catalogue Modal */}
+      {showAssignCatalogueModal && (
+        <AssignCatalogueModal
+          artwork={artwork}
+          onClose={() => setShowAssignCatalogueModal(false)}
+        />
+      )}
     </>
   );
 };
-
 
 export default ArtworkActionsMenu;

@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import FiltersSidebar, { Filters } from "@/components/ui/FiltersSidebar"; // Assuming FiltersSidebar exists
-import { AppArtwork, AppArtworkWithJunction, CatalogueRef } from '@/types/app.types'; // Use AppArtwork
+import { AppArtwork, AppArtworkWithJunction } from '@/types/app.types'; // Use AppArtwork
 import ArtworkActionsMenu from "@/components/dashboard/ArtworkActionsMenu"; // Assuming ArtworkActionsMenu exists
 import ShareButton from "@/components/ui/ShareButton"; // Reusable ShareButton component
 import { PlusCircle, Upload, Tag, Archive, XCircle, Settings, ImageOff } from 'lucide-react'; // Added ImageOff for placeholder
@@ -200,7 +200,7 @@ export default function ArtworkListPage() {
     subjectSearch: "", orientation: [], isFramed: null, isSigned: null, isEdition: null,
     minHeight: undefined, maxHeight: undefined, minWidth: undefined, maxWidth: undefined, minDepth: undefined, maxDepth: undefined,
   });
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth(); // Added authLoading
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -209,6 +209,8 @@ export default function ArtworkListPage() {
   const [selectedArtworkIds, setSelectedArtworkIds] = useState<string[]>([]); // For bulk actions
   const [showCsvImportModal, setShowCsvImportModal] = useState(false);
   const [showBulkActionsModal, setShowBulkActionsModal] = useState(false);
+
+  console.log("ArtworkListPage: Component rendered. Auth State:", { user, profile, authLoading }); // Global Log 1
 
   // --- Deep Linking for Filters (useEffect to parse URL on load) ---
   useEffect(() => {
@@ -254,7 +256,11 @@ export default function ArtworkListPage() {
   const { data: artworks, isLoading, error } = useQuery<AppArtwork[], Error>({ // Use AppArtwork
     queryKey: ["artworks", user?.id], // Add user?.id to query key for RLS
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id) {
+        console.log("ArtworkListPage: Query skipped - user ID not available."); // Query Log 1 (Skipped)
+        return [];
+      }
+      console.log("ArtworkListPage: Fetching artworks for user:", user.id); // Query Log 1 (Initiated)
       const { data, error } = await supabase
         .from("artworks")
         .select(`
@@ -270,9 +276,11 @@ export default function ArtworkListPage() {
         .order("created_at", { ascending: false });
 
       if (error) {
+        console.error("ArtworkListPage: Supabase error fetching artworks:", error); // Query Log 2 (Error)
         toast.error(`Failed to load artworks: ${error.message}`);
         throw new Error(error.message);
       }
+      console.log("ArtworkListPage: Supabase returned artworks (raw):", data); // Query Log 2 (Success)
       return data?.map(art => ({
           ...art,
           artwork_images: (art.artwork_images || []).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
@@ -282,7 +290,12 @@ export default function ArtworkListPage() {
   });
 
   const filteredArtworks = useMemo(() => {
-    if (!artworks) return [];
+    console.log("ArtworkListPage: useMemo - Artworks before filtering (from query):", artworks); // Filter Log 1
+
+    if (!artworks) {
+        console.log("ArtworkListPage: useMemo - No artworks data yet, returning empty array.");
+        return [];
+    }
 
     const normalizeStatus = (s: AppArtwork["status"]) =>
       s?.toLowerCase() === "available"
@@ -291,8 +304,57 @@ export default function ArtworkListPage() {
         ? "draft" // Group these into 'draft' for internal display/filter purposes if desired
         : s?.toLowerCase() ?? "";
 
-    return artworks
+    const filtered = artworks
       .filter((a) => {
+        // --- START FILTER DEBUG ---
+        // console.log(`Filtering artwork ${a.title}:`);
+        // if (filters.genre.length && !filters.genre.includes(a.genre ?? "")) { /* console.log('  - Failed genre'); */ return false; }
+        // if (filters.status.length && !filters.status.includes(normalizeStatus(a.status))) { /* console.log('  - Failed status'); */ return false; }
+        // if (filters.keyword.length && !a.keywords?.some((k) => filters.keyword.includes(k))) { /* console.log('  - Failed keyword'); */ return false; }
+        // if (filters.color.length && !a.color_groups?.some((c) => filters.color.includes(c))) { /* console.log('  - Failed color'); */ return false; }
+        // if (filters.medium && filters.medium.length && !filters.medium.includes(a.medium ?? "")) { /* console.log('  - Failed medium'); */ return false; }
+        // if (filters.priceMin !== undefined && (a.price ?? 0) < filters.priceMin) { /* console.log('  - Failed priceMin'); */ return false; }
+        // if (filters.priceMax !== undefined && (a.price ?? 0) > filters.priceMax) { /* console.log('  - Failed priceMax'); */ return false; }
+        // if (a.created_at) {
+        //   const creationYear = new Date(a.created_at).getFullYear();
+        //   if (filters.creationYearMin !== undefined && creationYear < filters.creationYearMin) { /* console.log('  - Failed creationYearMin'); */ return false; }
+        //   if (filters.creationYearMax !== undefined && creationYear > filters.creationYearMax) { /* console.log('  - Failed creationYearMax'); */ return false; }
+        // }
+        // if (filters.subjectSearch && !(a.subject?.toLowerCase().includes(filters.subjectSearch.toLowerCase()))) { /* console.log('  - Failed subjectSearch'); */ return false; }
+        // if (filters.orientation.length > 0 && !(filters.orientation.includes(a.orientation ?? ''))) { /* console.log('  - Failed orientation'); */ return false; }
+        // if (filters.isFramed !== null) {
+        //   if (filters.isFramed === true && (!a.framing_info?.is_framed)) { /* console.log('  - Failed isFramed true'); */ return false; }
+        //   if (filters.isFramed === false && (a.framing_info?.is_framed)) { /* console.log('  - Failed isFramed false'); */ return false; }
+        // }
+        // if (filters.isSigned !== null) {
+        //   if (filters.isSigned === true && (!a.signature_info?.is_signed)) { /* console.log('  - Failed isSigned true'); */ return false; }
+        //   if (filters.isSigned === false && (a.signature_info?.is_signed)) { /* console.log('  - Failed isSigned false'); */ return false; }
+        // }
+        // if (filters.isEdition !== null) {
+        //   if (filters.isEdition === true && (!a.edition_info?.is_edition)) { /* console.log('  - Failed isEdition true'); */ return false; }
+        //   if (filters.isEdition === false && (a.edition_info?.is_edition)) { /* console.log('  - Failed isEdition false'); */ return false; }
+        // }
+        // if (filters.minHeight !== undefined && (a.dimensions?.height ?? 0) < filters.minHeight) { /* console.log('  - Failed minHeight'); */ return false; }
+        // if (filters.maxHeight !== undefined && (a.dimensions?.height ?? 0) > filters.maxHeight) { /* console.log('  - Failed maxHeight'); */ return false; }
+        // if (filters.minWidth !== undefined && (a.dimensions?.width ?? 0) < filters.minWidth) { /* console.log('  - Failed minWidth'); */ return false; }
+        // if (filters.maxWidth !== undefined && (a.dimensions?.width ?? 0) > filters.maxWidth) { /* console.log('  - Failed maxWidth'); */ return false; }
+        // if (filters.minDepth !== undefined && (a.dimensions?.depth ?? 0) < filters.minDepth) { /* console.log('  - Failed minDepth'); */ return false; }
+        // if (filters.maxDepth !== undefined && (a.dimensions?.depth ?? 0) > filters.maxDepth) { /* console.log('  - Failed maxDepth'); */ return false; }
+        // if (filters.search) {
+        //   const q = filters.search.toLowerCase();
+        //   const searchableFields = [
+        //     a.title, a.description, a.genre, a.medium, a.subject, a.orientation, a.inventory_number,
+        //     a.provenance, a.location, a.framing_info?.details, a.signature_info?.location,
+        //     a.signature_info?.details, ...(a.keywords || []), ...(a.dominant_colors || []),
+        //     ...(a.color_groups || []), ...(a.artwork_catalogue_junction?.map(junction => junction.catalogue?.title) || []),
+        //   ].filter(Boolean).map(String);
+        //   const match = searchableFields.some(field => field.toLowerCase().includes(q));
+        //   if (!match) { /* console.log('  - Failed search'); */ return false; }
+        // }
+        // console.log(`  - Passed filtering`);
+        // --- END FILTER DEBUG ---
+
+        // Actual filter logic
         if (filters.genre.length && !filters.genre.includes(a.genre ?? "")) return false;
         if (filters.status.length && !filters.status.includes(normalizeStatus(a.status))) return false;
         if (filters.keyword.length && !a.keywords?.some((k) => filters.keyword.includes(k))) return false;
@@ -377,6 +439,10 @@ export default function ArtworkListPage() {
             return 0;
         }
       });
+    
+    console.log("ArtworkListPage: useMemo - Artworks after filtering and sorting:", filtered.length, filtered); // Filter Log 2
+    return filtered;
+
   }, [artworks, filters]);
 
   // --- Bulk Actions ---
@@ -402,21 +468,43 @@ export default function ArtworkListPage() {
       // Add logic for 'mark-available', 'mark-sold', 'add-tags' etc.
   };
 
-  if (isLoading) return <p className="loading-message">Loading artworks...</p>;
-  if (error) return <p className="error-message">Error loading artworks: {error.message}</p>;
+  console.log("ArtworkListPage: Before rendering main JSX. isLoading:", isLoading, "error:", error, "filteredArtworks count:", filteredArtworks.length); // Render Log 1
 
-  // Empty state for artist without artworks
-  if (!artworks?.length && !isLoading) return (
-    <div className="empty-state-card">
-      <p className="text-muted-foreground">You haven't uploaded any artworks yet.</p>
-      <Link to="/u/artworks/wizard" className="button button-primary mt-4 button-with-icon">
-        <PlusCircle size={16} /> Create Your First Artwork
-      </Link>
-      <button onClick={() => setShowCsvImportModal(true)} className="button button-secondary mt-2 button-with-icon">
-          <Upload size={16} /> Import Artworks from CSV
-      </button>
-    </div>
-  );
+  if (authLoading) { // Check auth loading first
+      console.log("ArtworkListPage: Auth is still loading.");
+      return <p className="loading-message">Loading authentication...</p>;
+  }
+
+  if (!user) { // If user is not authenticated, redirect or show message (should be handled by ProtectedRoute)
+      console.log("ArtworkListPage: User not authenticated, redirecting or showing login prompt.");
+      return <p className="error-message">Please log in to view your artworks.</p>;
+  }
+
+  if (isLoading) {
+      console.log("ArtworkListPage: Data is still loading (isLoading is true).");
+      return <p className="loading-message">Loading artworks...</p>;
+  }
+  if (error) {
+      console.error("ArtworkListPage: Error in useQuery:", error);
+      return <p className="error-message">Error loading artworks: {error.message}</p>;
+  }
+
+  // Empty state for artist without artworks, or if filters hide all.
+  // Note: This conditional renders *after* isLoading and error checks.
+  if ((!artworks || artworks.length === 0) && filteredArtworks.length === 0) {
+      console.log("ArtworkListPage: No artworks found for this user, showing empty state.");
+      return (
+          <div className="empty-state-card">
+              <p className="text-muted-foreground">You haven't uploaded any artworks yet.</p>
+              <Link to="/u/artworks/wizard" className="button button-primary mt-4 button-with-icon">
+                  <PlusCircle size={16} /> Create Your First Artwork
+              </Link>
+              <button onClick={() => setShowCsvImportModal(true)} className="button button-secondary mt-2 button-with-icon">
+                  <Upload size={16} /> Import Artworks from CSV
+              </button>
+          </div>
+      );
+  }
 
 
   return (
@@ -451,7 +539,7 @@ export default function ArtworkListPage() {
               {Object.entries(filters).map(([key, value]) => {
                   if ((Array.isArray(value) && value.length > 0) || (typeof value === 'string' && value !== '' && value !== 'newest') || (typeof value === 'number') || (typeof value === 'boolean' && value !== null)) {
                       const displayKey = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                      const displayValue = Array.isArray(value) ? value.join(', ') : String(value);
+                      const displayValue = Array.isArray(value) ? value.join(',') : String(value);
                       return (
                           <span key={key} className="filter-pill">
                               {displayKey}: {displayValue}

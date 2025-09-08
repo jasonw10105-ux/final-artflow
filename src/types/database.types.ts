@@ -4,13 +4,13 @@
 
 // Helper types for JSONB columns, assuming specific structures
 export type LocationJson = { city?: string; country?: string; street?: string; zipcode?: string; state?: string; };
-export type SocialLinkJson = { platform: string; url: string; details?: string; }; // Added 'details'
+export type SocialLinkJson = { platform: string; url: string; details?: string; };
 export type DimensionsJson = { width?: number | null; height?: number | null; depth?: number | null; unit?: 'cm' | 'inch' | 'variable' | null; };
 export type DateInfoJson = { type: 'full_date' | 'year_only' | 'date_range' | 'circa'; date_value?: string | null; start_date?: string | null; end_date?: string | null; };
 export type SignatureInfoJson = { is_signed?: boolean | null; location?: string | null; details?: string | null; };
 export type FramingInfoJson = { is_framed?: boolean | null; details?: string | null; is_framing_optional?: boolean | null; };
 export type EditionInfoJson = { is_edition?: boolean | null; numeric_size?: number | null; ap_size?: number | null; sold_editions?: string[] | null; };
-export type HistoricalEntryJson = { id: string; year: number | null; description: string; }; // Matches type in ArtworkForm
+export type HistoricalEntryJson = { id: string; year: number | null; description: string; };
 
 // Generic helper for Insert/Update types (making all fields optional for flexibility)
 type GenerateInsert<T extends Record<string, any>> = Partial<T>;
@@ -39,10 +39,10 @@ export type Database = {
           slug: string | null;
           profile_completed: boolean | null;
           default_has_certificate_of_authenticity: boolean | null;
-          logo_url: string | null; // Added based on error in ArtistSettingsPage.tsx
-          coa_settings: Json | null; // Added based on error in ArtistSettingsPage.tsx
-          is_collection_public: boolean | null; // Added based on error in CollectorCollectionPage.tsx
-          collector_lists: Json[] | null; // Added based on error in CollectorFavoritesPage.tsx
+          logo_url: string | null; // Added based on errors
+          coa_settings: Json | null; // Added based on errors
+          is_collection_public: boolean | null; // Added based on errors
+          collector_lists: Json[] | null; // Added based on errors
         };
         Insert: GenerateInsert<Database['public']['Tables']['profiles']['Row']>;
         Update: GenerateUpdate<Database['public']['Tables']['profiles']['Row']>;
@@ -352,7 +352,7 @@ export type Database = {
         Returns: Array<{ id: string; title: string; image_url: string; slug: string; artist_id: string; artist_full_name: string; artist_slug: string }>;
       };
       get_personalized_artworks: {
-        Args: { p_collector_id: string; p_limit: number; p_offset: number };
+        Args: { p_collector_id: string | undefined; p_limit: number; p_offset: number }; // p_collector_id can be undefined
         Returns: Array<{
           id: string; title: string; slug: string; price: number; currency: string;
           image_url: string; artist_id: string; artist_full_name: string; artist_slug: string;
@@ -409,14 +409,22 @@ export type Database = {
 };
 
 // --- EXPORT DIRECT ROW TYPES FOR EASIER USE ---
+// These aliases simplify type references throughout the application.
 export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 export type ArtworkRow = Database['public']['Tables']['artworks']['Row'];
 export type ArtworkImageRow = Database['public']['Tables']['artwork_images']['Row'];
 export type CatalogueRow = Database['public']['Tables']['catalogues']['Row'];
-export type NotificationRow = Database['public']['Tables']['notifications']['Row'];
+export type ArtworkCatalogueJunctionRow = Database['public']['Tables']['artwork_catalogue_junction']['Row']; // Added
+export type ContactRow = Database['public']['Tables']['contacts']['Row']; // Added
+export type ContactTagRow = Database['public']['Tables']['contact_tags']['Row']; // Added
+export type TagRow = Database['public']['Tables']['tags']['Row']; // Added
+export type CatalogueAudienceJunctionRow = Database['public']['Tables']['catalogue_audience_junction']['Row']; // Added
+export type SaleRow = Database['public']['Tables']['sales']['Row'];
 export type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 export type MessageRow = Database['public']['Tables']['messages']['Row'];
-export type SaleRow = Database['public']['Tables']['sales']['Row'];
+export type InquiryRow = Database['public']['Tables']['inquiries']['Row']; // Added
+export type RecentlyViewedArtworkRow = Database['public']['Tables']['recently_viewed_artworks']['Row']; // Added
+export type NotificationRow = Database['public']['Tables']['notifications']['Row'];
 export type FollowRow = Database['public']['Tables']['follows']['Row'];
 export type LikeRow = Database['public']['Tables']['likes']['Row'];
 

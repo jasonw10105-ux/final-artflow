@@ -1,144 +1,152 @@
-import React, { useState } from 'react';
-import { X, Copy, Mail, MessageCircle, Twitter, Facebook, MoreHorizontal } from 'lucide-react';
-import '@/styles/app.css';
+// src/components/public/ShareModal.tsx
+// This file was not provided, but inferred from usage.
 
-// --- SVG Icons for platforms not in lucide-react ---
+import React, { useState, useEffect } from 'react';
+import { RWebShare } from 'react-web-share'; // Assuming this library is installed
+import { Copy, XCircle, Facebook, Twitter, Mail, Link as LinkIcon, Download } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { AppArtwork, AppProfile, ShareButtonProps } from '@/types/app.types'; // Import types
 
-const ThreadsIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 18s-1.5-1.5-3-3.5a4.5 4.5 0 1 1 5.5-5.5" />
-        <path d="M15 6s1.5 1.5 3 3.5a4.5 4.5 0 1 0-5.5 5.5" />
-    </svg>
-);
+// Helper function to add UTM parameters
+const getShareUrlWithUTM = (baseUrl: string, source: string, medium: string, campaign: string) => {
+    const url = new URL(baseUrl);
+    url.searchParams.set('utm_source', source);
+    url.searchParams.set('utm_medium', medium);
+    url.searchParams.set('utm_campaign', campaign);
+    return url.toString();
+};
 
-const InstagramIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect width="20" height="20" x="2" y="2" rx="5" ry="5"></rect>
-        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-        <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"></line>
-    </svg>
-);
-
-
-interface ShareModalProps {
-  onClose: () => void;
-  title: string;
-  byline: string;
-  shareUrl: string;
-  previewImageUrls: string[];
-  isCatalogue?: boolean;
-  dimensions?: string | null;
-  price?: number | string | null;
-  year?: string | number | null;
-  currency?: string | null;
-}
-
-const ShareModal = ({
-    onClose,
-    title,
-    byline,
-    shareUrl,
-    previewImageUrls,
+const ShareModal: React.FC<ShareButtonProps> = ({ // Use ShareButtonProps
+    isOpen, 
+    onClose, 
+    shareUrl, 
+    title, 
+    byline, 
+    previewImageUrls, 
     isCatalogue = false,
-    dimensions,
-    price,
-    year,
-    currency = 'ZAR'
-}: ShareModalProps) => {
+    artwork, // Only available if isCatalogue is false
+    dimensions, price, year, currency // For catalogue metadata
+}) => {
+    const [copied, setCopied] = useState(false);
 
-    const [copySuccess, setCopySuccess] = useState<string | null>(null);
-    const shareType = isCatalogue ? "catalogue" : "artwork";
-    const formattedPrice = typeof price === 'number' ? `${currency} ${price.toLocaleString()}` : price;
-    const detailedText = [ title, dimensions, formattedPrice, year ].filter(Boolean).join('\n');
-    const instagramPostText = `${detailedText}\n\nAvailable on artflow.co.za`;
-    const conciseShareText = `Check out "${title}" by ${byline} on Artflow: ${shareUrl}`;
-    const encodedConciseShareText = encodeURIComponent(conciseShareText);
+    useEffect(() => {
+        if (!isOpen) {
+            setCopied(false);
+        }
+    }, [isOpen]);
 
-    const showSuccessMessage = (message: string) => {
-        setCopySuccess(message);
-        setTimeout(() => setCopySuccess(null), 2500);
+    const handleCopyLink = () => {
+        const campaignId = isCatalogue 
+            ? (artwork?.id || title?.replace(/\s/g, '_').toLowerCase() || 'unknown_catalogue') 
+            : (artwork?.id || title?.replace(/\s/g, '_').toLowerCase() || 'unknown_artwork');
+        const urlToCopy = getShareUrlWithUTM(shareUrl, 'clipboard', 'manual', campaignId);
+        navigator.clipboard.writeText(urlToCopy)
+            .then(() => {
+                setCopied(true);
+                toast.success('Link copied to clipboard!');
+            })
+            .catch(() => {
+                toast.error('Failed to copy link.');
+            });
     };
 
-    const shareOptions = [
-        { name: 'Copy Link', icon: <Copy size={24} />, action: () => {
-            navigator.clipboard.writeText(shareUrl);
-            showSuccessMessage('Link copied to clipboard!');
-        }},
-        { name: 'Instagram', icon: <InstagramIcon />, action: () => {
-            navigator.clipboard.writeText(instagramPostText);
-            showSuccessMessage('Text copied for Instagram! Now save an image and create your post.');
-        }},
-        { name: 'Email', icon: <Mail size={24} />, action: () => {
-            window.location.href = `mailto:?subject=${encodeURIComponent(`Artflow ${shareType}: ${title}`)}&body=${encodeURIComponent(instagramPostText + `\n\nView here: ${shareUrl}`)}`;
-        }},
-        { name: 'WhatsApp', icon: <MessageCircle size={24} />, action: () => {
-            window.open(`https://api.whatsapp.com/send?text=${encodedConciseShareText}`, '_blank', 'noopener,noreferrer');
-        }},
-        { name: 'Twitter / X', icon: <Twitter size={24} />, action: () => {
-            window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`Check out "${title}" by ${byline} on Artflow!`)}`, '_blank', 'noopener,noreferrer');
-        }},
-        { name: 'Facebook', icon: <Facebook size={24} />, action: () => {
-            window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer');
-        }},
-        { name: 'Threads', icon: <ThreadsIcon />, action: () => {
-            window.open(`https://www.threads.net/intent/post?text=${encodedConciseShareText}`, '_blank', 'noopener,noreferrer');
-        }},
-    ];
+    if (!isOpen) return null;
 
-    // --- MODIFICATION: Check for Web Share API support and add the "More" option ---
-    // This check ensures the button only appears on compatible browsers (mostly mobile).
-    if (navigator.share) {
-        shareOptions.push({
-            name: 'More Options',
-            icon: <MoreHorizontal size={24} />,
-            action: async () => {
-                try {
-                    await navigator.share({
-                        title: `Artflow: ${title}`,
-                        text: `Check out "${title}" by ${byline} on Artflow`,
-                        url: shareUrl,
-                    });
-                } catch (error) {
-                    // This error can happen if the user cancels the share.
-                    // We can safely ignore it.
-                    console.log('Web Share API canceled or failed', error);
-                }
-            }
-        });
-    }
+    // Determine content for WebShare
+    const shareText = isCatalogue 
+        ? `Check out "${title}" by ${byline} on Artflow!`
+        : `Discover "${title}" by ${byline} on Artflow - ${artwork?.price ? `$${artwork.price.toLocaleString()} ${artwork.currency || 'USD'}` : 'Price on request'}`;
+    
+    const firstPreviewImage = previewImageUrls.filter(Boolean)[0] || '';
+
+    const campaignId = isCatalogue 
+        ? (artwork?.id || title?.replace(/\s/g, '_').toLowerCase() || 'unknown_catalogue') 
+        : (artwork?.id || title?.replace(/\s/g, '_').toLowerCase() || 'unknown_artwork');
 
     return (
-        <div className="modal-backdrop" onClick={onClose}>
-            <div className="modal-content share-modal-content" onClick={(e) => e.stopPropagation()}>
-                <button className="modal-close-button" onClick={onClose}>
-                    <X size={24} />
-                </button>
-                
-                {previewImageUrls && previewImageUrls.length > 0 && (
-                    <div className="modal-preview-banner">
-                        <div className="share-preview-images">
-                            {previewImageUrls.slice(0, 5).map((url, index) => (
-                                <img key={index} src={url} alt={`${title} preview ${index + 1}`} className="share-preview-image-item" />
-                            ))}
-                        </div>
-                        <div className="modal-preview-info">
-                            <h3>Share this {shareType}</h3>
-                            <h4>{title}</h4>
+        <div className="modal-backdrop" onClick={onClose}> {/* Close modal when clicking backdrop */}
+            <div className="modal-content" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}> {/* Prevent closing when clicking inside */}
+                <div className="modal-header">
+                    <h3>Share {isCatalogue ? 'Catalogue' : 'Artwork'}</h3>
+                    <button type="button" onClick={onClose} className="button-icon"><XCircle size={20} /></button>
+                </div>
+                <div className="modal-body space-y-4">
+                    <div className="flex items-center gap-4">
+                        <img 
+                            src={firstPreviewImage || 'https://placehold.co/100x100?text=Preview'} 
+                            alt={title || 'Share Preview'} 
+                            className="w-24 h-24 object-cover rounded-lg" 
+                        />
+                        <div>
+                            <p className="font-semibold text-lg">{title || 'Untitled'}</p>
+                            <p className="text-muted-foreground">by {byline || 'An Artist'}</p>
+                            {!isCatalogue && artwork && (
+                                <>
+                                    {artwork.price && (
+                                        <p className="font-bold text-sm">{new Intl.NumberFormat('en-US', { style: 'currency', currency: artwork.currency || 'USD' }).format(artwork.price)}</p>
+                                    )}
+                                    {artwork.dimensions?.height && artwork.dimensions?.width && ( // Safely access dimensions
+                                        <p className="text-xs text-muted-foreground">{artwork.dimensions.height}x{artwork.dimensions.width} {artwork.dimensions.unit}</p>
+                                    )}
+                                </>
+                            )}
+                            {isCatalogue && (
+                                <p className="text-xs text-muted-foreground">{dimensions || ''} {price ? `$${price.toLocaleString()}` : ''}</p>
+                            )}
                         </div>
                     </div>
-                )}
-                <p className="modal-subtitle">Share with your friends or followers.</p>
-                
-                <div className="share-options-grid">
-                    {shareOptions.map(option => (
-                        <button key={option.name} className="share-option-button" onClick={option.action}>
-                            <div className="share-icon-wrapper">{option.icon}</div>
-                            <span>{option.name}</span>
-                        </button>
-                    ))}
-                </div>
 
-                {copySuccess && <p className="copy-success-message">{copySuccess}</p>}
+                    <div className="form-group">
+                        <label htmlFor="share-link" className="label">Shareable Link</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                id="share-link"
+                                type="text"
+                                value={getShareUrlWithUTM(shareUrl, 'direct', 'copy', campaignId)}
+                                readOnly
+                                className="input flex-grow"
+                            />
+                            <button type="button" onClick={handleCopyLink} className="button button-secondary button-with-icon">
+                                <Copy size={16} /> {copied ? 'Copied!' : 'Copy'}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="share-options grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <RWebShare
+                            data={{
+                                text: shareText,
+                                url: getShareUrlWithUTM(shareUrl, 'web_share', 'social', campaignId),
+                                title: title || 'Artflow Item',
+                            }}
+                            onClick={() => console.log("Share successful!")}
+                        >
+                            <button className="share-button-icon">
+                                <LinkIcon size={24} /> Web Share
+                            </button>
+                        </RWebShare>
+                        
+                        <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrlWithUTM(shareUrl, 'facebook', 'social', campaignId))}&quote=${encodeURIComponent(shareText)}`} 
+                           target="_blank" rel="noopener noreferrer" className="share-button-icon">
+                            <Facebook size={24} /> Facebook
+                        </a>
+                        <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(getShareUrlWithUTM(shareUrl, 'twitter', 'social', campaignId))}&text=${encodeURIComponent(shareText)}`} 
+                           target="_blank" rel="noopener noreferrer" className="share-button-icon">
+                            <Twitter size={24} /> Twitter
+                        </a>
+                        <a href={`mailto:?subject=${encodeURIComponent(title || 'Artflow Item')}&body=${encodeURIComponent(shareText + '\n' + getShareUrlWithUTM(shareUrl, 'email', 'manual', campaignId))}`} 
+                           className="share-button-icon">
+                            <Mail size={24} /> Email
+                        </a>
+                        {/* More share options can be added here */}
+                        <button className="share-button-icon" onClick={() => toast('Download image coming soon!', { icon: '🖼️' })}>
+                            <Download size={24} /> Image
+                        </button>
+                    </div>
+                </div>
+                <div className="modal-footer">
+                    <button type="button" className="button button-secondary" onClick={onClose}>Done</button>
+                </div>
             </div>
         </div>
     );

@@ -1,89 +1,80 @@
-import {
-  ArtworkRow,
-  ArtworkImageRow,
-  ProfileRow,
-  CatalogueRow,
-  NotificationRow,
-  ConversationRow,
-  MessageRow,
-  SaleRow,
-  LocationJson,
-  DimensionsJson,
-  DateInfoJson,
-  SignatureInfoJson,
-  FramingInfoJson,
-  EditionInfoJson,
-  HistoricalEntryJson,
-  SocialLinkJson
-} from './database.types';
+// src/types/app.types.ts
+import { Database } from './database.types'; // Assuming database.types.ts is in the same directory
 
-// --- Enriched Profile Types (AppProfile) ---
+// Export ProfileRow directly from Database types for clarity
+export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+
+// AppProfile: Extends ProfileRow with any app-specific fields or relations if needed
 export interface AppProfile extends ProfileRow {
-  // Add any specific relations or computed fields you might fetch with profiles
-  // e.g., follower_count, related_artworks, etc.
+    // Add any specific relations or computed fields you might fetch with profiles
 }
 
-// --- Enriched Artwork Image Types (AppArtworkImage) ---
-export interface AppArtworkImage extends ArtworkImageRow {
-  // If artwork_images ever has further joined data, add it here.
-}
+// AppArtworkImage: Extends the raw ArtworkImageRow
+export type AppArtworkImage = Database['public']['Tables']['artwork_images']['Row'];
 
-// --- Enriched Artwork Types (AppArtwork) ---
-export interface AppArtwork extends ArtworkRow {
+
+// AppArtwork: Extends the raw ArtworkRow with common joined relations
+export interface AppArtwork extends Database['public']['Tables']['artworks']['Row'] {
   artist?: AppProfile | null; // Joined artist profile data
   artwork_images?: AppArtworkImage[]; // Joined artwork images
   // Add any other specific joined relations (e.g., 'catalogues', 'tags' etc.)
+
+  // For RPC outputs like get_personalized_artworks, some fields might be minimal
+  // These are optional to allow RPCs to return partial profiles
+  artist_id?: string;
+  artist_full_name?: string;
+  artist_slug?: string;
 }
 
-// --- Enriched Catalogue Types (AppCatalogue) ---
-export interface AppCatalogue extends CatalogueRow {
-  artist: AppProfile; // Catalogue always has an artist
-  artworks?: AppArtwork[]; // Artworks joined to the catalogue
+// AppSale type from SalesPage.tsx
+export interface AppSale extends Database['public']['Tables']['sales']['Row'] {
+    artworks: {
+        id: string;
+        title: string | null;
+        slug: string | null;
+        image_url: string | null;
+    };
+    collector: {
+        id: string;
+        full_name: string | null;
+        slug: string | null;
+    } | null;
 }
 
-// --- Enriched Conversation Types (AppConversation) ---
-export interface AppConversation extends ConversationRow {
-  artist_profile?: AppProfile | null; // Joined artist profile
-  inquirer_profile?: AppProfile | null; // Joined inquirer profile
-  artwork_details?: AppArtwork | null; // Joined artwork details
-  last_message_content?: string | null; // Example: last message content denormalized
-}
-
-// --- Enriched Sale Types (DetailedSale) ---
-export interface DetailedSale extends SaleRow {
-  artwork: {
-    title: string;
-    slug: string;
-    image_url: string; // From primary artwork_image
-    artist: { full_name: string; slug: string; } | null;
-  } | null;
-}
-
-// --- Enriched Contact Type (AppContact) ---
+// AppContact type from ContactEditorPage.tsx and ContactListPage.tsx
 export interface AppContact extends Database['public']['Tables']['contacts']['Row'] {
-  contact_tags?: { tags: { id: string; name: string; } }[]; // Joined tags
+    tags: { id: string; name: string }[];
 }
 
-// --- Common props for modals that might be used across components ---
-export interface CommonModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+// TagRow type from ContactEditorPage.tsx and ContactListPage.tsx
+export type TagRow = Database['public']['Tables']['tags']['Row'];
+
+
+// AppInquiry type from ContactEditorPage.tsx
+export interface AppInquiry extends Database['public']['Tables']['inquiries']['Row'] {
+    artwork: {
+        id: string;
+        title: string | null;
+        slug: string | null;
+    } | null;
 }
 
-// --- Dashboard Specific Types ---
-export interface ArtistDiscoveryListArtist extends AppProfile {
-  follower_count: number;
-  artwork_previews: { id: string; image_url: string; slug: string; }[];
-}
-
-export interface ArtistDiscoveryLists {
-    rising_talent: ArtistDiscoveryListArtist[];
-    trending_artists: ArtistDiscoveryListArtist[];
-    personalized_suggestions: ArtistDiscoveryListArtist[];
-}
-
-// Ensure all exported types match their usage context in other files
-export {
-  LocationJson, DimensionsJson, DateInfoJson, SignatureInfoJson, FramingInfoJson,
-  EditionInfoJson, HistoricalEntryJson, SocialLinkJson
+// CatalogueRef for artwork_catalogue_junction
+export type CatalogueRef = {
+    id: string;
+    title: string | null;
+    slug: string | null;
 };
+
+// CatalogueWithCounts from CatalogueListPage.tsx
+export type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
+    total_count: number; available_count: number; sold_count: number;
+};
+
+// AppCatalogue from CatalogueWizardPage.tsx and PublicCataloguePage.tsx
+export interface AppCatalogue extends Database['public']['Tables']['catalogues']['Row'] {
+  artist: AppProfile; // Or a more minimal profile type if only slug/name is fetched
+  artworks?: AppArtwork[]; // For PublicCataloguePage
+  linkedArtworks?: (AppArtwork & { position: number; junction_id: string; })[]; // For CatalogueWizardPage
+  linkedAudienceIds?: string[]; // For CatalogueWizardPage
+}

@@ -254,10 +254,9 @@ const WaitlistPage = () => {
             <header className="gradient-polish" ref={topRef}>
                 {isSubmitted ? (
                     <div className="card">
-                        <div className="logo-holder"><img src="/logo.svg" alt="Artflow" height="60px" /></div>
+                        <img src="/logo.svg" alt="Artflow" height="60px" />
                         <h2>You're on the list.</h2>
                         <p>Thank you for joining. We'll send an exclusive invitation to your inbox as soon as we're ready. Expect something special.</p>
-                        <a href="#explore" className="button button-secondary mt-4">See what's coming</a>
                     </div>
                 ) : (
                     <>
@@ -266,26 +265,26 @@ const WaitlistPage = () => {
                             <div className="hero-text-side">
                                 <h1>Art, sorted</h1>
                                 <p>For the artist building a career, not just a portfolio. For the collector building a home, not just a collection. This is where your art finds its people.</p>
+                                
+                                <form onSubmit={handleSubmit}>
+                                <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Your email address" required />
+                                <div className="my-4 text-left">
+                                    <label className="block mb-3 font-medium">I'm here as an...</label>
+                                    <div className="flex gap-4 flex-wrap">
+                                        <label className="radio-label"><input type="radio" value="artist" checked={rolePreference === 'artist'} onChange={(e) => setRolePreference(e.target.value)} className="radio"/> Artist</label>
+                                        <label className="radio-label"><input type="radio" value="collector" checked={rolePreference === 'collector'} onChange={(e) => setRolePreference(e.target.value)} className="radio"/> Collector</label>
+                                        <label className="radio-label"><input type="radio" value="both" checked={rolePreference === 'both'} onChange={(e) => setRolePreference(e.target.value)} className="radio"/> Both</label>
+                                    </div>
+                                </div>
+                                <button type="submit" className="button button-primary button-lg w-full" disabled={mutation.isPending}>
+                                    {mutation.isPending ? 'Joining the list...' : 'Get my invite'}
+                                </button>
+                                {mutation.isError && <p className="error-message">{(mutation.error as Error).message}</p>}
+                            </form>
+
                             </div>
                             <div className="waitlist-form-side">
-                                <div className="card">
-                                    <h3 className="section-title text-center mb-6">Be the first to experience it</h3>
-                                    <form onSubmit={handleSubmit}>
-                                        <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Your email address" required />
-                                        <div className="my-4 text-left">
-                                            <label className="block mb-3 font-medium">I'm here as an...</label>
-                                            <div className="flex gap-4 flex-wrap">
-                                                <label className="radio-label"><input type="radio" value="artist" checked={rolePreference === 'artist'} onChange={(e) => setRolePreference(e.target.value)} className="radio"/> Artist</label>
-                                                <label className="radio-label"><input type="radio" value="collector" checked={rolePreference === 'collector'} onChange={(e) => setRolePreference(e.target.value)} className="radio"/> Collector</label>
-                                                <label className="radio-label"><input type="radio" value="both" checked={rolePreference === 'both'} onChange={(e) => setRolePreference(e.target.value)} className="radio"/> Both</label>
-                                            </div>
-                                        </div>
-                                        <button type="submit" className="button button-primary button-lg w-full" disabled={mutation.isPending}>
-                                            {mutation.isPending ? 'Joining the list...' : 'Get my invite'}
-                                        </button>
-                                        {mutation.isError && <p className="error-message">{(mutation.error as Error).message}</p>}
-                                    </form>
-                                </div>
+                            
                             </div>
                         </div>
                     </>

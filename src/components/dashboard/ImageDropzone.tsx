@@ -3,20 +3,14 @@ import { useDropzone } from "react-dropzone";
 import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
 import { v4 as uuidv4 } from "uuid";
-import { CircularProgress } from '@mui/material'; // Import CircularProgress
-
-interface ArtworkImage {
-  id: string;
-  image_url: string;
-  position: number;
-  is_primary: boolean; // Ensure this is part of the type
-}
+import { CircularProgress } from '@mui/material';
+import { AppArtworkImage } from '@/types/app-specific.types';
 
 interface ImageDropzoneProps {
   artworkId: string;
-  images: ArtworkImage[];
-  onUploadSuccess: (newImage: ArtworkImage) => Promise<void>; // Changed to onUploadSuccess callback
-  isUploading?: boolean; // New prop for loading state
+  images: AppArtworkImage[];
+  onUploadSuccess: (newImage: AppArtworkImage) => Promise<void>;
+  isUploading?: boolean;
 }
 
 export default function ImageDropzone({ artworkId, images, onUploadSuccess, isUploading }: ImageDropzoneProps) {
@@ -26,10 +20,7 @@ export default function ImageDropzone({ artworkId, images, onUploadSuccess, isUp
         toast.error("Please save artwork details first to upload images.");
         return;
       }
-      if (isUploading) return; // Prevent multiple uploads while one is in progress
-
-      // The loading state is now managed by the parent component (ArtworkForm)
-      // via `isUploadingNewImage` and `onUploadSuccess`.
+      if (isUploading) return;
 
       for (const file of acceptedFiles) {
         try {
@@ -59,22 +50,20 @@ export default function ImageDropzone({ artworkId, images, onUploadSuccess, isUp
 
           if (insertErr) throw insertErr;
 
-          await onUploadSuccess(newImage); // Call parent's success handler
-          // toast.success("Image uploaded!"); // Parent's toast handles final success
-
+          await onUploadSuccess(newImage as AppArtworkImage);
         } catch (err: any) {
           console.error("Image upload/insert failed:", err);
           toast.error(err.message || "Image upload failed");
         }
       }
     },
-    [artworkId, images.length, onUploadSuccess, isUploading] // Dependencies for useCallback
+    [artworkId, images.length, onUploadSuccess, isUploading]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "image/*": [] },
-    disabled: !artworkId || artworkId === 'new-artwork-temp-id' || isUploading, // Disable if uploading
+    disabled: !artworkId || artworkId === 'new-artwork-temp-id' || isUploading,
   });
 
   const dropzoneText = !artworkId || artworkId === 'new-artwork-temp-id'

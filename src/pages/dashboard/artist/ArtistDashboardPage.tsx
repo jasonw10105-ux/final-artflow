@@ -1,10 +1,11 @@
+// src/pages/dashboard/artist/ArtistDashboardPage.tsx
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthProvider';
 import AnalyticsChart from '../../../components/dashboard/AnalyticsChart'; // Assuming this component exists
 import RecentActivityWidget from '../../../components/dashboard/RecentActivityWidget'; // Assuming this component exists
-import { PlusCircle, LibraryBig, GalleryVertical, PenLine } from 'lucide-react';
+import { PlusCircle, LibraryBig, GalleryVertical, PenLine, CalendarClock } from 'lucide-react'; // Added CalendarClock
 import ArtworkUploadModal from '../../../components/dashboard/ArtworkUploadModal'; // Assuming this component exists
 import { useArtworkUploadStore } from '../../../stores/artworkUploadStore'; // Assuming this store exists
 import { supabase } from '../../../lib/supabaseClient';
@@ -32,10 +33,20 @@ const fetchDashboardStats = async (userId: string) => {
         .eq('artist_unread', true);
     if (unreadMessagesError) throw unreadMessagesError;
 
+    const { data: upcomingTasksData, error: upcomingTasksError } = await supabase
+        .from('tasks') // NEW: Fetching from tasks table
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .gte('due_date', new Date().toISOString()); // Tasks due today or in the future
+    if (upcomingTasksError) throw upcomingTasksError;
+
+
     return {
         artworkCount: artworkCountData.count || 0,
         catalogueCount: catalogueCountData.count || 0,
         unreadMessagesCount: unreadMessagesData.count || 0,
+        upcomingTasksCount: upcomingTasksData.count || 0,
     };
 };
 
@@ -106,9 +117,17 @@ const ArtistDashboardPage = () => {
                     icon: <GalleryVertical size={16} />,
                 });
             }
+            if (stats.upcomingTasksCount > 0) {
+                tasks.push({
+                    id: 'check-tasks',
+                    text: `You have ${stats.upcomingTasksCount} upcoming tasks or follow-ups.`,
+                    action: () => navigate('/u/calendar'), // Link to new Calendar page
+                    actionText: 'View Calendar',
+                    icon: <CalendarClock size={16} />,
+                });
+            }
         }
-        // Placeholder for AI-driven suggestions (e.g., "Artwork 'Sunset Bliss' is trending, consider promoting it!")
-        // Or "Your profile bio is short, consider adding more details."
+        // General suggestion (not AI-driven placeholder)
         tasks.push({
             id: 'complete-profile',
             text: 'Ensure your artist statement and bio are complete for a compelling profile.',
@@ -148,7 +167,8 @@ const ArtistDashboardPage = () => {
             <input type="file" multiple ref={fileInputRef} onChange={handleFileSelect} className="hidden-input" accept="image/*" />
 
             <div className="dashboard-header-row">
-                <h1>Hi, {profile?.full_name}!</h1>
+                {/* Changed to profile?.first_name */}
+                <h1>Hi, {profile?.first_name}</h1> 
                 <div className="dashboard-actions-group">
                     {profile?.slug && (
                         <Link to={`/${profile.slug}`} className="button button-secondary" target="_blank" rel="noopener noreferrer">View Public Profile</Link>
@@ -180,6 +200,16 @@ const ArtistDashboardPage = () => {
                                     className="dropdown-item"
                                 >
                                     New Catalogue
+                                </button>
+                                {/* New: Create Task - links to Calendar page */}
+                                <button
+                                    onClick={() => {
+                                        navigate('/u/calendar?action=newTask'); // Link to calendar page with action param
+                                        setShowCreateMenu(false);
+                                    }}
+                                    className="dropdown-item"
+                                >
+                                    New Task
                                 </button>
                             </div>
                         )}

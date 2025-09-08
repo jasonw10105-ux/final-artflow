@@ -1,22 +1,23 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import toast from 'react-hot-toast'; // Assuming you use toast
+import toast from 'react-hot-toast';
 
+// Define the shape of our Tag object for TypeScript
 export interface Tag {
   id: string;
   name: string;
 }
 
 interface TagManagerProps {
-  allTags: Tag[]; // All tags available to the artist (fetched from DB)
-  selectedTags: Tag[]; // Tags currently applied to the artwork
+  allTags: Tag[]; // All tags available to the artist
+  selectedTags: Tag[]; // Tags currently applied to the contact
   onSelectedTagsChange: (tags: Tag[]) => void; // Callback to update the parent's state
   onTagCreate: (tagName: string) => Promise<Tag | null>; // Callback to create a new tag in the DB
 }
 
-const TagManager: React.FC<TagManagerProps> = ({ 
-  allTags, 
-  selectedTags, 
+const TagManager: React.FC<TagManagerProps> = ({
+  allTags,
+  selectedTags,
   onSelectedTagsChange,
   onTagCreate
 }) => {
@@ -42,7 +43,7 @@ const TagManager: React.FC<TagManagerProps> = ({
         } else {
           // Create a new tag
           setIsLoading(true);
-          const createdTag = await onTagCreate(tagOrTagName); // Call parent's creation function
+          const createdTag = await onTagCreate(tagOrTagName);
           setIsLoading(false);
           tagToAdd = createdTag;
         }
@@ -52,7 +53,7 @@ const TagManager: React.FC<TagManagerProps> = ({
 
       if (tagToAdd && !selectedTags.some((selected) => selected.id === tagToAdd!.id)) {
         onSelectedTagsChange([...selectedTags, tagToAdd]);
-        setInputValue(''); // Clear input after adding
+        setInputValue('');
       } else if (tagToAdd) {
         toast.error(`Tag "${tagToAdd.name}" already added.`);
       }
@@ -67,18 +68,18 @@ const TagManager: React.FC<TagManagerProps> = ({
 
     return (
         <div className="tag-manager">
-            <label>Tags</label>
-            <div className="selected-tags-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem', padding: '0.5rem', border: '1px solid var(--border)', borderRadius: 'var(--radius)', minHeight: '40px' }}>
+            <label className="label">Tags</label>
+            <div className="selected-tags-container">
                 {selectedTags.map((tag) => (
-                    <span key={tag.id} className="tag-pill" style={{ display: 'flex', alignItems: 'center', background: 'var(--primary)', color: 'var(--primary-foreground)', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.875rem' }}>
+                    <span key={tag.id} className="tag-pill">
                         {tag.name}
-                        <button type="button" onClick={() => handleRemoveTag(tag.id)} style={{ background: 'none', border: 'none', color: 'inherit', marginLeft: '0.5rem', cursor: 'pointer', display: 'flex' }}>
+                        <button type="button" onClick={() => handleRemoveTag(tag.id)} className="tag-remove-button">
                             <X size={14} />
                         </button>
                     </span>
                 ))}
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
               <input
                   type="text"
                   list="tags-datalist"
@@ -86,11 +87,11 @@ const TagManager: React.FC<TagManagerProps> = ({
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Add a tag..."
-                  style={{ flexGrow: 1 }}
+                  className="input flex-grow"
               />
-              <button 
-                type="button" 
-                className="button-secondary" 
+              <button
+                type="button"
+                className="button button-secondary"
                 onClick={() => handleAddTag(inputValue.trim())}
                 disabled={!inputValue.trim() || isLoading}
               >

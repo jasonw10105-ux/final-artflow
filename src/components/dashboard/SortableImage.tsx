@@ -1,17 +1,10 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-
-import { ArtworkImageRow } from '@/types/database.types'; // Correct import for direct Row type
-
-// Use the directly exported ArtworkImageRow type
-interface ArtworkImage extends ArtworkImageRow {
-  // is_primary is part of the DB type
-  // watermarked_image_url and visualization_image_url are also part of the DB type
-}
+import { AppArtworkImage } from '@/types/app-specific.types'; // Correct import for AppArtworkImage
 
 interface SortableImageProps {
-  image: ArtworkImage;
+  image: AppArtworkImage;
   onDelete: (id: string) => void;
   onReplace: (id: string, file: File) => void;
   onSetPrimary: (id: string) => void;
@@ -34,7 +27,7 @@ const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplac
     zIndex: isDragging ? 10 : 0,
     opacity: isDragging ? 0.8 : 1,
     position: 'relative',
-    height: '150px', // Fixed height for consistency in grid
+    height: '150px',
   };
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -48,7 +41,7 @@ const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplac
           </div>
         ) : (
           <img
-            src={image.image_url} // Always show original in dashboard edit view
+            src={image.image_url}
             alt={`Artwork ${image.position}`}
             className="w-full h-full object-cover"
           />
@@ -73,8 +66,8 @@ const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplac
             ref={fileInputRef}
             onChange={(e) => {
               if (e.target.files && e.target.files.length > 0) {
-                onReplace(image.id, e.target.files[0]);
-                e.target.value = ''; // Reset file input
+                onReplace(image.id, e.target.files);
+                e.target.value = '';
               }
             }}
             style={{ display: 'none' }}

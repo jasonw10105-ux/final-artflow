@@ -1,13 +1,14 @@
 // src/components/layout/DashboardLayout.tsx
-import React from "react";
+import React, { useMemo } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
   Image, BookCopy, HandCoins, BarChart2, Users, Heart, MessageSquare,
   Settings, LayoutDashboard, LogOut, Compass, User as ProfileIcon,
-  FileText, TrendingUp, Map
+  FileText, TrendingUp, Map, CalendarDays, Rocket, Mail, DollarSign
 } from "lucide-react";
-import Header from "./Header";
+import Header, { navConfig as headerNavConfig, NavItem } from "./Header"; // Import navConfig and NavItem from Header
+import MobileBottomNavBar from './MobileBottomNavBar'; // Ensure MobileBottomNavBar is imported
 
 const DesktopNavLink = ({ to, children }: { to: string; children: React.ReactNode }) => (
   <NavLink to={to} className="nav-link" end>
@@ -21,20 +22,55 @@ const DashboardLayout = () => {
   const location = useLocation();
 
   if (!profile) {
+    // If profile is not loaded or user is not authenticated, redirect to login
+    // This should ideally be caught by ProtectedRoute, but as a safeguard:
+    navigate('/login', { replace: true });
     return null;
   }
 
-  const isArtist = profile.role === "artist" || profile.role === "both";
-  const isCollector = profile.role === "collector" || profile.role === "both";
+  const userRole = profile.role;
   const dashboardBase = "/u";
 
   const hideSidebarPatterns = [
     /^\/u\/artworks\/wizard/,
     /^\/u\/catalogues\/new/,
     /^\/u\/catalogues\/edit\/.+/,
+    /^\/u\/artworks\/new/, // Corrected path from /u/artworks/new_artwork to /u/artworks/new based on ArtworkListPage
+    /^\/u\/artworks\/edit\/.+/,
+    /^\/u\/contacts\/new/,
+    /^\/u\/contacts\/edit\/.+/,
   ];
   
   const hideSidebar = hideSidebarPatterns.some((pattern) => pattern.test(location.pathname));
+
+  // FILTERED NAVIGATION ITEMS FOR SIDEBAR - MOVED OUTSIDE CONDITIONAL
+  const filteredSidebarNav = useMemo(() => {
+    return headerNavConfig.filter(item => {
+      // 1. Must require authentication and have a role defined
+      if (!item.authRequired || !item.roles) return false;
+
+      // 2. Role check: must match current user's role
+      if (!item.roles.includes(userRole as any)) return false;
+
+      // 3. Custom condition check: if it exists and returns false, hide it
+      if (item.condition && !item.condition(profile)) return false;
+
+      // 4. Contextual filtering for sidebar:
+      // Show dashboard links (/u/...) or the public "/artworks" for collectors
+      const isDashboardLink = item.to.startsWith(dashboardBase);
+      const isExploreArtForCollector = item.to === '/artworks' && (userRole === "collector" || userRole === "both");
+      
+      return isDashboardLink || isExploreArtForCollector;
+    }).sort((a, b) => {
+      // Custom sorting for sidebar: Dashboard first, then Explore Art, then others
+      if (a.to === `${dashboardBase}/dashboard`) return -1;
+      if (b.to === `${dashboardBase}/dashboard`) return 1;
+      if (a.to === "/artworks") return -1; // Place "Explore Art" after Dashboard
+      if (b.to === "/artworks") return 1;
+      return 0;
+    });
+  }, [userRole, profile]); // Dependencies are `userRole` and `profile`
+
 
   return (
     <>
@@ -43,41 +79,20 @@ const DashboardLayout = () => {
         {!hideSidebar && (
           <aside className="desktop-sidebar">
             <nav className="desktop-sidebar-nav">
-              {isArtist && (
-                <>
-                  <DesktopNavLink to={`${dashboardBase}/dashboard`}><LayoutDashboard size={16} /> Dashboard</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/artworks`}><Image size={16} /> Artworks</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/catalogues`}><BookCopy size={16} /> Catalogues</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/sales`}><HandCoins size={16} /> Sales</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/messages`}><MessageSquare size={16} /> Messages</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/insights`}><BarChart2 size={16} /> Insights</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/trends`}><TrendingUp size={16} /> Market Trends</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/reports`}><FileText size={16} /> Reports</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/contacts`}><Users size={16} /> Contacts</DesktopNavLink>
-                </>
-              )}
-              {isCollector && (
-                <>
-                  <DesktopNavLink to={`${dashboardBase}/dashboard`}><LayoutDashboard size={16} /> Dashboard</DesktopNavLink>
-                  <DesktopNavLink to="/artworks"><Compass size={16} /> Explore Art</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/collection`}><Heart size={16} /> My Collection</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/roadmap`}><Map size={16} /> My Roadmap</DesktopNavLink>
-                  <DesktopNavLink to={`${dashboardBase}/inquiries`}><MessageSquare size={16} /> Inquiries</DesktopNavLink>
-                </>
-              )}
+              {filteredSidebarNav.map(item => (
+                <DesktopNavLink key={item.to} to={typeof item.actualTo === 'function' ? item.actualTo(profile) : item.to}>
+                  {item.icon && <span className="nav-icon">{item.icon}</span>}
+                  {item.label}
+                </DesktopNavLink>
+              ))}
             </nav>
-            <div className="desktop-sidebar-footer">
-              <hr className="nav-divider" />
-              {profile.slug && <DesktopNavLink to={`/${profile.slug}`}><ProfileIcon size={16}/> View Public Profile</DesktopNavLink>}
-              <DesktopNavLink to={`${dashboardBase}/settings`}><Settings size={16} /> Settings</DesktopNavLink>
-              <button onClick={() => signOut().then(() => navigate('/login'))} className="nav-link"><LogOut size={16} /> Log Out</button>
-            </div>
           </aside>
         )}
         <div className="dashboard-main-wrapper">
           <main className="main-content">
             <Outlet />
           </main>
+          <MobileBottomNavBar /> {/* Render the mobile bottom nav bar */}
         </div>
       </div>
     </>

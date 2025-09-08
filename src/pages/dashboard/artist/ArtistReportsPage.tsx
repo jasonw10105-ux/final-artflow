@@ -1,4 +1,3 @@
-// src/pages/dashboard/artist/ArtistReportsPage.tsx
 import React from 'react';
 import { useAuth } from '@/contexts/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
