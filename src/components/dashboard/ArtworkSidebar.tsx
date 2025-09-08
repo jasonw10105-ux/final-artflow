@@ -31,10 +31,11 @@ const fetchUserArtworks = async (userId: string): Promise<UserArtwork[]> => {
 export default function ArtworkSidebar({ onSelectArtwork }: ArtworkSidebarProps) {
   const { user } = useAuth();
 
-  const { data: artworks, isLoading, error } = useQuery<UserArtwork[], Error>({
+  const { data: artworks, isPending: isLoading, error } = useQuery<UserArtwork[], Error>({ // UPDATED: isLoading to isPending
     queryKey: ['artworkSidebarList', user?.id],
     queryFn: () => fetchUserArtworks(user!.id),
     enabled: !!user?.id,
+    gcTime: 1000 * 60 * 5, // UPDATED: cacheTime to gcTime
   });
 
   const handleCreateNewArtwork = async () => {

@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import toast from "react-hot-toast";
 import { v4 as uuidv4 } from "uuid";
 import { CircularProgress } from '@mui/material';
-import { AppArtworkImage } from '@/types/app-specific.types';
+import { AppArtworkImage } from '@/types/app.types'; // UPDATED: Import from app.types
 
 interface ImageDropzoneProps {
   artworkId: string;
@@ -44,6 +44,8 @@ export default function ImageDropzone({ artworkId, images, onUploadSuccess, isUp
               image_url: publicUrl,
               position: newPosition,
               is_primary: isPrimary,
+              created_at: new Date().toISOString(), // Default value
+              updated_at: new Date().toISOString(), // Default value
             })
             .select("*")
             .single();

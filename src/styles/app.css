@@ -1326,7 +1326,6 @@ p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
 }
 .auth-promo-panel {
     display: none;
-    background: linear-gradient(135deg, var(--primary) 0%, #a78bfa 100%); /* Purple gradient */
     color: white;
     padding: 4rem;
 }

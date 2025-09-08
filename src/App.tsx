@@ -9,7 +9,6 @@ import DashboardLayout from './components/layout/DashboardLayout';
 
 // Pages (Core Application Pages)
 import WaitlistPage from './pages/WaitlistPage';
-import MarketingPage from './pages/MarketingPage';
 import StartPage from './pages/StartPage'; // NEW: Use StartPage
 // Removed: RegisterPage, LoginPage
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -43,6 +42,7 @@ import MyCollectionPage from './pages/dashboard/collector/CollectorCollectionPag
 import MyVaultPage from './pages/dashboard/collector/CollectorVaultPage';
 import CollectorRoadmapPage from './pages/dashboard/collector/CollectionRoadmapPage';
 
+
 // Pages (Public)
 import IndividualArtworkPage from './pages/public/IndividualArtworkPage';
 import PublicCataloguePage from './pages/public/PublicCataloguePage';
@@ -51,10 +51,11 @@ import BrowseArtworksPage from './pages/public/BrowseArtworksPage';
 import BrowseCataloguesPage from './pages/public/BrowseCataloguesPage';
 import PublicCommunityCurations from './pages/public/PublicCommunityCurations';
 
+
 // Components used directly in routes (e.g., for forms without dedicated layouts)
 import ArtworkForm from './components/dashboard/ArtworkForm';
 
-import { AppProfile } from './types/app.types';
+import { AppProfile } from './types/app.types'; 
 
 // ---------- Loading Component ----------
 const AuthLoading = () => (
@@ -100,24 +101,24 @@ const DashboardPage = () => {
 };
 
 // ---------- Role Guards ----------
-const ArtistRoute = ({ children }: { children: React.ReactElement }) => {
+const ArtistRoute = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
   if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (appProfile.role !== 'artist' && appProfile.role !== 'both') return <Navigate to="/u/dashboard" replace />;
-  return children;
+  return <Outlet />;
 };
 
-const CollectorRoute = ({ children }: { children: React.ReactElement }) => {
+const CollectorRoute = () => {
   const { profile, loading } = useAuth();
   if (loading) return <AuthLoading />;
   const appProfile = profile as AppProfile | null;
 
   if (!appProfile) return <Navigate to="/start" replace />; // UPDATED: Navigate to /start
   if (appProfile.role !== 'collector' && appProfile.role !== 'both') return <Navigate to="/u/dashboard" replace />;
-  return children;
+  return <Outlet />;
 };
 
 // ---------- Unified Sales, Messages, Settings ----------
@@ -197,8 +198,6 @@ const AppRoutes = () => (
     {/* Public Auth Routes - No Layout */}
     <Route path="/" element={<WaitlistPage />} />
     <Route path="/start" element={<StartPage />} /> {/* NEW: Consolidated login/register route */}
-    {/* Removed: <Route path="/login" element={<LoginPage />} /> */}
-    {/* Removed: <Route path="/register" element={<RegisterPage />} /> */}
     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
     <Route path="/update-password" element={<UpdatePasswordPage />} />
     <Route path="/complete-profile" element={<CompleteProfilePage />} />
@@ -275,5 +274,3 @@ const App = () => (
     </AuthProvider>
   </Router>
 );
-
-export default App;

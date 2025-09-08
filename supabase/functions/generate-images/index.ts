@@ -1,6 +1,4 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-// createClient is only needed if this function directly interacts with the DB,
-// but for an orchestrator, it's good to have for potential error logging or future needs.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // Helper function to correctly handle CORS preflight requests
@@ -34,8 +32,6 @@ serve(async (req) => {
       });
     }
 
-    // Initialize Supabase client for potential direct DB interaction if needed.
-    // Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in Edge Function env.
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -46,10 +42,16 @@ serve(async (req) => {
         throw new Error("SUPABASE_SERVICE_ROLE_KEY environment variable is not set for generate-images.");
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey); // Initialize client with validated vars
-
     const body = await req.json();
-    const { artworkId, force = false, forceWatermark = false, forceVisualization = false } = body;
+    const { 
+      artworkId, 
+      dominant_colors, 
+      genre, 
+      subject, 
+      orientation, 
+      keywords_from_image, 
+      force = false 
+    } = body;
 
     if (!artworkId) {
       return new Response(JSON.stringify({ error: "artworkId is required" }), {
@@ -58,10 +60,9 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[generate-images] Received request for artworkId: ${artworkId} with force=${force}, forceWatermark=${forceWatermark}, forceVisualization=${forceVisualization}`);
+    console.log(`[generate-images] Received request for artworkId: ${artworkId}`);
 
     // --- Orchestration Logic: Invoke 'process-artwork-images' ---
-    // Construct the URL for the 'process-artwork-images' function dynamically.
     const processArtworkImagesUrl = `${supabaseUrl}/functions/v1/process-artwork-images`;
     
     console.log(`[generate-images] Invoking: ${processArtworkImagesUrl}`);
@@ -73,13 +74,20 @@ serve(async (req) => {
         'Authorization': `Bearer ${serviceRoleKey}`, // Authenticate with service role key
         'apikey': serviceRoleKey, // Also often needed by Supabase functions
       },
-      body: JSON.stringify({ artworkId, force, forceWatermark, forceVisualization }),
+      body: JSON.stringify({ 
+        artworkId,
+        dominant_colors,
+        genre,
+        subject,
+        orientation,
+        keywords_from_image,
+        force
+      }),
     });
 
     if (!invokeResponse.ok) {
       const errorText = await invokeResponse.text();
       console.error(`Error response from process-artwork-images: ${invokeResponse.status} - ${errorText}`);
-      // Re-throw the error from the invoked function to propagate the failure reason
       throw new Error(`Failed to trigger process-artwork-images (Status: ${invokeResponse.status}): ${errorText}`);
     }
 
@@ -92,7 +100,7 @@ serve(async (req) => {
         success: true,
         artworkId,
         message: "Image processing orchestrated by generate-images and triggered process-artwork-images.",
-        orchestration_result: invokeResult // Pass the result from the invoked function
+        orchestration_result: invokeResult
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );

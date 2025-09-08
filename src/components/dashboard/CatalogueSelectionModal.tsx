@@ -4,10 +4,11 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../contexts/AuthProvider';
 import { X, PlusCircle } from 'lucide-react'; // Added PlusCircle icon
 import toast from 'react-hot-toast'; // Assuming you use react-hot-toast
+import { AppCatalogue } from '@/types/app.types'; // UPDATED: Import AppCatalogue
 
 interface Catalogue {
   id: string;
-  title: string;
+  title: string | null; // UPDATED: title can be null from DB
   is_system_catalogue: boolean; // Include this to filter user-assignable catalogues
 }
 
@@ -22,7 +23,7 @@ const fetchArtistCatalogues = async (userId: string) => {
     // Fetch all catalogues, then filter out system ones for user selection
     const { data, error } = await supabase.from('catalogues').select('id, title, is_system_catalogue').eq('user_id', userId).order('created_at', { ascending: false });
     if (error) throw new Error("Could not fetch catalogues");
-    return data;
+    return data as Catalogue[]; // UPDATED: Cast to Catalogue[]
 }
 
 const CatalogueSelectionModal = ({ isOpen, onClose, onSelectCatalogue, currentCatalogueId }: CatalogueSelectionModalProps) => {
@@ -31,10 +32,11 @@ const CatalogueSelectionModal = ({ isOpen, onClose, onSelectCatalogue, currentCa
     const [selectedId, setSelectedId] = useState<string | null>(currentCatalogueId);
     const [newCatalogueTitle, setNewCatalogueTitle] = useState('');
 
-    const { data: catalogues, isLoading } = useQuery<Catalogue[] | null, Error>({
+    const { data: catalogues, isPending: isLoading } = useQuery<Catalogue[] | null, Error>({ // UPDATED: isLoading to isPending
         queryKey: ['artist_catalogues', user?.id],
         queryFn: () => fetchArtistCatalogues(user!.id),
         enabled: !!user && isOpen,
+        gcTime: 1000 * 60 * 5, // UPDATED: cacheTime to gcTime
     });
     
     // Filter out system catalogues for display/selection by the user
@@ -48,7 +50,7 @@ const CatalogueSelectionModal = ({ isOpen, onClose, onSelectCatalogue, currentCa
 
             const { data, error } = await supabase
                 .from('catalogues')
-                .insert({ title, user_id: user.id, is_system_catalogue: false }) // Explicitly not a system catalogue
+                .insert({ title, user_id: user.id, is_system_catalogue: false, is_published: false, access_type: 'public' }) // Explicitly not a system catalogue, add required fields
                 .select('id, title')
                 .single();
             

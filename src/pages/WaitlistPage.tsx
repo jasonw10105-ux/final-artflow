@@ -1,5 +1,3 @@
-// src/pages/WaitlistPage.tsx
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
@@ -139,10 +137,10 @@ const WaitlistPage = () => {
             icon: GalleryVertical,
             content: (
                 <>
-                    <p>Stop wrestling with complicated websites. Artflow helps you create beautiful, professional viewing rooms that honor your vision and make it easy for collectors to connect with your work.</p>
+                    <p>Stop wrestling with complicated websites and outdated documents. Artflow helps you create beautiful, professional viewing rooms that honor your vision and make it easy for everyone to connect with your work.</p>
                     <ul className="list-style-disc pl-5 space-y-2 mt-4 text-sm">
                         <li><h4 className="inline font-medium text-foreground"><Package size={16} className="inline-block mr-2 text-primary"/> Upload once, share everywhere</h4><p>Drag and drop your images, add details when you're ready, and let us handle the stunning presentation.</p></li>
-                        <li><h4 className="inline font-medium text-foreground"><BookOpen size={16} className="inline-block mr-2 text-primary"/> Your gallery, your rules</h4><p>Share your work publicly, create password-protected previews for clients, or keep it private until you're ready.</p></li>
+                        <li><h4 className="inline font-medium text-foreground"><BookOpen size={16} className="inline-block mr-2 text-primary"/> Your work, your rules</h4><p>Share your work publicly, create password-protected catalogues for your contacts, or keep it private until you're ready.</p></li>
                     </ul>
                 </>
             ),
@@ -277,7 +275,7 @@ const WaitlistPage = () => {
                                     </div>
                                 </div>
                                 <button type="submit" className="button button-primary button-lg w-full" disabled={mutation.isPending}>
-                                    {mutation.isPending ? 'Joining the list...' : 'Get my invite'}
+                                    {mutation.isPending ? 'Joining the list...' : 'Join the waitlist'}
                                 </button>
                                 {mutation.isError && <p className="error-message">{(mutation.error as Error).message}</p>}
                             </form>

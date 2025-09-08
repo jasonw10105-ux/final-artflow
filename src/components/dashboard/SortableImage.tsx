@@ -1,12 +1,12 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { AppArtworkImage } from '@/types/app-specific.types'; // Correct import for AppArtworkImage
+import { AppArtworkImage } from '@/types/app.types'; // UPDATED: Import from app.types
 
 interface SortableImageProps {
   image: AppArtworkImage;
   onDelete: (id: string) => void;
-  onReplace: (id: string, file: File) => void;
+  onReplace: (id: string, file: FileList | null) => void; // UPDATED: File to FileList | null
   onSetPrimary: (id: string) => void;
   isReplacing: boolean;
 }
@@ -21,7 +21,7 @@ const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplac
     isDragging,
   } = useSortable({ id: image.id });
 
-  const style = {
+  const style: React.CSSProperties = { // UPDATED: Explicitly type style
     transform: CSS.Transform.toString(transform),
     transition: sortableTransition,
     zIndex: isDragging ? 10 : 0,
@@ -34,7 +34,7 @@ const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplac
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="relative group w-full h-full overflow-hidden rounded-lg border border-gray-200">
+      <div className="relative group w-full h-full overflow-hidden rounded-lg border border-gray-200" {...attributes} {...listeners}>
         {isReplacing ? (
           <div className="flex items-center justify-center w-full h-full bg-gray-100 text-gray-500">
             Replacing...
@@ -66,7 +66,7 @@ const SortableImage: React.FC<SortableImageProps> = ({ image, onDelete, onReplac
             ref={fileInputRef}
             onChange={(e) => {
               if (e.target.files && e.target.files.length > 0) {
-                onReplace(image.id, e.target.files);
+                onReplace(image.id, e.target.files); // UPDATED: Pass e.target.files
                 e.target.value = '';
               }
             }}

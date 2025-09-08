@@ -1,80 +1,85 @@
-// src/types/app.types.ts
-import { Database } from './database.types'; // Assuming database.types.ts is in the same directory
+import { AppProfile, AppArtwork, AppContact, TagRow, AppConversation, DimensionsJson } from '@/types/app.types'; // Import from central types
 
-// Export ProfileRow directly from Database types for clarity
-export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
-
-// AppProfile: Extends ProfileRow with any app-specific fields or relations if needed
-export interface AppProfile extends ProfileRow {
-    // Add any specific relations or computed fields you might fetch with profiles
-}
-
-// AppArtworkImage: Extends the raw ArtworkImageRow
-export type AppArtworkImage = Database['public']['Tables']['artwork_images']['Row'];
-
-
-// AppArtwork: Extends the raw ArtworkRow with common joined relations
-export interface AppArtwork extends Database['public']['Tables']['artworks']['Row'] {
-  artist?: AppProfile | null; // Joined artist profile data
-  artwork_images?: AppArtworkImage[]; // Joined artwork images
-  // Add any other specific joined relations (e.g., 'catalogues', 'tags' etc.)
-
-  // For RPC outputs like get_personalized_artworks, some fields might be minimal
-  // These are optional to allow RPCs to return partial profiles
-  artist_id?: string;
-  artist_full_name?: string;
-  artist_slug?: string;
-}
-
-// AppSale type from SalesPage.tsx
-export interface AppSale extends Database['public']['Tables']['sales']['Row'] {
-    artworks: {
-        id: string;
-        title: string | null;
-        slug: string | null;
-        image_url: string | null;
-    };
-    collector: {
-        id: string;
-        full_name: string | null;
-        slug: string | null;
-    } | null;
-}
-
-// AppContact type from ContactEditorPage.tsx and ContactListPage.tsx
-export interface AppContact extends Database['public']['Tables']['contacts']['Row'] {
-    tags: { id: string; name: string }[];
-}
-
-// TagRow type from ContactEditorPage.tsx and ContactListPage.tsx
-export type TagRow = Database['public']['Tables']['tags']['Row'];
-
-
-// AppInquiry type from ContactEditorPage.tsx
-export interface AppInquiry extends Database['public']['Tables']['inquiries']['Row'] {
-    artwork: {
-        id: string;
-        title: string | null;
-        slug: string | null;
-    } | null;
-}
-
-// CatalogueRef for artwork_catalogue_junction
-export type CatalogueRef = {
+// ArtistInsightsRPCResult: Specific to the artist_insights RPC return
+export interface ArtistInsightsRPCResult {
+  profileViews: number | null;
+  previousProfileViews: number | null;
+  artworkViews: number | null;
+  previousArtworkViews: number | null;
+  inquiries: number | null;
+  previousInquiries: number | null;
+  sales: {
     id: string;
-    title: string | null;
-    slug: string | null;
-};
+    artwork_id: string;
+    collector_id: string;
+    sale_price: number;
+    sale_date: string;
+    genre: string | null;
+  }[] | null;
+  previousTotalRevenue: number | null;
+  previousSalesCount: number | null;
+  followers: { created_at: string }[] | null; // Simplified for insights
+  previousFollowersCount: number | null;
+  shares: { created_at: string }[] | null; // Simplified for insights
+  collectorStats: { collector_id: string; purchases: number }[] | null;
+  trendingArtworks: { id: string; title: string; score: number }[] | null;
+  // Add other properties that your RPC might return, e.g., AI recommendations, etc.
+}
 
-// CatalogueWithCounts from CatalogueListPage.tsx
-export type CatalogueWithCounts = Database['public']['Tables']['catalogues']['Row'] & {
-    total_count: number; available_count: number; sold_count: number;
-};
+// MarketTrends: Specific to the get_collector_market_trends RPC
+export interface MarketTrends {
+    top_mediums: { name: string; count: number; }[];
+    top_styles: { name: string; count: number; }[];
+    price_brackets: { bracket: string; activity_count: number; }[];
+}
 
-// AppCatalogue from CatalogueWizardPage.tsx and PublicCataloguePage.tsx
-export interface AppCatalogue extends Database['public']['Tables']['catalogues']['Row'] {
-  artist: AppProfile; // Or a more minimal profile type if only slug/name is fetched
-  artworks?: AppArtwork[]; // For PublicCataloguePage
-  linkedArtworks?: (AppArtwork & { position: number; junction_id: string; })[]; // For CatalogueWizardPage
-  linkedAudienceIds?: string[]; // For CatalogueWizardPage
+// For recent activity widget, if it has its own simplified types
+export interface RecentInquiry {
+  id: string;
+  inquirer_name: string;
+  artwork_id: string | null; // Ensure this is from DB
+  artworks: { title: string | null } | null;
+  created_at?: string; // Add created_at for sorting
+}
+
+export interface RecentSale {
+  id: string;
+  sale_price: number | null;
+  currency: string | null;
+  collector: { full_name: string | null } | null;
+  artwork_id: string | null; // Ensure this is from DB
+  artworks: { title: string | null } | null;
+  sale_date: string; // Add sale_date for sorting
+}
+
+// This interface is for the props of the reusable ShareButton
+// Note: It combines elements previously spread in the original ShareModal
+// which simplifies handling.
+export interface ShareButtonProps {
+    url?: string; // The URL to share. Defaults to window.location.href.
+    title?: string; // The title of the content being shared.
+    text?: string; // The text/description to share.
+    className?: string; // Optional: additional CSS classes for the button.
+    buttonText?: string; // Optional: text to display inside the button.
+    iconOnly?: boolean;
+    // Props specific for triggering a modal
+    isOpen: boolean;
+    onClose: () => void;
+    shareUrl: string;
+    byline?: string | null;
+    previewImageUrls: (string | null)[];
+    isCatalogue?: boolean;
+    artwork?: AppArtwork; // Pass the whole artwork for more context
+    dimensions?: string; // Formatted dimensions string
+    price?: number | null;
+    year?: string | null;
+    currency?: string | null;
+}
+
+// For ArtworkUploadModalProps (used in ArtworkWizardPage & ArtistDashboardPage)
+export interface ArtworkUploadModalProps {
+    isOpen: boolean; // Corrected from 'open' to 'isOpen' for consistency
+    onClose: () => void;
+    artworkId: string;
+    onUploadComplete?: (artworkIds: string[]) => void; // For batch upload success
 }

@@ -5,10 +5,11 @@ import { useAuth } from '@/contexts/AuthProvider';
 import { Database } from '@/types/database.types';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AppArtwork, AppCatalogue } from '@/types/app.types'; // UPDATED: Import AppArtwork, AppCatalogue
 
 // Re-using Database type for clarity
-type Artwork = Database['public']['Tables']['artworks']['Row'];
-type Catalogue = Database['public']['Tables']['catalogues']['Row'];
+type Artwork = AppArtwork; // UPDATED: Use AppArtwork
+type Catalogue = AppCatalogue; // UPDATED: Use AppCatalogue
 type ArtworkCatalogueJunction = Database['public']['Tables']['artwork_catalogue_junction']['Row'];
 
 interface AssignCatalogueModalProps {
@@ -16,15 +17,12 @@ interface AssignCatalogueModalProps {
     onClose: () => void;
 }
 
-const fetchUserCatalogues = async (userId: string): Promise<Catalogue[]> => {
-    const { data, error } = await supabase
-        .from('catalogues')
-        .select('id, title, is_system_catalogue')
-        .eq('user_id', userId)
-        .order('title', { ascending: true });
-    if (error) throw new Error(error.message);
-    return data || [];
-};
+const fetchUserCatalogues = async (userId: string) => {
+    // Fetch all catalogues, then filter out system ones for user selection
+    const { data, error } = await supabase.from('catalogues').select('id, title, is_system_catalogue').eq('user_id', userId).order('title', { ascending: true });
+    if (error) throw new Error("Could not fetch catalogues");
+    return data;
+}
 
 // Fetch current assignments for the artwork
 const fetchArtworkAssignments = async (artworkId: string): Promise<string[]> => {
@@ -41,16 +39,18 @@ const AssignCatalogueModal = ({ artwork, onClose }: AssignCatalogueModalProps) =
     const queryClient = useQueryClient();
     const [selectedCatalogueIds, setSelectedCatalogueIds] = useState<Set<string>>(new Set());
 
-    const { data: allUserCatalogues, isLoading: isLoadingCatalogues } = useQuery<Catalogue[], Error>({
+    const { data: allUserCatalogues, isPending: isLoadingCatalogues } = useQuery<Catalogue[], Error>({ // UPDATED: isLoading to isPending
         queryKey: ['userCataloguesForAssignment', user?.id],
-        queryFn: () => fetchUserCatalogues(user!.id),
+        queryFn: () => fetchUserCatalogues(user!.id) as Promise<Catalogue[]>, // Cast the return type
         enabled: !!user,
+        gcTime: 1000 * 60 * 5, // UPDATED: cacheTime to gcTime
     });
 
-    const { data: currentAssignments, isLoading: isLoadingAssignments } = useQuery<string[], Error>({
+    const { data: currentAssignments, isPending: isLoadingAssignments } = useQuery<string[], Error>({ // UPDATED: isLoading to isPending
         queryKey: ['artworkAssignments', artwork.id],
         queryFn: () => fetchArtworkAssignments(artwork.id),
         enabled: !!artwork.id,
+        gcTime: 1000 * 60 * 5, // UPDATED: cacheTime to gcTime
     });
 
     // Initialize selectedCatalogueIds when currentAssignments load
@@ -102,7 +102,7 @@ const AssignCatalogueModal = ({ artwork, onClose }: AssignCatalogueModalProps) =
                 }
             }
             
-            await Promise.all(operations);
+            await Promise.all(operations); // UPDATED: Await Promise.all
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['artworks'] });
@@ -119,7 +119,7 @@ const AssignCatalogueModal = ({ artwork, onClose }: AssignCatalogueModalProps) =
 
     const handleToggleCatalogue = (catalogueId: string, isSystem: boolean) => {
         if (isSystem) {
-            toast.info("System catalogues are assigned automatically based on artwork status.");
+            toast('System catalogues are assigned automatically based on artwork status.', { icon: 'ℹ️' }); // UPDATED: toast.info to toast with icon
             return;
         }
         setSelectedCatalogueIds(prev => {

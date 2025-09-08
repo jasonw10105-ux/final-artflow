@@ -259,15 +259,6 @@ const FeatureCard = ({ icon, title, children }: { icon: React.ReactNode; title: 
   </div>
 );
 
-const TestimonialCard = ({ quote, author, title }: { quote: string; author: string; title: string }) => (
-  <div className="testimonial-card">
-    <blockquote>"{quote}"</blockquote>
-    <cite>
-      <strong>{author}</strong>, {title}
-    </cite>
-  </div>
-);
-
 // --- Main Marketing Page ---
 const MarketingPage = () => {
   const { data: featuredArtworks, isLoading: isLoadingArtworks, isError: isErrorArtworks, error: errorArtworks } = useQuery<AppArtwork[], Error>({
@@ -293,7 +284,7 @@ const MarketingPage = () => {
           The essential platform for artists to manage their inventory, build their brand, and connect with serious collectors.
         </p>
         <div className="hero-actions">
-          <Link to="/register" className="button button-primary button-lg">
+          <Link to="/start" className="button button-primary button-lg">
             Get started
           </Link>
         </div>
@@ -308,27 +299,6 @@ const MarketingPage = () => {
         renderCard={item => <ArtworkCard item={item} />}
       />
 
-      <section className="marketing-section text-center">
-        <h2>A Seamless Experience for Artists & Collectors</h2>
-        <div className="how-it-works-grid">
-          <div className="step">
-            <div className="step-number">1</div>
-            <h3>Upload & Organize</h3>
-            <p>Easily upload your artwork, manage editions, and track every detail from dimensions to provenance.</p>
-          </div>
-          <div className="step">
-            <div className="step-number">2</div>
-            <h3>Curate & Share</h3>
-            <p>Create stunning private or public catalogues for exhibitions, clients, or your personal portfolio.</p>
-          </div>
-          <div className="step">
-            <div className="step-number">3</div>
-            <h3>Connect & Sell</h3>
-            <p>Engage with collectors through a secure messaging portal and manage sales from inquiry to invoice.</p>
-          </div>
-        </div>
-      </section>
-
       {/* Conditional rendering for catalogue carousel only if there might be data */}
       <ContentCarousel
         title="Featured Catalogues"
@@ -338,41 +308,6 @@ const MarketingPage = () => {
         error={errorCatalogues}
         renderCard={item => <CatalogueCard item={item} />}
       />
-
-
-      <section className="marketing-section">
-        <h2 className="text-center">Powerful Tools, Effortless Management</h2>
-        <div className="features-grid">
-          <FeatureCard icon={<Palette size={32} />} title="Inventory Management">
-            A complete, professional system to track your entire collection, including editions, sales history, and private notes.
-          </FeatureCard>
-          <FeatureCard icon={<BarChart size={32} />} title="Sales & Insights">
-            Monitor your sales, view revenue analytics, and understand which pieces are getting the most attention from collectors.
-          </FeatureCard>
-          <FeatureCard icon={<MessageSquare size={32} />} title="Direct Communication">
-            A built-in messaging center to handle inquiries directly, negotiate sales, and build relationships with your buyers.
-          </FeatureCard>
-          <FeatureCard icon={<ShieldCheck size={32} />} title="Secure & Private">
-            You control what's public. Share private catalogues with specific contacts or keep your entire inventory private.
-          </FeatureCard>
-        </div>
-      </section>
-
-      <section className="marketing-section testimonials">
-        <h2 className="text-center">Trusted by Artists and Collectors</h2>
-        <div className="testimonial-grid">
-          <TestimonialCard
-            quote="ArtFlow has become the backbone of my studio practice. I spend less time on admin and more time creating."
-            author="Elena Vance"
-            title="Contemporary Painter"
-          />
-          <TestimonialCard
-            quote="As a collector, the ability to view curated catalogues and inquire directly with the artist is a game-changer."
-            author="Marcus Thorne"
-            title="Private Collector"
-          />
-        </div>
-      </section>
 
       <ContentCarousel
         title="Featured Artists"
@@ -386,7 +321,7 @@ const MarketingPage = () => {
       <footer>
         <h2>Ready to Take Control of Your Art Career?</h2>
         <p>Join a community of professional artists and discerning collectors today.</p>
-        <Link to="/register" className="button button-primary button-lg">
+        <Link to="/start" className="button button-primary button-lg">
           Get Started For Free
         </Link>
       </footer>

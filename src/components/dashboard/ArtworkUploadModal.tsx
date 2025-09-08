@@ -3,17 +3,9 @@ import { useDropzone } from "react-dropzone";
 import { supabase } from "@/lib/supabaseClient";
 import { useArtworkUploadStore } from "@/stores/artworkUploadStore"; // Assuming this store exists
 import toast from "react-hot-toast";
+import { AppArtworkImage, ArtworkUploadModalProps } from '@/types/app-specific.types'; // UPDATED: Import types
 
-interface ArtworkUploadModalProps {
-  open: boolean;
-  onClose: () => void;
-  artworkId: string;
-  // If you need to trigger a re-fetch on the ArtworkForm after an image is uploaded and primary_image_url is set,
-  // you might want to add an onUploadSuccess prop here:
-  // onUploadComplete?: (artworkId: string, primaryImageUrl: string) => void;
-}
-
-export default function ArtworkUploadModal({ open, onClose, artworkId }: ArtworkUploadModalProps) {
+export default function ArtworkUploadModal({ isOpen, onClose, artworkId }: ArtworkUploadModalProps) { // UPDATED: open to isOpen
   const { addImages } = useArtworkUploadStore(); // Assuming addImages takes ArtworkImageRow[]
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -58,7 +50,7 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
         const publicUrl = supabase.storage.from("artworks").getPublicUrl(path).data.publicUrl;
 
         // Insert new artwork_image record
-        const { data, error: dbErr } = await supabase.from("artwork_images").insert({
+        const { data: insertData, error: dbErr } = await supabase.from("artwork_images").insert({ // UPDATED: data to insertData
           artwork_id: artworkId,
           image_url: publicUrl,
           position: isFirstImage ? 0 : undefined,
@@ -67,10 +59,10 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
         }).select('*'); // Select all fields to get the full ArtworkImageRow
 
         if (dbErr) throw dbErr;
-        uploadedImages.push(data[0]); // Assuming insert returns an array with one item
+        uploadedImages.push(insertData[0] as AppArtworkImage); // Assuming insert returns an array with one item, cast it
 
         // If this was the very first image for this artwork, update primary_image_url on the artwork itself
-        if (isFirstImage && data.length > 0) {
+        if (isFirstImage && insertData.length > 0) {
             await supabase.from('artworks')
                 .update({ primary_image_url: publicUrl })
                 .eq('id', artworkId);
@@ -89,7 +81,7 @@ export default function ArtworkUploadModal({ open, onClose, artworkId }: Artwork
     }
   };
 
-  if (!open) return null;
+  if (!isOpen) return null; // UPDATED: open to isOpen
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">

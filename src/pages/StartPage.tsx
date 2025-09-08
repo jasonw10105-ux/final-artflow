@@ -216,7 +216,7 @@ const StartPage = () => {
                     ) : verificationSent ? (
                         <div className="auth-form text-center">
                             <p className="text-lg font-semibold text-primary">Magic Link Sent!</p>
-                            <p className="text-muted-foreground">Please check your email ({email}) to complete your login or registration.</p>
+                            <p className="text-muted-foreground">Please check your email ({email}) to continue.</p>
                             <button type="button" onClick={handleBackToEmailInput} className="button-link mt-4">Back to start</button>
                         </div>
                     ) : null}

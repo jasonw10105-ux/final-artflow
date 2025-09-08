@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { Menu, MenuItem, Backdrop } from '@mui/material';
 import { handleDownload } from '../../utils/imageUtils'; // Assuming this utility exists
-import { AppArtwork, AppProfile } from '@/types/app-specific.types';
+import { AppArtwork, AppProfile } from '@/types/app.types'; // UPDATED: Import from app.types
 import { useAuth } from '@/contexts/AuthProvider';
 import { MoreVertical, Share2, Edit3, DollarSign, Download, Trash2, CheckCircle, Archive, Plus, Eye, XCircle, BookCopy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import ShareButton from '../ui/ShareButton';
+import ShareModal from '../public/ShareModal'; // UPDATED: Import ShareModal directly
 import AssignCatalogueModal from './AssignCatalogueModal';
 import '@/styles/app.css';
-import { ShareButtonProps } from '@/types/modals';
+import { ShareButtonProps } from '@/types/app-specific.types'; // UPDATED: Import from app-specific.types
 
 interface ArtworkActionsMenuProps {
   artwork: AppArtwork;
@@ -126,20 +126,20 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
   };
 
   const confirmMarkAsSold = (saleDetails: { price: number, buyer: string }) => {
-    toast.info(`Artwork "${artwork.title}" marked as sold for ${saleDetails.price} to ${saleDetails.buyer}. (This is a simulation. Full backend implementation needed.)`);
+    toast('Artwork "' + artwork.title + '" marked as sold for ' + saleDetails.price + ' to ' + saleDetails.buyer + '. (This is a simulation. Full backend implementation needed.)', { icon: 'ℹ️' }); // UPDATED: toast.info to toast with icon
     console.log("Mark as Sold:", artwork.id, saleDetails);
     setShowMarkAsSoldModal(false);
   };
 
   const handleMarkAsAvailable = () => {
-    toast.info(`Artwork "${artwork.title}" marked as available. (Simulation. Full backend implementation needed.)`);
+    toast('Artwork "' + artwork.title + '" marked as available. (Simulation. Full backend implementation needed.)', { icon: 'ℹ️' }); // UPDATED: toast.info to toast with icon
     console.log("Mark as Available:", artwork.id);
     handleClose();
   };
 
   const handleDelete = () => {
     if (window.confirm(`Are you sure you want to delete "${artwork.title}"? This action cannot be undone.`)) {
-      toast.info(`Artwork "${artwork.title}" deleted. (Simulation. Full backend implementation needed.)`);
+      toast('Artwork "' + artwork.title + '" deleted. (Simulation. Full backend implementation needed.)', { icon: 'ℹ️' }); // UPDATED: toast.info to toast with icon
       console.log("Delete Artwork:", artwork.id);
     }
     handleClose();
@@ -199,11 +199,12 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
             <MenuItem onClick={(e) => e.stopPropagation()}>
                 <Download size={18} className="mr-2" /> Download Images
                 <Menu
-                    anchorEl={anchorEl}
-                    open={isOpen}
-                    onClose={handleClose}
-                    anchorOrigin={{ horizontal: 'left', vertical: 'top' }}
-                    transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                    // Changed anchorEl and open for submenu to ensure it works
+                    anchorEl={e.currentTarget} // Use the current menu item as anchor
+                    open={Boolean(e.currentTarget)} // Open when clicking the parent menu item
+                    onClose={handleClose} // Close all menus
+                    anchorOrigin={{ horizontal: 'right', vertical: 'top' }} // Position right of parent
+                    transformOrigin={{ horizontal: 'left', vertical: 'top' }} // Start left of cursor
                     PaperProps={{ className: "sub-menu" }}
                 >
                     {primaryImage?.watermarked_image_url && (
@@ -241,13 +242,15 @@ const ArtworkActionsMenu: React.FC<ArtworkActionsMenuProps> = ({ artwork }) => {
 
       {/* Share Artwork Modal */}
       {showShareModal && publicArtworkUrl && (
-          <ShareButton
-            shareUrl={publicArtworkUrl}
-            title={artwork.title || "Artwork"}
-            byline={(profile as AppProfile)?.full_name || ""}
-            previewImageUrls={primaryImageUrl ? [primaryImageUrl] : []}
+          <ShareModal // UPDATED: Using ShareModal directly
             isOpen={showShareModal}
             onClose={() => setShowShareModal(false)}
+            artwork={artwork} // Pass the full artwork object
+            shareUrl={publicArtworkUrl}
+            title={artwork.title || undefined}
+            byline={(profile as AppProfile)?.full_name || undefined}
+            previewImageUrls={primaryImageUrl ? [primaryImageUrl] : []}
+            // dimensions, price, year, currency will be extracted from artwork prop inside ShareModal
           />
       )}
 

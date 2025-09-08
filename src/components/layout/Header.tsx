@@ -76,7 +76,7 @@ const Header = () => {
     const handleLogout = async () => {
         await signOut();
         setIsMenuOpen(false);
-        navigate('/login', { replace: true });
+        navigate('/start', { replace: true });
     };
 
     const dashboardBase = "/u";
@@ -212,8 +212,8 @@ const Header = () => {
         return (
             <nav className="desktop-nav">
                 {renderNavLinks(false, publicLinks)}
-                <NavLink to="/login" className="button button-secondary">Login</NavLink>
-                <NavLink to="/register" className="button button-primary">Sign Up</NavLink>
+                <NavLink to="/start" className="button button-secondary">Login</NavLink>
+                <NavLink to="/start" className="button button-primary">Sign Up</NavLink>
             </nav>
         );
     };
@@ -266,8 +266,8 @@ const Header = () => {
                             ) : (
                                 <>
                                     <div className="nav-divider" />
-                                    <NavLink to="/login" className="nav-item">Login</NavLink>
-                                    <NavLink to="/register" className="nav-item">Sign Up</NavLink>
+                                    <NavLink to="/start" className="nav-item">Login</NavLink>
+                                    <NavLink to="/start" className="nav-item">Sign Up</NavLink>
                                 </>
                             )}
                         </div>
