@@ -7,6 +7,8 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import rateLimit from 'express-rate-limit'
+import * as Sentry from '@sentry/node'
+import { v4 as uuidv4 } from 'uuid'
 import helmet from 'helmet'
 import apiRouter from './routes/api'
 import paymentsRouter from './routes/payments'
@@ -22,12 +24,22 @@ const port = Number(process.env.PORT || 5173)
 async function createServer() {
   const app = express()
 
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.1 })
+    app.use(Sentry.Handlers.requestHandler())
+  }
+
   app.use(morgan(isProd ? 'combined' : 'dev'))
   app.use(compression())
   app.use(cookieParser())
   app.use(cors({ origin: true, credentials: true }))
   app.disable('x-powered-by')
   app.use(rateLimit({ windowMs: 60_000, max: 120 }))
+  app.use((req, _res, next) => {
+    ;(req as any).cspNonce = Buffer.from(uuidv4()).toString('base64')
+    next()
+  })
+
   app.use(helmet({
     frameguard: { action: 'deny' },
     referrerPolicy: { policy: 'no-referrer-when-downgrade' },
@@ -35,7 +47,7 @@ async function createServer() {
       useDefaults: true,
       directives: {
         "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'", 'https:'],
+        "script-src": (req: any) => ["'self'", `'nonce-${req.cspNonce}'`, 'https:'],
         "style-src": ["'self'", "'unsafe-inline'", 'https:'],
         "img-src": ["'self'", 'data:', 'https:'],
         "font-src": ["'self'", 'https:', 'data:'],
@@ -69,7 +81,7 @@ async function createServer() {
   app.use('/api', recaptchaRouter)
   app.use('/api', reportsRouter)
 
-  async function render(url: string) {
+  async function render(url: string, nonce: string) {
     if (!isProd) {
       const template = fs.readFileSync(indexHtmlPath, 'utf-8')
       const transformed = await vite.transformIndexHtml(url, template)
@@ -78,6 +90,7 @@ async function createServer() {
       return transformed
         .replace('<!--ssr-outlet-->', html)
         .replace('</head>', `${head}\n</head>`) // helmet injection
+        .replace('<script type="module"', `<script nonce="${nonce}" type="module"`)
     } else {
       const template = fs.readFileSync(resolve('dist/client/index.html'), 'utf-8')
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -86,6 +99,7 @@ async function createServer() {
       return template
         .replace('<!--ssr-outlet-->', html)
         .replace('</head>', `${head}\n</head>`) // helmet injection
+        .replace('<script type="module"', `<script nonce="${nonce}" type="module"`)
     }
   }
 
@@ -93,7 +107,7 @@ async function createServer() {
 
   app.use(async (req, res, next) => {
     try {
-      const html = await render(req.originalUrl)
+      const html = await render(req.originalUrl, (req as any).cspNonce)
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html)
     } catch (e: any) {
       if (!isProd && vite) vite.ssrFixStacktrace(e)
@@ -101,6 +115,9 @@ async function createServer() {
     }
   })
 
+  if (process.env.SENTRY_DSN) {
+    app.use(Sentry.Handlers.errorHandler())
+  }
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // basic error sanitizer
     const message = isProd ? 'Internal Server Error' : String(err?.stack || err)
