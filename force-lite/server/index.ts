@@ -17,6 +17,8 @@ import reportsRouter from './routes/reports'
 import recsRouter from './routes/recs'
 import adminRouter from './routes/admin'
 import sitemapRouter from './routes/sitemap'
+import contactsRouter from './routes/contacts'
+import messagingRouter from './routes/messaging'
 
 dotenv.config()
 
@@ -85,6 +87,8 @@ async function createServer() {
   app.use('/api', reportsRouter)
   app.use('/api', recsRouter)
   app.use('/api', adminRouter)
+  app.use('/api', contactsRouter)
+  app.use('/api', messagingRouter)
   app.use('/', sitemapRouter)
 
   async function render(url: string, nonce: string) {
