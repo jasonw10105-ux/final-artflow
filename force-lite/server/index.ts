@@ -19,6 +19,7 @@ import adminRouter from './routes/admin'
 import sitemapRouter from './routes/sitemap'
 import contactsRouter from './routes/contacts'
 import messagingRouter from './routes/messaging'
+import salesRouter from './routes/sales'
 
 dotenv.config()
 
@@ -89,6 +90,7 @@ async function createServer() {
   app.use('/api', adminRouter)
   app.use('/api', contactsRouter)
   app.use('/api', messagingRouter)
+  app.use('/api', salesRouter)
   app.use('/', sitemapRouter)
 
   async function render(url: string, nonce: string) {
