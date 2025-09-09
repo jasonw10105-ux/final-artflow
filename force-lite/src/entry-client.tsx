@@ -6,6 +6,7 @@ import App from './App'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'react-hot-toast'
+import { BrushProvider } from './brush/BrushProvider'
 import './styles/global.scss'
 
 const container = document.getElementById('root')!
@@ -15,9 +16,11 @@ const app = (
     <HelmetProvider>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
-          <App />
-          <ReactQueryDevtools initialIsOpen={false} />
-          <Toaster position="top-right" />
+          <BrushProvider>
+            <App />
+            <ReactQueryDevtools initialIsOpen={false} />
+            <Toaster position="top-right" />
+          </BrushProvider>
         </QueryClientProvider>
       </BrowserRouter>
     </HelmetProvider>
