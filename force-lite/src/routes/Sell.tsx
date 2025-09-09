@@ -1,6 +1,6 @@
 import { Helmet } from 'react-helmet-async'
 import { useState } from 'react'
-import { http } from '@/services/http'
+import { supabase } from '@/lib/supabase'
 
 export default function Sell() {
   const [title, setTitle] = useState('')
@@ -16,12 +16,39 @@ export default function Sell() {
       <form
         onSubmit={async (e) => {
           e.preventDefault()
-          const form = new FormData()
-          form.set('title', title)
-          form.set('priceCents', String(Math.round(Number(price || 0) * 100)))
-          if (image) form.set('image', image)
-          const res = await http.post('/artworks', form, { headers: { 'Content-Type': 'multipart/form-data' } })
-          alert(`Submitted ${res.data.artwork.title}`)
+          const { data: userData } = await supabase.auth.getUser()
+          const userId = userData.user?.id
+          if (!userId) {
+            alert('Please sign in')
+            return
+          }
+          if (!image) {
+            alert('Select an image')
+            return
+          }
+          const ext = image.name.split('.').pop() || 'jpg'
+          const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+          const up = await supabase.storage.from('artworks').upload(path, image, { upsert: true })
+          if (up.error) {
+            alert(up.error.message)
+            return
+          }
+          const url = supabase.storage.from('artworks').getPublicUrl(path).data.publicUrl
+          const { error } = await supabase.from('artworks').insert({
+            title,
+            price: price ? Number(price) : null,
+            user_id: userId,
+            primary_image_url: url,
+            status: 'available'
+          })
+          if (error) {
+            alert(error.message)
+            return
+          }
+          alert('Submitted')
+          setTitle('')
+          setPrice('')
+          setImage(null)
         }}
         style={{ display: 'grid', gap: 12, maxWidth: 480 }}
       >
