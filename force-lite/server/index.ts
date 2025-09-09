@@ -11,6 +11,7 @@ import helmet from 'helmet'
 import apiRouter from './routes/api'
 import paymentsRouter from './routes/payments'
 import recaptchaRouter from './routes/recaptcha'
+import reportsRouter from './routes/reports'
 
 dotenv.config()
 
@@ -66,6 +67,7 @@ async function createServer() {
   app.use('/api', apiRouter)
   app.use('/api', paymentsRouter)
   app.use('/api', recaptchaRouter)
+  app.use('/api', reportsRouter)
 
   async function render(url: string) {
     if (!isProd) {
