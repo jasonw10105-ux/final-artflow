@@ -1,0 +1,239 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  slug      String?  @unique
+  role      UserRole @default(COLLECTOR)
+  createdAt DateTime @default(now())
+
+  artworks  Artwork[]
+  follows   ArtistFollow[] @relation("follower")
+  followers ArtistFollow[] @relation("artist")
+  events    AnalyticsEvent[]
+  contacts  Contact[]
+  campaigns Campaign[]
+  preferences UserPreferences?
+  slugHistory SlugHistory[]
+}
+
+enum UserRole {
+  ARTIST
+  COLLECTOR
+  ADMIN
+}
+
+model Artwork {
+  id                 String    @id @default(uuid())
+  userId             String
+  user               Profile   @relation(fields: [userId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  slug               String?   @unique
+  title              String?
+  description        String?
+  price              Decimal?
+  status             String    @default("pending")
+  isPriceNegotiable  Boolean?  @default(false)
+  minPrice           Decimal?
+  maxPrice           Decimal?
+  dimensions         Json?
+  location           String?
+  medium             String?
+  dateInfo           Json?
+  signatureInfo      Json?
+  framingInfo        Json?
+  provenance         String?   @default("From the artist")
+  currency           String?   @default("ZAR")
+  editionInfo        Json?
+  genre              String?
+  dominantColors     Json?
+  keywords           Json?
+  framedDimensions   Json?
+  colorGroups        Json?
+  inventoryNumber    String?
+  privateNote        String?
+  provenanceNotes    String?
+  exhibitions        Json?
+  literature         Json?
+  subject            String?
+  orientation        String?
+  hasCertificateOfAuthenticity Boolean? @default(false)
+  certificateOfAuthenticityDetails String?
+  condition          String?
+  conditionNotes     String?
+  rarity             String?   @default("unique")
+  framingStatus      String?   @default("unframed")
+  embedding          Json?
+  primaryImageUrl    String?
+  currentLocationId  String?
+
+  images ArtworkImage[]
+}
+
+model ArtworkImage {
+  id                     String   @id @default(uuid())
+  artworkId              String
+  artwork                Artwork  @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  imageUrl               String
+  watermarkedImageUrl    String?
+  visualizationImageUrl  String?
+  position               Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  isPrimary              Boolean  @default(false)
+
+  @@index([artworkId], name: "idx_artwork_images_artwork_id")
+  @@unique([artworkId, position], name: "idx_artwork_images_unique_position")
+}
+
+model ArtistFollow {
+  id         String  @id @default(uuid())
+  followerId String
+  artistId   String
+  createdAt  DateTime @default(now())
+
+  follower Profile @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  artist   Profile @relation("artist", fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, artistId], name: "unique_follow")
+}
+
+model AnalyticsEvent {
+  id         BigInt   @id @default(autoincrement())
+  eventName  String
+  eventDate  DateTime? @default(now())
+  userId     String?
+  relatedId  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user Profile? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// CRM
+model Contact {
+  id        String   @id @default(uuid())
+  ownerId   String
+  owner     Profile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String?
+  email     String
+  phone     String?
+  tags      Json?
+  createdAt DateTime @default(now())
+
+  campaignRecipients CampaignRecipient[]
+}
+
+model Campaign {
+  id          String   @id @default(uuid())
+  ownerId     String
+  owner       Profile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  subject     String?
+  contentHtml String?
+  createdAt   DateTime @default(now())
+  scheduledAt DateTime?
+  status      CampaignStatus @default(DRAFT)
+  recipients  CampaignRecipient[]
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+}
+
+model CampaignRecipient {
+  id         String   @id @default(uuid())
+  campaignId String
+  contactId  String
+  status     RecipientStatus @default(PENDING)
+  sentAt     DateTime?
+  openedAt   DateTime?
+  clickedAt  DateTime?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+enum RecipientStatus {
+  PENDING
+  SENT
+  FAILED
+  OPENED
+  CLICKED
+}
+
+model SystemLog {
+  id        BigInt   @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  logType   String
+  message   String
+  metadata  Json?
+}
+
+model SlugHistory {
+  id        BigInt   @id @default(autoincrement())
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  slug      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Sale {
+  id            String   @id @default(uuid())
+  artworkId     String
+  artistId      String
+  collectorId   String
+  salePrice     Decimal
+  saleDate      DateTime @default(now())
+  status        String   @default("completed")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  digitalCoaUrl String?
+
+  artwork   Artwork @relation(fields: [artworkId], references: [id])
+  artist    Profile @relation("artistSales", fields: [artistId], references: [id])
+  collector Profile @relation("collectorSales", fields: [collectorId], references: [id])
+}
+
+model UserPreferences {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique
+  user                   Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredMediums       Json?
+  preferredStyles        Json?
+  favoriteArtists        Json?
+  learnedPreferences     Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  minBudget              Decimal?
+  maxBudget              Decimal?
+  notificationsEnabled   Boolean? @default(true)
+  learningEnabled        Boolean? @default(true)
+  budgetMode             String?  @default("no_limit")
+  useLearnedBudget       Boolean  @default(false)
+  alertSpecificArtists   Json?
+  alertSpecificMediums   Json?
+  alertSpecificStyles    Json?
+  excludeMediums         Json?
+  excludeStyles          Json?
+  excludeArtists         Json?
+  notifyByEmail          Boolean? @default(true)
+  preferredDigestTime    String?  @default("08:00:00+00")
+}
