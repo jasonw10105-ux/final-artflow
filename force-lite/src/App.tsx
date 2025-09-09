@@ -15,6 +15,8 @@ const DashboardPage = lazy(() => import('./routes/Dashboard'))
 const AuthPage = lazy(() => import('./routes/Auth'))
 import ProtectedRoute from './components/ProtectedRoute'
 const MyArtworksPage = lazy(() => import('./routes/MyArtworks'))
+const AuthCallbackPage = lazy(() => import('./routes/AuthCallback'))
+const OnboardingPage = lazy(() => import('./routes/Onboarding'))
 
 export default function App() {
   const location = useLocation()
@@ -48,6 +50,8 @@ export default function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/sell" element={<SellPage />} />
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/my-artworks" element={<ProtectedRoute><MyArtworksPage /></ProtectedRoute>} />
           </Routes>

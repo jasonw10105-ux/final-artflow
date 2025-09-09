@@ -9,14 +9,14 @@ export default function Auth() {
 
   async function sendMagicLink() {
     setError('')
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } })
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } })
     if (error) setError(error.message)
     else setSent(true)
   }
 
   async function signInGoogle() {
     setError('')
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } })
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/auth/callback` } })
     if (error) setError(error.message)
   }
 
