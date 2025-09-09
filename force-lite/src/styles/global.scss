@@ -1,0 +1,27 @@
+@use './variables' as *;
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: $color-fg;
+  background-color: $color-bg;
+  font-family: $font-sans;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: $color-fg;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
