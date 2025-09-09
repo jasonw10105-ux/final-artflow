@@ -7,6 +7,7 @@ const ArtistPage = lazy(() => import('./routes/Artist'))
 const ArtworkPage = lazy(() => import('./routes/Artwork'))
 const SearchPage = lazy(() => import('./routes/Search'))
 const SellPage = lazy(() => import('./routes/Sell'))
+const DashboardPage = lazy(() => import('./routes/Dashboard'))
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Link to="/">Home</Link>
           <Link to="/search">Search</Link>
           <Link to="/sell">Sell</Link>
+          <Link to="/dashboard">Dashboard</Link>
         </nav>
       </header>
       <main>
@@ -31,6 +33,7 @@ export default function App() {
             <Route path="/artwork/:id" element={<ArtworkPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/sell" element={<SellPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
           </Routes>
         </Suspense>
       </main>

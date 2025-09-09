@@ -8,6 +8,8 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import helmet from 'helmet'
 import apiRouter from './routes/api'
+import paymentsRouter from './routes/payments'
+import recaptchaRouter from './routes/recaptcha'
 
 dotenv.config()
 
@@ -60,6 +62,8 @@ async function createServer() {
 
   app.use('/uploads', express.static(resolve('uploads'), { maxAge: '1y' }))
   app.use('/api', apiRouter)
+  app.use('/api', paymentsRouter)
+  app.use('/api', recaptchaRouter)
 
   async function render(url: string) {
     if (!isProd) {
