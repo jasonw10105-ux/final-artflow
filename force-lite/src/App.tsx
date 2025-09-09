@@ -1,7 +1,9 @@
 import { Suspense, lazy } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { Link, Route, Routes } from 'react-router-dom'
+import { Link, Route, Routes, useLocation } from 'react-router-dom'
 import AuthStatus from './components/AuthStatus'
+import { useEffect } from 'react'
+import { trackPageview } from '@/services/analytics'
 
 const HomePage = lazy(() => import('./routes/Home'))
 const ArtistPage = lazy(() => import('./routes/Artist'))
@@ -15,6 +17,10 @@ import ProtectedRoute from './components/ProtectedRoute'
 const MyArtworksPage = lazy(() => import('./routes/MyArtworks'))
 
 export default function App() {
+  const location = useLocation()
+  useEffect(() => {
+    trackPageview(location.pathname + location.search)
+  }, [location])
   return (
     <>
       <Helmet>
