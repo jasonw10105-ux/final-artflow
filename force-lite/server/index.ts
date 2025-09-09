@@ -6,6 +6,7 @@ import morgan from 'morgan'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import rateLimit from 'express-rate-limit'
 import helmet from 'helmet'
 import apiRouter from './routes/api'
 import paymentsRouter from './routes/payments'
@@ -25,6 +26,7 @@ async function createServer() {
   app.use(cookieParser())
   app.use(cors({ origin: true, credentials: true }))
   app.disable('x-powered-by')
+  app.use(rateLimit({ windowMs: 60_000, max: 120 }))
   app.use(helmet({
     frameguard: { action: 'deny' },
     referrerPolicy: { policy: 'no-referrer-when-downgrade' },
