@@ -5,6 +5,7 @@ import { fetchArtwork } from '@/services/data'
 import { useEffectOnce } from '@/utils/useEffectOnce'
 import { hasLikedArtwork, likeArtwork, unlikeArtwork, fetchArtworkEditions, recordArtworkView } from '@/services/actions'
 import { supabase } from '@/lib/supabase'
+import { artworkJsonLd } from '@/seo/jsonld'
 
 export default function Artwork() {
   const { id } = useParams()
@@ -41,6 +42,9 @@ export default function Artwork() {
     <div style={{ padding: 24 }}>
       <Helmet>
         <title>{art?.title ?? `Artwork ${id}`} | Force Lite</title>
+        {art && (
+          <script type="application/ld+json">{JSON.stringify(artworkJsonLd({ title: art.title, image: art.primary_image_url, price: art.price ?? null, artistName: art.artist_name }))}</script>
+        )}
       </Helmet>
       {loading ? (
         <div>Loading…</div>

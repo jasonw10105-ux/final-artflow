@@ -14,6 +14,9 @@ import apiRouter from './routes/api'
 import paymentsRouter from './routes/payments'
 import recaptchaRouter from './routes/recaptcha'
 import reportsRouter from './routes/reports'
+import recsRouter from './routes/recs'
+import adminRouter from './routes/admin'
+import sitemapRouter from './routes/sitemap'
 
 dotenv.config()
 
@@ -80,6 +83,9 @@ async function createServer() {
   app.use('/api', paymentsRouter)
   app.use('/api', recaptchaRouter)
   app.use('/api', reportsRouter)
+  app.use('/api', recsRouter)
+  app.use('/api', adminRouter)
+  app.use('/', sitemapRouter)
 
   async function render(url: string, nonce: string) {
     if (!isProd) {

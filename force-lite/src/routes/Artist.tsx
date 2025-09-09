@@ -2,6 +2,7 @@ import { Helmet } from 'react-helmet-async'
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { fetchArtistBySlug, fetchArtworksByUser, type ArtworkRow } from '@/services/data'
+import { artistJsonLd } from '@/seo/jsonld'
 
 export default function Artist() {
   const { slug } = useParams()
@@ -22,6 +23,9 @@ export default function Artist() {
     <div style={{ padding: 24 }}>
       <Helmet>
         <title>{artist?.name ?? slug} | Artist | Force Lite</title>
+        {artist && (
+          <script type="application/ld+json">{JSON.stringify(artistJsonLd({ name: artist.name, slug: artist.slug }))}</script>
+        )}
       </Helmet>
       <h1>{artist?.name ?? slug}</h1>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16, marginTop: 16 }}>
