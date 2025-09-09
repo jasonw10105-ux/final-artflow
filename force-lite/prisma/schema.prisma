@@ -15,6 +15,7 @@ model Profile {
   id        String   @id @default(uuid())
   email     String   @unique
   name      String?
+  slug      String?  @unique
   role      UserRole @default(COLLECTOR)
   createdAt DateTime @default(now())
 
@@ -24,6 +25,8 @@ model Profile {
   events    AnalyticsEvent[]
   contacts  Contact[]
   campaigns Campaign[]
+  preferences UserPreferences?
+  slugHistory SlugHistory[]
 }
 
 enum UserRole {
@@ -174,4 +177,63 @@ enum RecipientStatus {
   FAILED
   OPENED
   CLICKED
+}
+
+model SystemLog {
+  id        BigInt   @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  logType   String
+  message   String
+  metadata  Json?
+}
+
+model SlugHistory {
+  id        BigInt   @id @default(autoincrement())
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  slug      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Sale {
+  id            String   @id @default(uuid())
+  artworkId     String
+  artistId      String
+  collectorId   String
+  salePrice     Decimal
+  saleDate      DateTime @default(now())
+  status        String   @default("completed")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  digitalCoaUrl String?
+
+  artwork   Artwork @relation(fields: [artworkId], references: [id])
+  artist    Profile @relation("artistSales", fields: [artistId], references: [id])
+  collector Profile @relation("collectorSales", fields: [collectorId], references: [id])
+}
+
+model UserPreferences {
+  id                     String   @id @default(uuid())
+  userId                 String   @unique
+  user                   Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredMediums       Json?
+  preferredStyles        Json?
+  favoriteArtists        Json?
+  learnedPreferences     Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  minBudget              Decimal?
+  maxBudget              Decimal?
+  notificationsEnabled   Boolean? @default(true)
+  learningEnabled        Boolean? @default(true)
+  budgetMode             String?  @default("no_limit")
+  useLearnedBudget       Boolean  @default(false)
+  alertSpecificArtists   Json?
+  alertSpecificMediums   Json?
+  alertSpecificStyles    Json?
+  excludeMediums         Json?
+  excludeStyles          Json?
+  excludeArtists         Json?
+  notifyByEmail          Boolean? @default(true)
+  preferredDigestTime    String?  @default("08:00:00+00")
 }
