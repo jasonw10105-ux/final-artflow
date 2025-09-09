@@ -36,4 +36,26 @@ router.get('/recs/because/:artworkId', async (req, res, next) => {
 })
 
 export default router
+;
+
+// Vector-based recommendations (if RPC available)
+router.get('/recs/vector/:artworkId', async (req, res, next) => {
+  try {
+    const artworkId = String(req.params.artworkId)
+    // Try RPC match_artworks(embedding vector) if configured in DB
+    const { data: vectors } = await supabase.rpc('match_similar_artworks', { p_artwork_id: artworkId, p_limit: 48 })
+    if (vectors && Array.isArray(vectors)) return res.json({ items: vectors })
+    // Fallback to metadata-based
+    const { data: a } = await supabase.from('artworks').select('genre,medium,price').eq('id', artworkId).single()
+    if (!a) return res.json({ items: [] })
+    const { data } = await supabase
+      .from('artworks')
+      .select('id,title,price,primary_image_url,genre,medium')
+      .neq('id', artworkId)
+      .or(`genre.eq.${a.genre},medium.eq.${a.medium}`)
+      .order('created_at', { ascending: false })
+      .limit(48)
+    return res.json({ items: data || [] })
+  } catch (e) { next(e) }
+})
 
