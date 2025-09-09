@@ -17,6 +17,9 @@ import ProtectedRoute from './components/ProtectedRoute'
 const MyArtworksPage = lazy(() => import('./routes/MyArtworks'))
 const AuthCallbackPage = lazy(() => import('./routes/AuthCallback'))
 const OnboardingPage = lazy(() => import('./routes/Onboarding'))
+const SalesPage = lazy(() => import('./routes/Sales'))
+const ArtistSettingsPage = lazy(() => import('./routes/ArtistSettings'))
+const CollectorQuizPage = lazy(() => import('./routes/CollectorQuiz'))
 
 export default function App() {
   const location = useLocation()
@@ -37,6 +40,7 @@ export default function App() {
           <Link to="/artists">Artists</Link>
           <Link to="/sell">Sell</Link>
           <Link to="/dashboard">Dashboard</Link>
+          <Link to="/u/sales">Sales</Link>
         </nav>
         <AuthStatus />
       </header>
@@ -54,6 +58,9 @@ export default function App() {
             <Route path="/onboarding" element={<ProtectedRoute><OnboardingPage /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/my-artworks" element={<ProtectedRoute><MyArtworksPage /></ProtectedRoute>} />
+            <Route path="/u/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />
+            <Route path="/u/settings/artist" element={<ProtectedRoute><ArtistSettingsPage /></ProtectedRoute>} />
+            <Route path="/u/collector/quiz" element={<ProtectedRoute><CollectorQuizPage /></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </main>
