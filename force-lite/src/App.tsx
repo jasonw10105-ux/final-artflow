@@ -8,6 +8,8 @@ const ArtworkPage = lazy(() => import('./routes/Artwork'))
 const SearchPage = lazy(() => import('./routes/Search'))
 const SellPage = lazy(() => import('./routes/Sell'))
 const DashboardPage = lazy(() => import('./routes/Dashboard'))
+const AuthPage = lazy(() => import('./routes/Auth'))
+import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
   return (
@@ -23,6 +25,7 @@ export default function App() {
           <Link to="/search">Search</Link>
           <Link to="/sell">Sell</Link>
           <Link to="/dashboard">Dashboard</Link>
+          <Link to="/auth">Sign in</Link>
         </nav>
       </header>
       <main>
@@ -33,7 +36,8 @@ export default function App() {
             <Route path="/artwork/:id" element={<ArtworkPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/sell" element={<SellPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           </Routes>
         </Suspense>
       </main>
