@@ -10,6 +10,7 @@ import VisualizationModal from '@/components/public/VisualizationModal';
 
 // Import all necessary types from app.types and database.types
 import { AppArtwork, AppArtworkImage, AppProfile } from '@/types/app.types';
+import { apiGet } from '@/lib/api';
 import { DimensionsJson, FramingInfoJson, SignatureInfoJson, DateInfoJson, HistoricalEntryJson, LocationJson } from '@/types/database.types';
 
 import { Share2, Eye, Heart, ShoppingBag, Camera, Edit3, ArrowLeft, UserPlus } from 'lucide-react';
@@ -112,6 +113,11 @@ const fetchSimilarArtworks = async (artworkId: string, artistId: string): Promis
     })) as AppArtwork[];
 };
 
+const fetchPaletteSimilar = async (artworkId: string) => {
+    const resp = await apiGet<{ items: any[] }>(`/api/recs/similar/${artworkId}`)
+    return resp.items || []
+}
+
 // --- MAIN COMPONENT ---
 const IndividualArtworkPage = () => {
   const { artworkSlug } = useParams<{ artworkSlug: string }>();
@@ -153,6 +159,14 @@ const IndividualArtworkPage = () => {
     refetchOnWindowFocus: false,
     staleTime: 1000 * 60 * 15, // Similar artworks can be staler
   });
+
+  // Palette & metadata similar
+  const { data: paletteSimilar } = useQuery<any[]>({
+    queryKey: ['paletteSimilar', artwork?.id],
+    queryFn: () => fetchPaletteSimilar(artwork!.id),
+    enabled: !!artwork?.id,
+    staleTime: 1000 * 60 * 15,
+  })
 
   // Memoize the data for addArtwork to ensure its object identity is stable
   const storedArtworkData = useMemo(() => {
@@ -540,6 +554,33 @@ const IndividualArtworkPage = () => {
                 })}
                 </div>
             )}
+          </div>
+        )}
+
+        {/* Similar by palette and metadata */}
+        {paletteSimilar && paletteSimilar.length > 0 && (
+          <div className="related-artworks-section">
+            <div className="related-header">
+                <h3>You may also love</h3>
+            </div>
+            <div className="related-artworks-list">
+              {paletteSimilar.map((art: any) => (
+                <Link to={`/artwork/${art.slug || art.id}`} key={art.id} className="artwork-card-link">
+                  <div className="artwork-card">
+                    <img
+                      src={art.primary_image_url || 'https://placehold.co/400x400?text=No+Image'}
+                      alt={art.title || ''}
+                      className="artwork-card-image"
+                      loading="lazy"
+                    />
+                    <div className="artwork-card-info">
+                      <h4 className="artwork-card-title-italic">{art.title}</h4>
+                      {typeof art.price === 'number' && <p className="artwork-card-artist text-sm">${art.price.toLocaleString()}</p>}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>

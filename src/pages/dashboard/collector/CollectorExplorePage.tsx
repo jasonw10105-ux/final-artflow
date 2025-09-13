@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Link } from 'react-router-dom';
 import { Sparkles, Users, Map } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthProvider';
+import { apiGet } from '@/lib/api';
 
 // --- TYPE DEFINITIONS ---
 interface SearchResult {
@@ -70,6 +71,12 @@ const CollectorExplorePage = () => {
             return data || [];
         }
     });
+
+    // --- Dynamic Groups from API ---
+    const { data: dynamicGroups } = useQuery<{ groups: { label: string; items: any[] }[] }>({
+        queryKey: ['dynamicGroups'],
+        queryFn: () => apiGet('/api/groups/dynamic'),
+    })
 
     return (
         <div className="page-container">
@@ -141,6 +148,36 @@ const CollectorExplorePage = () => {
                                 <hr className="my-8 border-border" />
                             </div>
                         )}
+
+                        {/* Dynamic Auto Grouping */}
+                        {dynamicGroups?.groups?.length ? (
+                            <div className="insight-section">
+                                {dynamicGroups.groups.map(group => (
+                                    <div key={group.label} className="mb-10">
+                                        <h2 className="section-title">{group.label}</h2>
+                                        <div className="artwork-grid">
+                                            {group.items.map((art: any) => (
+                                                <div key={art.id} className="artwork-card">
+                                                    <Link to={`/artwork/${art.slug || art.id}`}>
+                                                        <div className="artwork-card-image-wrapper">
+                                                            <img src={art.primary_image_url || 'https://placehold.co/400x300?text=No+Image'} alt={art.title} className="artwork-card-image" />
+                                                            <div className="artwork-card-status-badge">{art.status || 'available'}</div>
+                                                        </div>
+                                                        <div className="artwork-card-info">
+                                                            <h3>{art.title}</h3>
+                                                            {typeof art.price === 'number' && (
+                                                              <p className="artwork-card-price">${art.price.toLocaleString()}</p>
+                                                            )}
+                                                        </div>
+                                                    </Link>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                <hr className="my-8 border-border" />
+                            </div>
+                        ) : null}
                         
                         <div className="insight-section">
                             <h2 className="section-title flex items-center gap-2"><Users size={24} /> Community Curations</h2>
