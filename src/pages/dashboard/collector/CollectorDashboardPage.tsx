@@ -2,6 +2,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
+import { apiGet } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthProvider';
 import { Link } from 'react-router-dom';
 import { useRecentlyViewed, StoredArtwork } from '@/hooks/useRecentlyViewed';
@@ -121,6 +122,12 @@ const CollectorDashboardPage = () => {
         )}
       </div>
 
+      {/* Serendipity */}
+      <div className="widget">
+        <h3 className="flex items-center gap-2"><Sparkles size={20} /> Serendipity</h3>
+        <SerendipityRow />
+      </div>
+
       {/* Recently Viewed */}
       <div className="widget">
         <h3>Recently Viewed Artworks</h3>
@@ -157,3 +164,31 @@ const CollectorDashboardPage = () => {
 };
 
 export default CollectorDashboardPage;
+
+// Inline component to keep file self-contained
+const SerendipityRow = () => {
+  const { user } = require('@/contexts/AuthProvider').useAuth();
+  const { data, isLoading } = require('@tanstack/react-query').useQuery({
+    queryKey: ['serendipity', user?.id],
+    queryFn: () => require('@/lib/api').apiGet('/api/recs/serendipity'),
+    enabled: !!user,
+    staleTime: 1000 * 60 * 10,
+  })
+  if (!user) return <p className="text-muted-foreground mt-4">Sign in to get tailored serendipity picks.</p>
+  if (isLoading) return <p className="loading-message">Finding delightful surprises...</p>
+  const items = (data?.items || []).slice(0, 12)
+  if (!items.length) return <p className="text-muted-foreground mt-4">No serendipity picks yet. Interact more with art to teach the system.</p>
+  const { Link } = require('react-router-dom')
+  return (
+    <div className="horizontal-scroll-row mt-4">
+      {items.map((a: any) => (
+        <div key={a.id} className="scroll-card">
+          <Link to={`/artwork/${a.slug || a.id}`}>
+            <img src={a.primary_image_url || '/placeholder.png'} alt={a.title || 'Untitled'} />
+            <p>{a.title}</p>
+          </Link>
+        </div>
+      ))}
+    </div>
+  )
+}

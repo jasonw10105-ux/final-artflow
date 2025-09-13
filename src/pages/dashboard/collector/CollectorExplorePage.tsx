@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { Link } from 'react-router-dom';
 import { Sparkles, Users, Map } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthProvider';
+import { apiGet } from '@/lib/api';
 
 // --- TYPE DEFINITIONS ---
 interface SearchResult {
@@ -71,6 +72,16 @@ const CollectorExplorePage = () => {
         }
     });
 
+    // --- Dynamic Groups from API ---
+    const [paletteBias, setPaletteBias] = useState<'warm' | 'cool' | 'neutral' | ''>('')
+    const [styleBias, setStyleBias] = useState<string>('')
+    const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined)
+
+    const { data: dynamicGroups } = useQuery<{ groups: { label: string; items: any[] }[] }>({
+        queryKey: ['dynamicGroups', paletteBias, styleBias, maxPrice],
+        queryFn: () => apiGet(`/api/groups/dynamic?paletteBias=${paletteBias}&style=${styleBias}&maxPrice=${maxPrice ?? ''}`),
+    })
+
     return (
         <div className="page-container">
             <h1>Explore Art</h1>
@@ -90,6 +101,34 @@ const CollectorExplorePage = () => {
             </div>
 
             <div className="mt-8">
+                {/* Live preference controls */}
+                <div className="widget">
+                  <h3>Refine Your Explore</h3>
+                  <div className="flex gap-3 items-end flex-wrap">
+                    <div>
+                      <label className="block text-sm text-muted-foreground">Palette</label>
+                      <select value={paletteBias} onChange={e => setPaletteBias(e.target.value as any)}>
+                        <option value="">Any</option>
+                        <option value="cool">Cool</option>
+                        <option value="warm">Warm</option>
+                        <option value="neutral">Neutral</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground">Style</label>
+                      <select value={styleBias} onChange={e => setStyleBias(e.target.value)}>
+                        <option value="">Any</option>
+                        <option value="abstract">Abstract</option>
+                        <option value="figurative">Figurative</option>
+                        <option value="landscape">Landscape</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground">Max Price</label>
+                      <input type="number" placeholder="e.g. 5000" value={maxPrice ?? ''} onChange={e => setMaxPrice(e.target.value ? Number(e.target.value) : undefined)} />
+                    </div>
+                  </div>
+                </div>
                 {isSearching ? (
                     <p className="loading-message">Searching for matches...</p>
                 ) : submittedQuery && searchResults ? (
@@ -141,6 +180,36 @@ const CollectorExplorePage = () => {
                                 <hr className="my-8 border-border" />
                             </div>
                         )}
+
+                        {/* Dynamic Auto Grouping */}
+                        {dynamicGroups?.groups?.length ? (
+                            <div className="insight-section">
+                                {dynamicGroups.groups.map(group => (
+                                    <div key={group.label} className="mb-10">
+                                        <h2 className="section-title">{group.label}</h2>
+                                        <div className="artwork-grid">
+                                            {group.items.map((art: any) => (
+                                                <div key={art.id} className="artwork-card">
+                                                    <Link to={`/artwork/${art.slug || art.id}`}>
+                                                        <div className="artwork-card-image-wrapper">
+                                                            <img src={art.primary_image_url || 'https://placehold.co/400x300?text=No+Image'} alt={art.title} className="artwork-card-image" />
+                                                            <div className="artwork-card-status-badge">{art.status || 'available'}</div>
+                                                        </div>
+                                                        <div className="artwork-card-info">
+                                                            <h3>{art.title}</h3>
+                                                            {typeof art.price === 'number' && (
+                                                              <p className="artwork-card-price">${art.price.toLocaleString()}</p>
+                                                            )}
+                                                        </div>
+                                                    </Link>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                <hr className="my-8 border-border" />
+                            </div>
+                        ) : null}
                         
                         <div className="insight-section">
                             <h2 className="section-title flex items-center gap-2"><Users size={24} /> Community Curations</h2>

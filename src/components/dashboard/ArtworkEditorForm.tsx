@@ -7,6 +7,7 @@ import { useDropzone } from 'react-dropzone';
 import TagManager, { Tag } from './TagManager';
 import CatalogueSelectionModal from './CatalogueSelectionModal';
 import ColorThief from 'colorthief';
+import { apiPost } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -129,14 +130,30 @@ const ArtworkEditorForm: React.FC<ArtworkEditorFormProps> = ({ artworkId, onSave
       }
 
       // TODO: genre & keyword AI detection placeholder
-      // Here you would integrate with AI or image recognition API
-      // For now, just auto-fill empty arrays if they were empty
-      setFormState((prev) => ({
-        ...prev,
-        genre: prev.genre.length === 0 ? [{ id: uuidv4(), name: 'Unknown' }] : prev.genre,
-        keywords: prev.keywords.length === 0 ? [{ id: uuidv4(), name: 'Autodetected' }] : prev.keywords,
-        tags: prev.tags.length === 0 ? [{ id: uuidv4(), name: 'Autodetected' }] : prev.tags,
-      }));
+      // Call smart typing service with palette-aware hints
+      const hex = (prevHex: string[]) => prevHex
+      const toHex = (rgb: string) => {
+        const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(rgb)
+        if (!m) return null
+        const r = Number(m[1]), g = Number(m[2]), b = Number(m[3])
+        const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0')
+        return `#${h(r)}${h(g)}${h(b)}`
+      }
+      const colorHexes = formState.dominantColors.map(c => toHex(c)).filter(Boolean) as string[]
+      apiPost('/api/intelligence/type-artwork', {
+        title: formState.title,
+        description: formState.description,
+        medium: [formState.mediumPrimary, formState.mediumSecondary].filter(Boolean).join(' '),
+        keywords: formState.keywords.map(k => k.name),
+        colors: colorHexes,
+      }).then((res: any) => {
+        setFormState((prev) => ({
+          ...prev,
+          genre: prev.genre.length ? prev.genre : (res.inferred_genres || []).slice(0,2).map((name: string) => ({ id: uuidv4(), name })),
+          keywords: prev.keywords.length ? prev.keywords : (res.suggested_keywords || []).slice(0,6).map((name: string) => ({ id: uuidv4(), name })),
+          tags: prev.tags.length ? prev.tags : (res.color_names || []).slice(0,3).map((name: string) => ({ id: uuidv4(), name })),
+        }))
+      }).catch(() => {})
     };
   }, [formState.primaryImageFile]);
 
