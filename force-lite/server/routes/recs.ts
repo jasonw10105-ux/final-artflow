@@ -59,6 +59,46 @@ router.get('/recs/vector/:artworkId', async (req, res, next) => {
     return res.json({ items: data || [] })
   } catch (e) { next(e) }
 })
+// Similar by palette & metadata
+router.get('/recs/similar/:artworkId', async (req, res, next) => {
+  try {
+    const artworkId = String(req.params.artworkId)
+    const { data: a } = await supabase.from('artworks').select('id,genre,medium,dominant_colors').eq('id', artworkId).single()
+    if (!a) return res.json({ items: [] })
+    const aNames = namePalette(a.dominant_colors || []).map(n => n.name)
+    const aSet = new Set(aNames)
+
+    const { data: pool } = await supabase
+      .from('artworks')
+      .select('id,title,price,primary_image_url,genre,medium,dominant_colors')
+      .neq('id', artworkId)
+      .eq('status','available')
+      .order('created_at', { ascending: false })
+      .limit(400)
+
+    function jaccard(xs: string[], ys: string[]): number {
+      const X = new Set(xs), Y = new Set(ys)
+      const inter = Array.from(X).filter(x => Y.has(x)).length
+      const uni = new Set([...Array.from(X), ...Array.from(Y)]).size
+      return uni === 0 ? 0 : inter / uni
+    }
+
+    function score(b: any): number {
+      const bNames = namePalette(b.dominant_colors || []).map((n) => n.name)
+      let s = jaccard(aNames, bNames) * 2.0
+      if ((b.genre || '').toLowerCase() === (a.genre || '').toLowerCase()) s += 0.6
+      if ((b.medium || '').toLowerCase() === (a.medium || '').toLowerCase()) s += 0.4
+      return s
+    }
+
+    const ranked = (pool || []).map(b => ({ ...b, score: score(b) }))
+      .sort((x, y) => y.score - x.score)
+      .slice(0, 24)
+
+    res.json({ items: ranked })
+  } catch (e) { next(e) }
+})
+
 // Dynamic Auto Grouping: builds themed buckets based on color families, price bands, and genre
 router.get('/groups/dynamic', async (_req, res, next) => {
   try {

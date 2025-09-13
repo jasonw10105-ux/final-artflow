@@ -16,6 +16,7 @@ import recaptchaRouter from './routes/recaptcha'
 import reportsRouter from './routes/reports'
 import recsRouter from './routes/recs'
 import adminRouter from './routes/admin'
+import intelligenceRouter from './routes/intelligence'
 import sitemapRouter from './routes/sitemap'
 import contactsRouter from './routes/contacts'
 import messagingRouter from './routes/messaging'
@@ -88,6 +89,7 @@ async function createServer() {
   app.use('/api', reportsRouter)
   app.use('/api', recsRouter)
   app.use('/api', adminRouter)
+  app.use('/api', intelligenceRouter)
   app.use('/api', contactsRouter)
   app.use('/api', messagingRouter)
   app.use('/api', salesRouter)
