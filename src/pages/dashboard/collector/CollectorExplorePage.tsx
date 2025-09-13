@@ -73,9 +73,13 @@ const CollectorExplorePage = () => {
     });
 
     // --- Dynamic Groups from API ---
+    const [paletteBias, setPaletteBias] = useState<'warm' | 'cool' | 'neutral' | ''>('')
+    const [styleBias, setStyleBias] = useState<string>('')
+    const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined)
+
     const { data: dynamicGroups } = useQuery<{ groups: { label: string; items: any[] }[] }>({
-        queryKey: ['dynamicGroups'],
-        queryFn: () => apiGet('/api/groups/dynamic'),
+        queryKey: ['dynamicGroups', paletteBias, styleBias, maxPrice],
+        queryFn: () => apiGet(`/api/groups/dynamic?paletteBias=${paletteBias}&style=${styleBias}&maxPrice=${maxPrice ?? ''}`),
     })
 
     return (
@@ -97,6 +101,34 @@ const CollectorExplorePage = () => {
             </div>
 
             <div className="mt-8">
+                {/* Live preference controls */}
+                <div className="widget">
+                  <h3>Refine Your Explore</h3>
+                  <div className="flex gap-3 items-end flex-wrap">
+                    <div>
+                      <label className="block text-sm text-muted-foreground">Palette</label>
+                      <select value={paletteBias} onChange={e => setPaletteBias(e.target.value as any)}>
+                        <option value="">Any</option>
+                        <option value="cool">Cool</option>
+                        <option value="warm">Warm</option>
+                        <option value="neutral">Neutral</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground">Style</label>
+                      <select value={styleBias} onChange={e => setStyleBias(e.target.value)}>
+                        <option value="">Any</option>
+                        <option value="abstract">Abstract</option>
+                        <option value="figurative">Figurative</option>
+                        <option value="landscape">Landscape</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-muted-foreground">Max Price</label>
+                      <input type="number" placeholder="e.g. 5000" value={maxPrice ?? ''} onChange={e => setMaxPrice(e.target.value ? Number(e.target.value) : undefined)} />
+                    </div>
+                  </div>
+                </div>
                 {isSearching ? (
                     <p className="loading-message">Searching for matches...</p>
                 ) : submittedQuery && searchResults ? (

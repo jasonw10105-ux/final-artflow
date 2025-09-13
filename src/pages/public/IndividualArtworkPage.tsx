@@ -575,7 +575,12 @@ const IndividualArtworkPage = () => {
                     />
                     <div className="artwork-card-info">
                       <h4 className="artwork-card-title-italic">{art.title}</h4>
-                      {typeof art.price === 'number' && <p className="artwork-card-artist text-sm">${art.price.toLocaleString()}</p>}
+                      <div className="text-sm text-muted-foreground flex gap-2 flex-wrap">
+                        {Array.isArray(art.reasons) && art.reasons.slice(0, 3).map((r: string, idx: number) => (
+                          <span key={idx} className="reason-chip">{r}</span>
+                        ))}
+                      </div>
+                      {typeof art.price === 'number' && <p className="artwork-card-artist text-sm mt-1">${art.price.toLocaleString()}</p>}
                     </div>
                   </div>
                 </Link>
