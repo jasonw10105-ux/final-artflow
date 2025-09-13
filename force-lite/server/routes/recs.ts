@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { supabase } from '../../src/server/supabase'
 import { requireAuth, getUserIdFromRequest } from '../middleware/auth'
+import { namePalette, groupByColorFamily } from '../../src/services/color'
 
 const router = Router()
 
@@ -58,4 +59,77 @@ router.get('/recs/vector/:artworkId', async (req, res, next) => {
     return res.json({ items: data || [] })
   } catch (e) { next(e) }
 })
+// Dynamic Auto Grouping: builds themed buckets based on color families, price bands, and genre
+router.get('/groups/dynamic', async (_req, res, next) => {
+  try {
+    const { data: recent } = await supabase
+      .from('artworks')
+      .select('id,title,price,primary_image_url,genre,dominant_colors')
+      .eq('status','available')
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    const items = (recent || []).map(a => ({
+      ...a,
+      color_names: namePalette(a.dominant_colors || []).map(n => n.name),
+      color_families: groupByColorFamily(a.dominant_colors || []),
+      price_band: a.price == null ? 'unknown' : a.price < 1000 ? '<$1k' : a.price < 5000 ? '$1k–$5k' : a.price < 20000 ? '$5k–$20k' : '$20k+'
+    }))
+
+    const group = (label: string, filter: (x: any) => boolean) => ({ label, items: items.filter(filter).slice(0, 24) })
+
+    const groups = [
+      group('Calming Blues', x => x.color_names.includes('blue') || x.color_names.includes('sky') || x.color_names.includes('indigo')),
+      group('Warm & Earthy', x => x.color_families.includes('warm')),
+      group('Minimal Neutrals', x => x.color_families.includes('neutral')),
+      group('Under $1,000', x => x.price_band === '<$1k'),
+      group('Statement Pieces $5k–$20k', x => x.price_band === '$5k–$20k'),
+      group('Abstract Now', x => (x.genre || '').toLowerCase().includes('abstract')),
+      group('Figurative Focus', x => (x.genre || '').toLowerCase().includes('figurative')),
+    ].filter(g => g.items.length > 0)
+
+    res.json({ groups })
+  } catch (e) { next(e) }
+})
+
+// Serendipity: resurfacing recently added and near-preference but slightly outside comfort zone
+router.get('/recs/serendipity', requireAuth as any, async (req, res, next) => {
+  try {
+    const userId = await getUserIdFromRequest(req)
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' })
+    const { data: prefs } = await supabase.from('user_preferences').select('*').eq('user_id', userId).maybeSingle()
+
+    const { data: pool } = await supabase
+      .from('artworks')
+      .select('id,title,price,primary_image_url,genre,medium,dominant_colors')
+      .eq('status','available')
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    const preferStyles = new Set<string>((prefs?.preferred_styles || []).map((s: string) => String(s).toLowerCase()))
+    const preferMediums = new Set<string>((prefs?.preferred_mediums || []).map((s: string) => String(s).toLowerCase()))
+
+    function score(a: any): number {
+      let s = 0
+      const genre = (a.genre || '').toLowerCase()
+      const medium = (a.medium || '').toLowerCase()
+      if (preferStyles.has(genre)) s += 2
+      if (preferMediums.has(medium)) s += 1
+      // bonus for cool-to-warm transition to promote exploration
+      const fams = groupByColorFamily(a.dominant_colors || [])
+      if (fams.includes('cool')) s += 0.4
+      if (fams.includes('warm')) s += 0.4
+      // slight randomization for serendipity
+      s += Math.random() * 0.5
+      return s
+    }
+
+    const ranked = (pool || []).map(a => ({ ...a, score: score(a) }))
+      .sort((x, y) => y.score - x.score)
+      .slice(0, 30)
+
+    res.json({ items: ranked })
+  } catch (e) { next(e) }
+})
+
 
